@@ -24,6 +24,7 @@ export async function listProblems(boardId) {
     .from('problems')
     .select('*')
     .eq('board_id', boardId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
@@ -106,6 +107,20 @@ export async function rateProblem(id, rating) {
 }
 
 export async function deleteProblem(id) {
-  const { error } = await supabase.from('problems').delete().eq('id', id);
+  const { error } = await supabase
+    .from('problems')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
   if (error) throw error;
+}
+
+export async function restoreProblem(id) {
+  const { data, error } = await supabase
+    .from('problems')
+    .update({ deleted_at: null })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }

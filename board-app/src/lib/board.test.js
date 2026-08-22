@@ -14,6 +14,7 @@ import {
   rateProblem,
   updateProblem,
   tickProblem,
+  restoreProblem,
 } from './board';
 
 function chain(result) {
@@ -23,6 +24,7 @@ function chain(result) {
     update: vi.fn(() => builder),
     delete: vi.fn(() => builder),
     eq: vi.fn(() => builder),
+    is: vi.fn(() => builder),
     order: vi.fn(() => builder),
     limit: vi.fn(() => builder),
     single: vi.fn(() => Promise.resolve(result)),
@@ -67,6 +69,7 @@ describe('listProblems', () => {
     const result = await listProblems('b1');
     expect(result).toEqual(rows);
     expect(c.eq).toHaveBeenCalledWith('board_id', 'b1');
+    expect(c.is).toHaveBeenCalledWith('deleted_at', null);
     expect(c.order).toHaveBeenCalledWith('created_at', { ascending: false });
   });
 });
@@ -98,11 +101,32 @@ describe('createProblem', () => {
 });
 
 describe('deleteProblem', () => {
-  it('deletes a problem by id', async () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-22T12:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('soft-deletes a problem by setting deleted_at', async () => {
     const c = chain({ data: null, error: null });
     mocks.supabase.from.mockReturnValue(c);
     await deleteProblem('p1');
-    expect(c.delete).toHaveBeenCalled();
+    expect(c.delete).not.toHaveBeenCalled();
+    expect(c.update).toHaveBeenCalledWith({ deleted_at: '2026-08-22T12:00:00.000Z' });
+    expect(c.eq).toHaveBeenCalledWith('id', 'p1');
+  });
+});
+
+describe('restoreProblem', () => {
+  it('clears deleted_at to restore a problem', async () => {
+    const restored = { id: 'p1', name: 'Gaston Traverse', deleted_at: null };
+    const c = chain({ data: restored, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await restoreProblem('p1');
+    expect(result).toEqual(restored);
+    expect(c.update).toHaveBeenCalledWith({ deleted_at: null });
     expect(c.eq).toHaveBeenCalledWith('id', 'p1');
   });
 });

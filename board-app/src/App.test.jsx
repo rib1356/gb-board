@@ -11,12 +11,13 @@ vi.mock('./lib/board', () => ({
   rateProblem: vi.fn(),
   updateProblem: vi.fn(),
   tickProblem: vi.fn(),
+  restoreProblem: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem, restoreProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import App from './App';
 
@@ -255,6 +256,27 @@ describe('App (delete flow)', () => {
 
     expect(deleteProblem).not.toHaveBeenCalled();
     expect(await screen.findByText('Delete problem')).toBeInTheDocument();
+  });
+
+  it('shows an undo banner after deleting, and restores the problem on undo', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
+    ]);
+    deleteProblem.mockResolvedValue(undefined);
+    restoreProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Delete problem'));
+    await user.click(await screen.findByText('Yes, delete'));
+
+    await user.click(await screen.findByText('Undo'));
+
+    await waitFor(() => expect(restoreProblem).toHaveBeenCalledWith('p1'));
+    expect(await screen.findByText('Gaston Traverse')).toBeInTheDocument();
   });
 });
 

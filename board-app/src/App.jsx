@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Circle } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem, restoreProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
 import { GRADES } from './lib/grades';
@@ -111,6 +111,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [deletedProblem, setDeletedProblem] = useState(null);
 
   const imgWrapRef = useRef(null);
 
@@ -128,6 +129,12 @@ export default function App() {
       setLoading(false);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!deletedProblem) return;
+    const timer = setTimeout(() => setDeletedProblem(null), 6000);
+    return () => clearTimeout(timer);
+  }, [deletedProblem]);
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -210,13 +217,27 @@ export default function App() {
 
   const handleDelete = async (id) => {
     try {
+      const problem = problems.find((p) => p.id === id);
       await deleteProblem(id);
       setProblems((prev) => prev.filter((p) => p.id !== id));
       setConfirmingDelete(false);
       setView('list');
+      setDeletedProblem(problem || null);
     } catch (err) {
       console.error(err);
       setError('Could not delete that problem — check your connection and try again.');
+    }
+  };
+
+  const handleUndoDelete = async () => {
+    if (!deletedProblem) return;
+    try {
+      const restored = await restoreProblem(deletedProblem.id);
+      setProblems((prev) => [restored, ...prev]);
+      setDeletedProblem(null);
+    } catch (err) {
+      console.error(err);
+      setError('Could not undo that delete — check your connection and try again.');
     }
   };
 
@@ -292,6 +313,18 @@ export default function App() {
               {board?.photo_url ? 'Replace board photo' : 'Upload a photo of your board'}
               <input type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} style={{ display: 'none' }} />
             </label>
+          </div>
+        )}
+
+        {view === 'list' && deletedProblem && (
+          <div style={{
+            marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: '#232427', border: '1px solid #3a3b3e', borderRadius: 10, padding: '10px 14px',
+          }}>
+            <span style={{ fontSize: 13.5, color: '#c7c8cb' }}>Problem deleted</span>
+            <button onClick={handleUndoDelete} style={{
+              background: 'none', border: 'none', color: '#C08552', fontWeight: 700, fontSize: 13.5, cursor: 'pointer',
+            }}>Undo</button>
           </div>
         )}
 
