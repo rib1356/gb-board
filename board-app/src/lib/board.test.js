@@ -81,6 +81,7 @@ describe('createProblem', () => {
       setter: ' Rob ',
       notes: ' beta ',
       holds: [{ x: 0.1, y: 0.2, type: 'start' }],
+      photoUrl: 'https://cdn.example/b1.jpg',
     });
     expect(result).toEqual(saved);
     expect(c.insert).toHaveBeenCalledWith({
@@ -90,6 +91,7 @@ describe('createProblem', () => {
       setter: 'Rob',
       notes: 'beta',
       holds: [{ x: 0.1, y: 0.2, type: 'start' }],
+      photo_url: 'https://cdn.example/b1.jpg',
     });
   });
 });

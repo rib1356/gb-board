@@ -142,6 +142,7 @@ describe('App (create flow)', () => {
       expect(createProblem).toHaveBeenCalledWith('b1', {
         name: 'Gaston Traverse', grade: '', setter: '', notes: '',
         holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+        photoUrl: 'https://cdn.example/b1.jpg',
       })
     );
     expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
@@ -171,6 +172,7 @@ describe('App (create flow)', () => {
       expect(createProblem).toHaveBeenCalledWith('b1', {
         name: 'Gaston Traverse', grade: 'V4', setter: '', notes: '',
         holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+        photoUrl: 'https://cdn.example/b1.jpg',
       })
     );
   });
@@ -199,6 +201,7 @@ describe('App (create flow)', () => {
       expect(createProblem).toHaveBeenCalledWith('b1', {
         name: 'Gaston Traverse', grade: '', setter: '', notes: '',
         holds: [{ x: 0.5, y: 0.5, type: 'foot' }],
+        photoUrl: 'https://cdn.example/b1.jpg',
       })
     );
   });
@@ -251,6 +254,41 @@ describe('App (delete flow)', () => {
 
     expect(deleteProblem).not.toHaveBeenCalled();
     expect(await screen.findByText('Delete problem')).toBeInTheDocument();
+  });
+});
+
+describe('App (photo snapshot)', () => {
+  it("shows a problem's own photo snapshot in the detail view, not the current board photo", async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/new-board.jpg' });
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }], photo_url: 'https://cdn.example/old-board.jpg',
+      },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    expect(await screen.findByAltText('Climbing board')).toHaveAttribute('src', 'https://cdn.example/old-board.jpg');
+  });
+
+  it("keeps showing the problem's own photo snapshot while editing it", async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/new-board.jpg' });
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }], photo_url: 'https://cdn.example/old-board.jpg',
+      },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+
+    expect(await screen.findByAltText('Climbing board')).toHaveAttribute('src', 'https://cdn.example/old-board.jpg');
   });
 });
 

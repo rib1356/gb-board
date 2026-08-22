@@ -177,7 +177,7 @@ export default function App() {
         const updated = await updateProblem(editingId, { name, grade, setter, notes });
         setProblems((prev) => prev.map((p) => (p.id === editingId ? updated : p)));
       } else {
-        const problem = await createProblem(board.id, { name, grade, setter, notes, holds: draftHolds });
+        const problem = await createProblem(board.id, { name, grade, setter, notes, holds: draftHolds, photoUrl: board.photo_url });
         setProblems((prev) => [problem, ...prev]);
       }
       setView('list');
@@ -212,6 +212,8 @@ export default function App() {
 
   const selected = problems.find((p) => p.id === selectedId);
   const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
+  const lockedProblem = (view === 'detail' || editingId) ? selected : null;
+  const displayPhotoUrl = lockedProblem?.photo_url || board?.photo_url;
 
   if (loading) {
     return (
@@ -253,11 +255,11 @@ export default function App() {
           style={{
             position: 'relative', width: '100%', borderRadius: 14, overflow: 'hidden',
             background: '#232427', border: '1px solid #2A2B2E',
-            cursor: view === 'new' ? 'crosshair' : 'default', minHeight: board?.photo_url ? undefined : 220,
+            cursor: view === 'new' ? 'crosshair' : 'default', minHeight: displayPhotoUrl ? undefined : 220,
           }}
         >
-          {board?.photo_url ? (
-            <img src={board.photo_url} alt="Climbing board" style={{ width: '100%', display: 'block' }} draggable={false} />
+          {displayPhotoUrl ? (
+            <img src={displayPhotoUrl} alt="Climbing board" style={{ width: '100%', display: 'block' }} draggable={false} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 220, gap: 10, color: '#6d6f73' }}>
               <Camera size={30} />

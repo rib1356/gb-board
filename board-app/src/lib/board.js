@@ -49,7 +49,7 @@ export async function uploadBoardPhoto(boardId, blob) {
   return updated;
 }
 
-export async function createProblem(boardId, { name, grade, setter, notes, holds }) {
+export async function createProblem(boardId, { name, grade, setter, notes, holds, photoUrl }) {
   const { data, error } = await supabase
     .from('problems')
     .insert({
@@ -59,6 +59,7 @@ export async function createProblem(boardId, { name, grade, setter, notes, holds
       setter: setter.trim(),
       notes: notes.trim(),
       holds,
+      photo_url: photoUrl,
     })
     .select()
     .single();
