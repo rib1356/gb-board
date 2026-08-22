@@ -112,6 +112,7 @@ export default function App() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deletedProblem, setDeletedProblem] = useState(null);
+  const [gradeFilter, setGradeFilter] = useState('');
 
   const imgWrapRef = useRef(null);
 
@@ -242,6 +243,7 @@ export default function App() {
   };
 
   const selected = problems.find((p) => p.id === selectedId);
+  const visibleProblems = gradeFilter ? problems.filter((p) => p.grade === gradeFilter) : problems;
   const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
   const lockedProblem = (view === 'detail' || editingId) ? selected : null;
   const displayPhotoUrl = lockedProblem?.photo_url || board?.photo_url;
@@ -381,7 +383,18 @@ export default function App() {
                 <CircleDot size={26} style={{ marginBottom: 8, opacity: 0.5 }} />
                 <p style={{ fontSize: 14, margin: 0 }}>No problems set yet. Upload a photo and add your first one.</p>
               </div>
-            ) : problems.map((p) => (
+            ) : (
+              <select aria-label="Filter by grade" value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, marginBottom: 12, width: 'auto' }}>
+                <option value="">All grades</option>
+                {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            )}
+            {problems.length > 0 && visibleProblems.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
+                <p style={{ fontSize: 14, margin: 0 }}>No problems at that grade.</p>
+              </div>
+            )}
+            {visibleProblems.map((p) => (
               <button key={p.id} onClick={() => { setSelectedId(p.id); setConfirmingDelete(false); setView('detail'); }} style={{
                 width: '100%', textAlign: 'left', background: '#232427', border: '1px solid #2A2B2E',
                 borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', color: '#EDEAE3',

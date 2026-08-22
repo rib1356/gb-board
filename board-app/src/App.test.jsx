@@ -45,8 +45,8 @@ describe('App (read paths)', () => {
       { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
     ]);
     render(<App />);
-    expect(await screen.findByText('Gaston Traverse')).toBeInTheDocument();
-    expect(screen.getByText('V5')).toBeInTheDocument();
+    const nameEl = await screen.findByText('Gaston Traverse');
+    expect(nameEl.closest('button')).toHaveTextContent('V5');
   });
 
   it('opens a problem detail view with its holds overlaid', async () => {
@@ -312,6 +312,40 @@ describe('App (photo snapshot)', () => {
     await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
 
     expect(await screen.findByAltText('Climbing board')).toHaveAttribute('src', 'https://cdn.example/old-board.jpg');
+  });
+});
+
+describe('App (grade filter)', () => {
+  it('filters the problem list by grade', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
+      { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [] },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('Gaston Traverse');
+    await user.selectOptions(screen.getByRole('combobox', { name: /filter by grade/i }), 'V5');
+
+    expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
+    expect(screen.queryByText('Crimpy Corner')).not.toBeInTheDocument();
+  });
+
+  it('shows all problems again when the filter is reset to All', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
+      { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [] },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('Gaston Traverse');
+    const filter = screen.getByRole('combobox', { name: /filter by grade/i });
+    await user.selectOptions(filter, 'V5');
+    await user.selectOptions(filter, '');
+
+    expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
+    expect(screen.getByText('Crimpy Corner')).toBeInTheDocument();
   });
 });
 
