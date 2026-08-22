@@ -187,9 +187,6 @@ export default function App() {
             </button>
           )}
         </div>
-        {view === 'list' && (
-          <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#8b8d91' }}>Shared with anyone who has this link.</p>
-        )}
       </div>
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
