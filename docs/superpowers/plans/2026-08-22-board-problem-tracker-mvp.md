@@ -1488,10 +1488,10 @@ Follow the spec's "External setup steps" 1–4 (`docs/superpowers/specs/2026-08-
 
 Create a new empty repository (no README/license, so there's no merge conflict with this history) and give the executor its remote URL (e.g. `git@github.com:you/board-app.git`).
 
-- [ ] **Step 3 (executor): Verify the app builds against the real project**
+- [ ] **Step 3 (executor): Verify the app builds**
 
 Run: `cd board-app && npm run build`
-Expected: build succeeds — confirms `.env` is filled in correctly (Task 4's `supabaseClient.js` throws immediately if the env vars are missing).
+Expected: build succeeds. Note: this only confirms the code compiles — Vite's build never evaluates `supabaseClient.js`'s module graph the way the browser does at runtime, so a missing/wrong `.env` value will still build green. The real check that `.env` is correct is Step 4 below (actually loading the page): a missing env var throws during `main.jsx`'s import, before React mounts, which renders as a blank white page with no on-screen error — check the browser console if the dev server loads blank.
 
 - [ ] **Step 4 (executor): Manual smoke test against the real Supabase project**
 
@@ -1512,7 +1512,7 @@ git push -u origin main
 
 - [ ] **Step 6 (you): Deploy on Vercel**
 
-Import the GitHub repo into Vercel. **Set the project's Root Directory to `board-app`** (the repo root also contains `docs/`, so Vercel won't find `package.json` at the top level otherwise). Framework preset: Vite. Add the same two environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) in the Vercel project settings. Deploy.
+Import the GitHub repo into Vercel. **Set the project's Root Directory to `board-app`** (the repo root also contains `docs/`, so Vercel won't find `package.json` at the top level otherwise). Framework preset: Vite. Add the same two environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) in the Vercel project settings. Deploy. Same caveat as Step 3: a green Vercel build does not prove the env vars are correct — Step 7 (actually loading the deployed URL) is what proves it.
 
 - [ ] **Step 7 (you + executor): Final cross-device check**
 
