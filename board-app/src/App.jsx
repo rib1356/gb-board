@@ -89,6 +89,7 @@ export default function App() {
         const p = await listProblems(b.id);
         setProblems(p);
       } catch (e) {
+        console.error(e);
         setError('Could not load the board — check your connection and try again.');
       }
       setLoading(false);
@@ -105,6 +106,7 @@ export default function App() {
       const updated = await uploadBoardPhoto(board.id, blob);
       setBoard(updated);
     } catch (err) {
+      console.error(err);
       setError('Could not upload that photo — try a different one.');
     }
     setUploading(false);
@@ -133,6 +135,7 @@ export default function App() {
       setProblems((prev) => [problem, ...prev]);
       setView('list');
     } catch (err) {
+      console.error(err);
       setError('Could not save that problem — check your connection and try again.');
     }
     setSaving(false);
@@ -144,6 +147,7 @@ export default function App() {
       setProblems((prev) => prev.filter((p) => p.id !== id));
       setView('list');
     } catch (err) {
+      console.error(err);
       setError('Could not delete that problem — check your connection and try again.');
     }
   };
@@ -169,7 +173,7 @@ export default function App() {
           {view === 'list' ? (
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>THE BOARD</h1>
           ) : (
-            <button onClick={() => setView('list')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
+            <button onClick={() => { setSelectedId(null); setView('list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
               <ChevronLeft size={18} /> Board
             </button>
           )}

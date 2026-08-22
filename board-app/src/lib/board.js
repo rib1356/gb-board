@@ -4,6 +4,7 @@ export async function getOrCreateBoard() {
   const { data: existing, error: selectError } = await supabase
     .from('boards')
     .select('*')
+    .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (selectError) throw selectError;

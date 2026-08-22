@@ -37,10 +37,12 @@ beforeEach(() => {
 describe('getOrCreateBoard', () => {
   it('returns the existing board when one is found', async () => {
     const board = { id: 'b1', name: 'Home Board' };
-    mocks.supabase.from.mockReturnValue(chain({ data: board, error: null }));
+    const selectChain = chain({ data: board, error: null });
+    mocks.supabase.from.mockReturnValue(selectChain);
     const result = await getOrCreateBoard();
     expect(result).toEqual(board);
     expect(mocks.supabase.from).toHaveBeenCalledWith('boards');
+    expect(selectChain.order).toHaveBeenCalledWith('created_at', { ascending: true });
   });
 
   it('creates a board named "Home Board" when none exists', async () => {

@@ -62,6 +62,35 @@ describe('App (read paths)', () => {
     expect(await screen.findByText('Match on the sloper')).toBeInTheDocument();
   });
 
+  it('clears the stale hold overlay after navigating back from detail view', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1',
+        name: 'Gaston Traverse',
+        grade: 'V5',
+        setter: 'Rob',
+        notes: 'Match on the sloper',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+      },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    expect(await screen.findByText('Match on the sloper')).toBeInTheDocument();
+    expect(
+      screen.getByAltText('Climbing board').parentElement.querySelectorAll('svg circle')
+    ).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: /board/i }));
+
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+    expect(
+      screen.getByAltText('Climbing board').parentElement.querySelectorAll('svg circle')
+    ).toHaveLength(0);
+  });
+
   it('shows an error if the board fails to load', async () => {
     getOrCreateBoard.mockRejectedValue(new Error('network down'));
     render(<App />);
