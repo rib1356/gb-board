@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Undo2, Check, CircleDot, Loader2 } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem } from './lib/board';
+import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2 } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
 
@@ -136,6 +136,16 @@ export default function App() {
       setError('Could not save that problem — check your connection and try again.');
     }
     setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteProblem(id);
+      setProblems((prev) => prev.filter((p) => p.id !== id));
+      setView('list');
+    } catch (err) {
+      setError('Could not delete that problem — check your connection and try again.');
+    }
   };
 
   const selected = problems.find((p) => p.id === selectedId);
@@ -288,6 +298,10 @@ export default function App() {
               )}
             </div>
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
+            <button onClick={() => handleDelete(selected.id)} style={{
+              marginTop: 18, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+              color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+            }}><Trash2 size={14} /> Delete problem</button>
           </div>
         )}
       </div>

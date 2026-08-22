@@ -7,12 +7,13 @@ vi.mock('./lib/board', () => ({
   listProblems: vi.fn(),
   uploadBoardPhoto: vi.fn(),
   createProblem: vi.fn(),
+  deleteProblem: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import App from './App';
 
@@ -126,5 +127,24 @@ describe('App (create flow)', () => {
 
     expect(await screen.findByText('Tap the board to mark at least one hold.')).toBeInTheDocument();
     expect(createProblem).not.toHaveBeenCalled();
+  });
+});
+
+describe('App (delete flow)', () => {
+  it('deletes a problem from the detail view', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
+    ]);
+    deleteProblem.mockResolvedValue(undefined);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Delete problem'));
+
+    await waitFor(() => expect(deleteProblem).toHaveBeenCalledWith('p1'));
+    expect(
+      await screen.findByText('No problems set yet. Upload a photo and add your first one.')
+    ).toBeInTheDocument();
   });
 });
