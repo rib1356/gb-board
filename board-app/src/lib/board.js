@@ -83,6 +83,17 @@ export async function updateProblem(id, { name, grade, setter, notes }) {
   return data;
 }
 
+export async function tickProblem(id, ticked) {
+  const { data, error } = await supabase
+    .from('problems')
+    .update({ ticked_at: ticked ? new Date().toISOString() : null })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function rateProblem(id, rating) {
   const { data, error } = await supabase
     .from('problems')

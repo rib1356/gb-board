@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem } from './lib/board';
+import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Circle } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
 import { GRADES } from './lib/grades';
@@ -198,6 +198,16 @@ export default function App() {
     }
   };
 
+  const handleTick = async (id, ticked) => {
+    try {
+      const updated = await tickProblem(id, ticked);
+      setProblems((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    } catch (err) {
+      console.error(err);
+      setError('Could not update that — check your connection and try again.');
+    }
+  };
+
   const handleDelete = async (id) => {
     try {
       await deleteProblem(id);
@@ -347,7 +357,14 @@ export default function App() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: '#8b8d91', marginTop: 2 }}>{p.setter ? `Set by ${p.setter}` : 'Unknown setter'}</div>
-                  <div style={{ marginTop: 4 }}><StarRating rating={p.rating} readOnly /></div>
+                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <StarRating rating={p.rating} readOnly />
+                    {p.ticked_at && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#5C8A66', textTransform: 'uppercase' }}>
+                        <CheckCircle2 size={12} /> Sent
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {p.grade && (
                   <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#17181A', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 13, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>{p.grade}</span>
@@ -368,7 +385,15 @@ export default function App() {
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#232427', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 14, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{selected.grade}</span>
               )}
             </div>
-            <div style={{ marginTop: 12 }}><StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} /></div>
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} />
+              <button onClick={() => handleTick(selected.id, !selected.ticked_at)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0,
+                color: selected.ticked_at ? '#5C8A66' : '#8b8d91', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}>
+                {selected.ticked_at ? <CheckCircle2 size={16} /> : <Circle size={16} />} {selected.ticked_at ? 'Sent' : 'Mark as sent'}
+              </button>
+            </div>
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
             <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
               {confirmingDelete ? (

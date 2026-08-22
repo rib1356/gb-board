@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn(), storage: { from: vi.fn() } },
@@ -13,6 +13,7 @@ import {
   deleteProblem,
   rateProblem,
   updateProblem,
+  tickProblem,
 } from './board';
 
 function chain(result) {
@@ -119,6 +120,35 @@ describe('updateProblem', () => {
       name: 'Gaston Traverse', grade: 'V6', setter: 'Rob', notes: 'beta',
     });
     expect(c.eq).toHaveBeenCalledWith('id', 'p1');
+  });
+});
+
+describe('tickProblem', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-22T12:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sets ticked_at to now when marking a problem as sent', async () => {
+    const updated = { id: 'p1', ticked_at: '2026-08-22T12:00:00.000Z' };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await tickProblem('p1', true);
+    expect(result).toEqual(updated);
+    expect(c.update).toHaveBeenCalledWith({ ticked_at: '2026-08-22T12:00:00.000Z' });
+    expect(c.eq).toHaveBeenCalledWith('id', 'p1');
+  });
+
+  it('clears ticked_at when un-ticking a problem', async () => {
+    const updated = { id: 'p1', ticked_at: null };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await tickProblem('p1', false);
+    expect(result).toEqual(updated);
+    expect(c.update).toHaveBeenCalledWith({ ticked_at: null });
   });
 });
 

@@ -10,12 +10,13 @@ vi.mock('./lib/board', () => ({
   deleteProblem: vi.fn(),
   rateProblem: vi.fn(),
   updateProblem: vi.fn(),
+  tickProblem: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import App from './App';
 
@@ -347,6 +348,50 @@ describe('App (edit flow)', () => {
     fireEvent.click(photo.parentElement, { clientX: 150, clientY: 80 });
 
     expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+  });
+});
+
+describe('App (tick flow)', () => {
+  it('marks a problem as sent from the detail view', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: null },
+    ]);
+    tickProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: '2026-08-22T12:00:00.000Z',
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Mark as sent'));
+
+    await waitFor(() => expect(tickProblem).toHaveBeenCalledWith('p1', true));
+    expect(await screen.findByText('Sent')).toBeInTheDocument();
+  });
+
+  it('un-ticks a sent problem from the detail view', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: '2026-08-22T12:00:00.000Z' },
+    ]);
+    tickProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: null,
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Sent'));
+
+    await waitFor(() => expect(tickProblem).toHaveBeenCalledWith('p1', false));
+  });
+
+  it('shows a sent badge in the problem list', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: '2026-08-22T12:00:00.000Z' },
+    ]);
+    render(<App />);
+
+    expect(await screen.findByText('Sent')).toBeInTheDocument();
   });
 });
 
