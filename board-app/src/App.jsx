@@ -7,6 +7,7 @@ import { pointFromClientCoords, validateDraft } from './lib/holds';
 const HOLD_COLORS = {
   start: '#5C8A66',
   hold: '#EDEAE3',
+  foot: '#4A7A94',
   finish: '#D9552B',
 };
 
@@ -233,7 +234,7 @@ export default function App() {
         {view === 'new' && (
           <div style={{ marginTop: 16 }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              {['start', 'hold', 'finish'].map((t) => (
+              {['start', 'hold', 'foot', 'finish'].map((t) => (
                 <button key={t} onClick={() => setPlaceType(t)} style={{
                   flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
                   letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,

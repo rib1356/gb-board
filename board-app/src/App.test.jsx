@@ -145,6 +145,34 @@ describe('App (create flow)', () => {
     expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
   });
 
+  it('places a foothold on tap after selecting the foot type', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    createProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: '', setter: '', notes: '',
+      holds: [{ x: 0.5, y: 0.5, type: 'foot' }],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('New problem'));
+    await user.click(screen.getByText('foot'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
+    fireEvent.click(photo.parentElement, { clientX: 100, clientY: 50 });
+
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Gaston Traverse');
+    await user.click(screen.getByText('Save problem'));
+
+    await waitFor(() =>
+      expect(createProblem).toHaveBeenCalledWith('b1', {
+        name: 'Gaston Traverse', grade: '', setter: '', notes: '',
+        holds: [{ x: 0.5, y: 0.5, type: 'foot' }],
+      })
+    );
+  });
+
   it('shows a validation error and does not save when no holds were placed', async () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     render(<App />);
