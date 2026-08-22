@@ -191,7 +191,27 @@ and hand these off rather than run them:
    statements from the Data Model section above.
 3. **Storage bucket** — Storage → New bucket → name it `board-photos`
    → toggle **Public bucket** on (needed for `getPublicUrl` to work
-   without signed URLs).
+   without signed URLs). This only covers reads — it does **not** allow
+   uploads. Also run in the SQL Editor:
+   ```sql
+   create policy "Allow public read on board-photos"
+   on storage.objects for select
+   using (bucket_id = 'board-photos');
+
+   create policy "Allow public insert on board-photos"
+   on storage.objects for insert
+   with check (bucket_id = 'board-photos');
+
+   create policy "Allow public update on board-photos"
+   on storage.objects for update
+   using (bucket_id = 'board-photos')
+   with check (bucket_id = 'board-photos');
+   ```
+   Without these, `uploadBoardPhoto` fails with "new row violates row-level
+   security policy" — `storage.objects` has its own RLS independent of the
+   two app tables' RLS (which are correctly disabled per the no-auth
+   design above); the "Public bucket" toggle doesn't touch it. Insert +
+   update are both needed because photo replacement uses `upsert: true`.
 4. **Local env** — copy `.env.example` to `.env` and fill in the URL
    and anon key from step 1.
 5. **GitHub repo** — create a new empty repo for this project; Claude
