@@ -32,19 +32,30 @@ essentially unchanged.
 - Deployment to Vercel with environment-based Supabase config
 - Manual QA on desktop and phone, including cross-device persistence
 
-**Explicitly deferred (separate future specs):**
+**Explicitly deferred (separate future specs), in the order agreed to
+build them after Phase 1 ships:**
+- Multi-board creation UI — the `board_id` foreign key already makes
+  this a real relation, not a rewrite, but Phase 1's app code only
+  ever loads/creates a single implicit board. Next task after Phase 1
+  ships.
+- Soft-delete, rating control, and tick toggle wired into the UI —
+  schema is ready now (see Data Model), app code isn't yet.
 - `holds` / `problem_holds` normalized tables and hold-snapping
   (Phase 2, depends on Roboflow hold detection)
 - Roboflow hosted inference integration
 - Editing existing problems (create/delete only for now)
 - Sort/filter by grade
-- Ticked/ascent log
-- Any authentication — this app is intentionally link-shared with no
-  login, matching the existing prototype's model. This means the
-  Supabase anon key (shipped in the client bundle) has full read/write
-  access to both tables and the storage bucket. That's an accepted
-  tradeoff for a small app shared with friends, not an oversight —
-  revisit if abuse becomes a problem.
+- Real accounts/login (Supabase Auth) — floated as a "would be cool"
+  for giving friends their own logins and personal tick histories, but
+  explicitly not needed for `ticked_at` (Phase 1 has exactly one user).
+  Worth its own design pass if it's ever actually needed, rather than
+  retrofitting auth for a single-user feature that doesn't require it.
+- Any authentication in the meantime — this app is intentionally
+  link-shared with no login, matching the existing prototype's model.
+  This means the Supabase anon key (shipped in the client bundle) has
+  full read/write access to both tables and the storage bucket. That's
+  an accepted tradeoff for a small app shared with friends, not an
+  oversight — revisit if abuse becomes a problem.
 
 ## Architecture
 
@@ -61,7 +72,8 @@ create table boards (
   id uuid primary key default gen_random_uuid(),
   name text default 'Home Board',
   photo_url text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  deleted_at timestamptz
 );
 
 create table problems (
@@ -72,9 +84,23 @@ create table problems (
   setter text,
   notes text,
   holds jsonb not null, -- [{x: 0.42, y: 0.61, type: "start"|"hold"|"finish"}, ...]
-  created_at timestamptz default now()
+  rating smallint check (rating between 1 and 5),
+  ticked_at timestamptz,
+  created_at timestamptz default now(),
+  deleted_at timestamptz
 );
 ```
+
+`deleted_at`, `rating`, and `ticked_at` are created now (schema changes
+are free before first use) but are **not wired into any Phase 1 app
+code** — `deleteProblem` stays a real hard-delete, and there's no UI
+for rating or ticking a problem. Soft-delete, a rating control, and a
+tick toggle are follow-on tasks after Phase 1 ships, alongside
+multi-board creation (see below). `ticked_at` is a single timestamp
+because Phase 1 has exactly one user (no accounts) — it means "have I
+done this," not a per-person log; a per-person tick log with real
+accounts is a bigger, separate feature to design later if/when other
+people need their own logins.
 
 Row Level Security stays **disabled** on both tables (Supabase's
 default for SQL-editor-created tables) so the anon key can read/write
