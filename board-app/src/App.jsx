@@ -108,6 +108,7 @@ export default function App() {
   const [setter, setSetter] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const imgWrapRef = useRef(null);
 
@@ -185,6 +186,7 @@ export default function App() {
     try {
       await deleteProblem(id);
       setProblems((prev) => prev.filter((p) => p.id !== id));
+      setConfirmingDelete(false);
       setView('list');
     } catch (err) {
       console.error(err);
@@ -315,7 +317,7 @@ export default function App() {
                 <p style={{ fontSize: 14, margin: 0 }}>No problems set yet. Upload a photo and add your first one.</p>
               </div>
             ) : problems.map((p) => (
-              <button key={p.id} onClick={() => { setSelectedId(p.id); setView('detail'); }} style={{
+              <button key={p.id} onClick={() => { setSelectedId(p.id); setConfirmingDelete(false); setView('detail'); }} style={{
                 width: '100%', textAlign: 'left', background: '#232427', border: '1px solid #2A2B2E',
                 borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', color: '#EDEAE3',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -346,10 +348,23 @@ export default function App() {
             </div>
             <div style={{ marginTop: 12 }}><StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} /></div>
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
-            <button onClick={() => handleDelete(selected.id)} style={{
-              marginTop: 18, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
-              color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-            }}><Trash2 size={14} /> Delete problem</button>
+            {confirmingDelete ? (
+              <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
+                <button onClick={() => handleDelete(selected.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 6, background: '#D9552B', border: 'none',
+                  color: '#17181A', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}><Trash2 size={14} /> Yes, delete</button>
+                <button onClick={() => setConfirmingDelete(false)} style={{
+                  background: 'none', border: '1px solid #3a3b3e', color: '#8b8d91',
+                  borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmingDelete(true)} style={{
+                marginTop: 18, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+              }}><Trash2 size={14} /> Delete problem</button>
+            )}
           </div>
         )}
       </div>

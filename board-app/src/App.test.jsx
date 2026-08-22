@@ -217,7 +217,7 @@ describe('App (create flow)', () => {
 });
 
 describe('App (delete flow)', () => {
-  it('deletes a problem from the detail view', async () => {
+  it('asks for confirmation before deleting, then deletes on confirm', async () => {
     listProblems.mockResolvedValue([
       { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
     ]);
@@ -227,11 +227,29 @@ describe('App (delete flow)', () => {
 
     await user.click(await screen.findByText('Gaston Traverse'));
     await user.click(await screen.findByText('Delete problem'));
+    expect(deleteProblem).not.toHaveBeenCalled();
+
+    await user.click(await screen.findByText('Yes, delete'));
 
     await waitFor(() => expect(deleteProblem).toHaveBeenCalledWith('p1'));
     expect(
       await screen.findByText('No problems set yet. Upload a photo and add your first one.')
     ).toBeInTheDocument();
+  });
+
+  it('cancels the delete confirmation without deleting', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Delete problem'));
+    await user.click(await screen.findByText('Cancel'));
+
+    expect(deleteProblem).not.toHaveBeenCalled();
+    expect(await screen.findByText('Delete problem')).toBeInTheDocument();
   });
 });
 
