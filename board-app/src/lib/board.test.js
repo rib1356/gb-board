@@ -121,7 +121,7 @@ describe('uploadBoardPhoto', () => {
     });
     expect(updateChain.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        photo_url: expect.stringContaining('https://cdn.example/board-photos/b1.jpg'),
+        photo_url: expect.stringMatching(/^https:\/\/cdn\.example\/board-photos\/b1\.jpg\?t=\d+$/),
       })
     );
     expect(result).toEqual({ id: 'b1', photo_url: 'stored-url' });
