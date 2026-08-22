@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Camera, ChevronLeft, CircleDot, Loader2 } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto } from './lib/board';
+import { useState, useEffect, useRef } from 'react';
+import { Camera, Plus, ChevronLeft, Undo2, Check, CircleDot, Loader2 } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
+import { pointFromClientCoords, validateDraft } from './lib/holds';
 
 const HOLD_COLORS = {
   start: '#5C8A66',
@@ -47,14 +48,38 @@ const fontImport = `
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 `;
 
+const inputStyle = {
+  width: '100%', boxSizing: 'border-box', background: '#232427', border: '1px solid #3a3b3e',
+  borderRadius: 8, padding: '10px 12px', color: '#EDEAE3', fontSize: 14.5, fontFamily: "'Inter'", marginTop: 4,
+};
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ fontSize: 12, color: '#8b8d91', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
 export default function App() {
   const [board, setBoard] = useState(null);
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('list'); // list | detail
+  const [view, setView] = useState('list'); // list | new | detail
   const [selectedId, setSelectedId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+
+  const [draftHolds, setDraftHolds] = useState([]);
+  const [placeType, setPlaceType] = useState('hold');
+  const [name, setName] = useState('');
+  const [grade, setGrade] = useState('');
+  const [setter, setSetter] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const imgWrapRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -85,8 +110,36 @@ export default function App() {
     setUploading(false);
   };
 
+  const handleImageClick = (e) => {
+    if (view !== 'new') return;
+    const rect = imgWrapRef.current.getBoundingClientRect();
+    const point = pointFromClientCoords(rect, e.clientX, e.clientY);
+    setDraftHolds((prev) => [...prev, { ...point, type: placeType }]);
+  };
+
+  const startNewProblem = () => {
+    setDraftHolds([]); setName(''); setGrade(''); setSetter(''); setNotes(''); setPlaceType('hold');
+    setError('');
+    setView('new');
+  };
+
+  const saveProblem = async () => {
+    const validationError = validateDraft({ name, holds: draftHolds });
+    if (validationError) { setError(validationError); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const problem = await createProblem(board.id, { name, grade, setter, notes, holds: draftHolds });
+      setProblems((prev) => [problem, ...prev]);
+      setView('list');
+    } catch (err) {
+      setError('Could not save that problem — check your connection and try again.');
+    }
+    setSaving(false);
+  };
+
   const selected = problems.find((p) => p.id === selectedId);
-  const displayHolds = selected ? selected.holds : [];
+  const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
 
   if (loading) {
     return (
@@ -110,6 +163,14 @@ export default function App() {
               <ChevronLeft size={18} /> Board
             </button>
           )}
+          {view === 'list' && (
+            <button onClick={startNewProblem} disabled={!board?.photo_url} style={{
+              display: 'flex', alignItems: 'center', gap: 6, background: board?.photo_url ? '#D9552B' : '#3a3b3e', color: '#17181A',
+              border: 'none', borderRadius: 8, padding: '9px 14px', fontWeight: 700, fontSize: 14, cursor: board?.photo_url ? 'pointer' : 'not-allowed',
+            }}>
+              <Plus size={16} /> New problem
+            </button>
+          )}
         </div>
         {view === 'list' && (
           <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#8b8d91' }}>Shared with anyone who has this link.</p>
@@ -117,10 +178,15 @@ export default function App() {
       </div>
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
-        <div style={{
-          position: 'relative', width: '100%', borderRadius: 14, overflow: 'hidden',
-          background: '#232427', border: '1px solid #2A2B2E', minHeight: board?.photo_url ? undefined : 220,
-        }}>
+        <div
+          ref={imgWrapRef}
+          onClick={handleImageClick}
+          style={{
+            position: 'relative', width: '100%', borderRadius: 14, overflow: 'hidden',
+            background: '#232427', border: '1px solid #2A2B2E',
+            cursor: view === 'new' ? 'crosshair' : 'default', minHeight: board?.photo_url ? undefined : 220,
+          }}
+        >
           {board?.photo_url ? (
             <img src={board.photo_url} alt="Climbing board" style={{ width: '100%', display: 'block' }} draggable={false} />
           ) : (
@@ -149,6 +215,41 @@ export default function App() {
         )}
 
         {error && <p style={{ color: '#D9552B', fontSize: 13, marginTop: 10 }}>{error}</p>}
+
+        {view === 'new' && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              {['start', 'hold', 'finish'].map((t) => (
+                <button key={t} onClick={() => setPlaceType(t)} style={{
+                  flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,
+                  background: placeType === t ? HOLD_COLORS[t] : 'transparent',
+                  color: placeType === t ? '#17181A' : HOLD_COLORS[t], cursor: 'pointer',
+                }}>{t}</button>
+              ))}
+              <button onClick={() => setDraftHolds((d) => d.slice(0, -1))} disabled={!draftHolds.length} style={{
+                width: 42, borderRadius: 8, border: '1.5px solid #3a3b3e', background: 'transparent',
+                color: draftHolds.length ? '#EDEAE3' : '#4a4b4e', cursor: draftHolds.length ? 'pointer' : 'default',
+              }}><Undo2 size={16} style={{ margin: '0 auto' }} /></button>
+            </div>
+            <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>Pick a hold type, then tap the board photo above to place it.</p>
+
+            <Field label="Problem name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gaston Traverse" style={inputStyle} /></Field>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}><Field label="Grade"><input value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="V5 / 6a+" style={inputStyle} /></Field></div>
+              <div style={{ flex: 1 }}><Field label="Set by"><input value={setter} onChange={(e) => setSetter(e.target.value)} placeholder="Your name" style={inputStyle} /></Field></div>
+            </div>
+            <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Beta, sequence, anything worth knowing" rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></Field>
+
+            <button onClick={saveProblem} disabled={saving} style={{
+              width: '100%', marginTop: 14, background: '#5C8A66', color: '#17181A', border: 'none',
+              borderRadius: 10, padding: '13px 0', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save problem
+            </button>
+          </div>
+        )}
 
         {view === 'list' && (
           <div style={{ marginTop: 22 }}>

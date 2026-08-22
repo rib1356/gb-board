@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('./lib/board', () => ({
   getOrCreateBoard: vi.fn(),
   listProblems: vi.fn(),
   uploadBoardPhoto: vi.fn(),
+  createProblem: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import App from './App';
 
@@ -82,5 +83,48 @@ describe('App (read paths)', () => {
       'https://cdn.example/b1.jpg'
     );
     expect(uploadBoardPhoto).toHaveBeenCalledWith('b1', blob);
+  });
+});
+
+describe('App (create flow)', () => {
+  it('places a hold on tap and saves a new problem', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    createProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: '', setter: '', notes: '',
+      holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
+    fireEvent.click(photo.parentElement, { clientX: 100, clientY: 50 });
+
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Gaston Traverse');
+    await user.click(screen.getByText('Save problem'));
+
+    await waitFor(() =>
+      expect(createProblem).toHaveBeenCalledWith('b1', {
+        name: 'Gaston Traverse', grade: '', setter: '', notes: '',
+        holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+      })
+    );
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+  });
+
+  it('shows a validation error and does not save when no holds were placed', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('New problem'));
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Gaston Traverse');
+    await user.click(screen.getByText('Save problem'));
+
+    expect(await screen.findByText('Tap the board to mark at least one hold.')).toBeInTheDocument();
+    expect(createProblem).not.toHaveBeenCalled();
   });
 });
