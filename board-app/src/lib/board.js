@@ -66,6 +66,22 @@ export async function createProblem(boardId, { name, grade, setter, notes, holds
   return data;
 }
 
+export async function updateProblem(id, { name, grade, setter, notes }) {
+  const { data, error } = await supabase
+    .from('problems')
+    .update({
+      name: name.trim(),
+      grade: grade.trim(),
+      setter: setter.trim(),
+      notes: notes.trim(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function rateProblem(id, rating) {
   const { data, error } = await supabase
     .from('problems')

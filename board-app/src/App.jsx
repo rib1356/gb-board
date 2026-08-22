@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem } from './lib/board';
+import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
 import { GRADES } from './lib/grades';
@@ -15,6 +15,7 @@ const HOLD_COLORS = {
 function ChalkRing({ x, y, color, label, size = 34 }) {
   return (
     <div
+      data-testid="hold-marker"
       style={{
         position: 'absolute',
         left: `${x * 100}%`,
@@ -109,6 +110,7 @@ export default function App() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   const imgWrapRef = useRef(null);
 
@@ -144,7 +146,7 @@ export default function App() {
   };
 
   const handleImageClick = (e) => {
-    if (view !== 'new') return;
+    if (view !== 'new' || editingId) return;
     const rect = imgWrapRef.current.getBoundingClientRect();
     const point = pointFromClientCoords(rect, e.clientX, e.clientY);
     setDraftHolds((prev) => [...prev, { ...point, type: placeType }]);
@@ -152,6 +154,15 @@ export default function App() {
 
   const startNewProblem = () => {
     setDraftHolds([]); setName(''); setGrade(''); setSetter(''); setNotes(''); setPlaceType('hold');
+    setEditingId(null);
+    setError('');
+    setView('new');
+  };
+
+  const startEditProblem = (problem) => {
+    setEditingId(problem.id);
+    setDraftHolds(problem.holds);
+    setName(problem.name); setGrade(problem.grade || ''); setSetter(problem.setter || ''); setNotes(problem.notes || '');
     setError('');
     setView('new');
   };
@@ -162,12 +173,17 @@ export default function App() {
     setSaving(true);
     setError('');
     try {
-      const problem = await createProblem(board.id, { name, grade, setter, notes, holds: draftHolds });
-      setProblems((prev) => [problem, ...prev]);
+      if (editingId) {
+        const updated = await updateProblem(editingId, { name, grade, setter, notes });
+        setProblems((prev) => prev.map((p) => (p.id === editingId ? updated : p)));
+      } else {
+        const problem = await createProblem(board.id, { name, grade, setter, notes, holds: draftHolds });
+        setProblems((prev) => [problem, ...prev]);
+      }
       setView('list');
     } catch (err) {
       console.error(err);
-      setError('Could not save that problem — check your connection and try again.');
+      setError(`Could not ${editingId ? 'update' : 'save'} that problem — check your connection and try again.`);
     }
     setSaving(false);
   };
@@ -271,21 +287,25 @@ export default function App() {
 
         {view === 'new' && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              {['start', 'hold', 'foot', 'finish'].map((t) => (
-                <button key={t} onClick={() => setPlaceType(t)} style={{
-                  flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
-                  letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,
-                  background: placeType === t ? HOLD_COLORS[t] : 'transparent',
-                  color: placeType === t ? '#17181A' : HOLD_COLORS[t], cursor: 'pointer',
-                }}>{t}</button>
-              ))}
-              <button onClick={() => setDraftHolds((d) => d.slice(0, -1))} disabled={!draftHolds.length} style={{
-                width: 42, borderRadius: 8, border: '1.5px solid #3a3b3e', background: 'transparent',
-                color: draftHolds.length ? '#EDEAE3' : '#4a4b4e', cursor: draftHolds.length ? 'pointer' : 'default',
-              }}><Undo2 size={16} style={{ margin: '0 auto' }} /></button>
-            </div>
-            <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>Pick a hold type, then tap the board photo above to place it.</p>
+            {!editingId && (
+              <>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                  {['start', 'hold', 'foot', 'finish'].map((t) => (
+                    <button key={t} onClick={() => setPlaceType(t)} style={{
+                      flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,
+                      background: placeType === t ? HOLD_COLORS[t] : 'transparent',
+                      color: placeType === t ? '#17181A' : HOLD_COLORS[t], cursor: 'pointer',
+                    }}>{t}</button>
+                  ))}
+                  <button onClick={() => setDraftHolds((d) => d.slice(0, -1))} disabled={!draftHolds.length} style={{
+                    width: 42, borderRadius: 8, border: '1.5px solid #3a3b3e', background: 'transparent',
+                    color: draftHolds.length ? '#EDEAE3' : '#4a4b4e', cursor: draftHolds.length ? 'pointer' : 'default',
+                  }}><Undo2 size={16} style={{ margin: '0 auto' }} /></button>
+                </div>
+                <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>Pick a hold type, then tap the board photo above to place it.</p>
+              </>
+            )}
 
             <Field label="Problem name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gaston Traverse" style={inputStyle} /></Field>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -304,7 +324,7 @@ export default function App() {
               borderRadius: 10, padding: '13px 0', fontWeight: 700, fontSize: 15, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save problem
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {editingId ? 'Save changes' : 'Save problem'}
             </button>
           </div>
         )}
@@ -348,23 +368,31 @@ export default function App() {
             </div>
             <div style={{ marginTop: 12 }}><StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} /></div>
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
-            {confirmingDelete ? (
-              <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
-                <button onClick={() => handleDelete(selected.id)} style={{
-                  display: 'flex', alignItems: 'center', gap: 6, background: '#D9552B', border: 'none',
-                  color: '#17181A', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                }}><Trash2 size={14} /> Yes, delete</button>
-                <button onClick={() => setConfirmingDelete(false)} style={{
-                  background: 'none', border: '1px solid #3a3b3e', color: '#8b8d91',
-                  borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                }}>Cancel</button>
-              </div>
-            ) : (
-              <button onClick={() => setConfirmingDelete(true)} style={{
-                marginTop: 18, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
-                color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-              }}><Trash2 size={14} /> Delete problem</button>
-            )}
+            <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
+              {confirmingDelete ? (
+                <>
+                  <button onClick={() => handleDelete(selected.id)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, background: '#D9552B', border: 'none',
+                    color: '#17181A', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  }}><Trash2 size={14} /> Yes, delete</button>
+                  <button onClick={() => setConfirmingDelete(false)} style={{
+                    background: 'none', border: '1px solid #3a3b3e', color: '#8b8d91',
+                    borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                  }}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => startEditProblem(selected)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                    color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                  }}><Pencil size={14} /> Edit problem</button>
+                  <button onClick={() => setConfirmingDelete(true)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                    color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                  }}><Trash2 size={14} /> Delete problem</button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

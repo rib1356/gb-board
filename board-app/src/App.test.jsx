@@ -9,12 +9,13 @@ vi.mock('./lib/board', () => ({
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
   rateProblem: vi.fn(),
+  updateProblem: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import App from './App';
 
@@ -250,6 +251,64 @@ describe('App (delete flow)', () => {
 
     expect(deleteProblem).not.toHaveBeenCalled();
     expect(await screen.findByText('Delete problem')).toBeInTheDocument();
+  });
+});
+
+describe('App (edit flow)', () => {
+  it("edits a problem's fields and saves them, leaving holds untouched", async () => {
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'crimpy',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+      },
+    ]);
+    updateProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse v2', grade: 'V6', setter: 'Rob', notes: 'crimpy',
+      holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+
+    const nameInput = await screen.findByDisplayValue('Gaston Traverse');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Gaston Traverse v2');
+    await user.selectOptions(screen.getByRole('combobox', { name: /grade/i }), 'V6');
+    await user.click(screen.getByText('Save changes'));
+
+    await waitFor(() =>
+      expect(updateProblem).toHaveBeenCalledWith('p1', {
+        name: 'Gaston Traverse v2', grade: 'V6', setter: 'Rob', notes: 'crimpy',
+      })
+    );
+    expect(await screen.findByText('Gaston Traverse v2')).toBeInTheDocument();
+  });
+
+  it('does not add a hold when tapping the photo while editing', async () => {
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+      },
+    ]);
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+
+    fireEvent.click(photo.parentElement, { clientX: 150, clientY: 80 });
+
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
   });
 });
 

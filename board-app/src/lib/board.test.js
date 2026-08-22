@@ -12,6 +12,7 @@ import {
   createProblem,
   deleteProblem,
   rateProblem,
+  updateProblem,
 } from './board';
 
 function chain(result) {
@@ -99,6 +100,22 @@ describe('deleteProblem', () => {
     mocks.supabase.from.mockReturnValue(c);
     await deleteProblem('p1');
     expect(c.delete).toHaveBeenCalled();
+    expect(c.eq).toHaveBeenCalledWith('id', 'p1');
+  });
+});
+
+describe('updateProblem', () => {
+  it('updates the trimmed fields of a problem, leaving holds untouched', async () => {
+    const updated = { id: 'p1', name: 'Gaston Traverse', grade: 'V6', setter: 'Rob', notes: 'beta' };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await updateProblem('p1', {
+      name: '  Gaston Traverse  ', grade: ' V6 ', setter: ' Rob ', notes: ' beta ',
+    });
+    expect(result).toEqual(updated);
+    expect(c.update).toHaveBeenCalledWith({
+      name: 'Gaston Traverse', grade: 'V6', setter: 'Rob', notes: 'beta',
+    });
     expect(c.eq).toHaveBeenCalledWith('id', 'p1');
   });
 });
