@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2 } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem } from './lib/board';
+import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
 import { GRADES } from './lib/grades';
@@ -54,6 +54,34 @@ const inputStyle = {
   width: '100%', boxSizing: 'border-box', background: '#232427', border: '1px solid #3a3b3e',
   borderRadius: 8, padding: '10px 12px', color: '#EDEAE3', fontSize: 14.5, fontFamily: "'Inter'", marginTop: 4,
 };
+
+function StarRating({ rating, onRate, readOnly = false }) {
+  if (readOnly) {
+    if (rating == null) return null;
+    return (
+      <div aria-label={`Rating: ${rating} out of 5`} style={{ display: 'flex', gap: 2 }}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <Star key={n} size={14} fill={n <= rating ? '#D9552B' : 'none'} color={n <= rating ? '#D9552B' : '#3a3b3e'} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          aria-label={`Rate ${n} star${n > 1 ? 's' : ''}`}
+          onClick={() => onRate(n === rating ? null : n)}
+          style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer' }}
+        >
+          <Star size={22} fill={rating != null && n <= rating ? '#D9552B' : 'none'} color={rating != null && n <= rating ? '#D9552B' : '#8b8d91'} />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Field({ label, children }) {
   return (
@@ -141,6 +169,16 @@ export default function App() {
       setError('Could not save that problem — check your connection and try again.');
     }
     setSaving(false);
+  };
+
+  const handleRate = async (id, rating) => {
+    try {
+      const updated = await rateProblem(id, rating);
+      setProblems((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    } catch (err) {
+      console.error(err);
+      setError('Could not save that rating — check your connection and try again.');
+    }
   };
 
   const handleDelete = async (id) => {
@@ -285,6 +323,7 @@ export default function App() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: '#8b8d91', marginTop: 2 }}>{p.setter ? `Set by ${p.setter}` : 'Unknown setter'}</div>
+                  <div style={{ marginTop: 4 }}><StarRating rating={p.rating} readOnly /></div>
                 </div>
                 {p.grade && (
                   <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#17181A', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 13, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>{p.grade}</span>
@@ -305,6 +344,7 @@ export default function App() {
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#232427', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 14, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{selected.grade}</span>
               )}
             </div>
+            <div style={{ marginTop: 12 }}><StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} /></div>
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
             <button onClick={() => handleDelete(selected.id)} style={{
               marginTop: 18, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',

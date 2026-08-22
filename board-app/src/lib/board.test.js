@@ -11,6 +11,7 @@ import {
   uploadBoardPhoto,
   createProblem,
   deleteProblem,
+  rateProblem,
 } from './board';
 
 function chain(result) {
@@ -99,6 +100,27 @@ describe('deleteProblem', () => {
     await deleteProblem('p1');
     expect(c.delete).toHaveBeenCalled();
     expect(c.eq).toHaveBeenCalledWith('id', 'p1');
+  });
+});
+
+describe('rateProblem', () => {
+  it('updates the rating for a problem', async () => {
+    const updated = { id: 'p1', rating: 3 };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await rateProblem('p1', 3);
+    expect(result).toEqual(updated);
+    expect(c.update).toHaveBeenCalledWith({ rating: 3 });
+    expect(c.eq).toHaveBeenCalledWith('id', 'p1');
+  });
+
+  it('clears the rating when passed null', async () => {
+    const updated = { id: 'p1', rating: null };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await rateProblem('p1', null);
+    expect(result).toEqual(updated);
+    expect(c.update).toHaveBeenCalledWith({ rating: null });
   });
 });
 

@@ -8,12 +8,13 @@ vi.mock('./lib/board', () => ({
   uploadBoardPhoto: vi.fn(),
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
+  rateProblem: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import App from './App';
 
@@ -231,5 +232,48 @@ describe('App (delete flow)', () => {
     expect(
       await screen.findByText('No problems set yet. Upload a photo and add your first one.')
     ).toBeInTheDocument();
+  });
+});
+
+describe('App (rating flow)', () => {
+  it('sets a rating from the detail view', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: null },
+    ]);
+    rateProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: 3,
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Rate 3 stars' }));
+
+    await waitFor(() => expect(rateProblem).toHaveBeenCalledWith('p1', 3));
+  });
+
+  it('clears a rating when tapping the already-selected star', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: 3 },
+    ]);
+    rateProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: null,
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Rate 3 stars' }));
+
+    await waitFor(() => expect(rateProblem).toHaveBeenCalledWith('p1', null));
+  });
+
+  it('shows a saved rating in the problem list', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: 4 },
+    ]);
+    render(<App />);
+
+    expect(await screen.findByLabelText('Rating: 4 out of 5')).toBeInTheDocument();
   });
 });

@@ -66,6 +66,17 @@ export async function createProblem(boardId, { name, grade, setter, notes, holds
   return data;
 }
 
+export async function rateProblem(id, rating) {
+  const { data, error } = await supabase
+    .from('problems')
+    .update({ rating })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteProblem(id) {
   const { error } = await supabase.from('problems').delete().eq('id', id);
   if (error) throw error;
