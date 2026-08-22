@@ -3,6 +3,7 @@ import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2 } f
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
+import { GRADES } from './lib/grades';
 
 const HOLD_COLORS = {
   start: '#5C8A66',
@@ -248,7 +249,12 @@ export default function App() {
 
             <Field label="Problem name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gaston Traverse" style={inputStyle} /></Field>
             <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ flex: 1 }}><Field label="Grade"><input value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="V5 / 6a+" style={inputStyle} /></Field></div>
+              <div style={{ flex: 1 }}><Field label="Grade">
+                <select aria-label="Grade" value={grade} onChange={(e) => setGrade(e.target.value)} style={inputStyle}>
+                  <option value="">No grade</option>
+                  {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </Field></div>
               <div style={{ flex: 1 }}><Field label="Set by"><input value={setter} onChange={(e) => setSetter(e.target.value)} placeholder="Your name" style={inputStyle} /></Field></div>
             </div>
             <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Beta, sequence, anything worth knowing" rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></Field>
