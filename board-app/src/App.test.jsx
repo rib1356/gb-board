@@ -10,14 +10,16 @@ vi.mock('./lib/board', () => ({
   deleteProblem: vi.fn(),
   rateProblem: vi.fn(),
   updateProblem: vi.fn(),
-  tickProblem: vi.fn(),
   restoreProblem: vi.fn(),
+  listTicks: vi.fn(),
+  createTick: vi.fn(),
+  deleteTick: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem, restoreProblem } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import App from './App';
 
@@ -27,6 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getOrCreateBoard.mockResolvedValue(BOARD);
   listProblems.mockResolvedValue([]);
+  listTicks.mockResolvedValue([]);
 });
 
 describe('App (read paths)', () => {
@@ -407,47 +410,81 @@ describe('App (edit flow)', () => {
   });
 });
 
-describe('App (tick flow)', () => {
-  it('marks a problem as sent from the detail view', async () => {
+describe('App (tick log flow)', () => {
+  it('shows "Not sent yet" for a problem with no log entries', async () => {
     listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: null },
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null },
     ]);
-    tickProblem.mockResolvedValue({
-      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: '2026-08-22T12:00:00.000Z',
-    });
-    render(<App />);
     const user = userEvent.setup();
+    render(<App />);
 
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByText('Mark as sent'));
 
-    await waitFor(() => expect(tickProblem).toHaveBeenCalledWith('p1', true));
-    expect(await screen.findByText('Sent')).toBeInTheDocument();
+    expect(await screen.findByText('Not sent yet')).toBeInTheDocument();
   });
 
-  it('un-ticks a sent problem from the detail view', async () => {
+  it('logs a send from the detail view', async () => {
     listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: '2026-08-22T12:00:00.000Z' },
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null },
     ]);
-    tickProblem.mockResolvedValue({
-      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: null,
-    });
-    render(<App />);
+    createTick.mockResolvedValue({ id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy' });
     const user = userEvent.setup();
+    render(<App />);
 
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByText('Sent'));
+    await user.click(await screen.findByText('Log a send'));
+    fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-22' } });
+    await user.type(screen.getByLabelText('Send notes'), 'felt easy');
+    await user.click(screen.getByText('Save entry'));
 
-    await waitFor(() => expect(tickProblem).toHaveBeenCalledWith('p1', false));
+    await waitFor(() =>
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: 'felt easy' })
+    );
+    expect(await screen.findByText('Sent ×1')).toBeInTheDocument();
   });
 
-  it('shows a sent badge in the problem list', async () => {
+  it('marks the earliest logged entry as the first send and later ones as repeats', async () => {
     listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], ticked_at: '2026-08-22T12:00:00.000Z' },
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 2, last_sent_on: '2026-08-20' },
+    ]);
+    listTicks.mockResolvedValue([
+      { id: 't2', problem_id: 'p1', sent_on: '2026-08-20', notes: '' },
+      { id: 't1', problem_id: 'p1', sent_on: '2026-08-01', notes: '' },
+    ]);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    const firstEntry = (await screen.findByText('1 Aug 2026')).closest('div');
+    const repeatEntry = screen.getByText('20 Aug 2026').closest('div');
+    expect(firstEntry).toHaveTextContent('First send');
+    expect(repeatEntry).toHaveTextContent('Repeat');
+  });
+
+  it('deletes a log entry from the detail view', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
+    ]);
+    listTicks.mockResolvedValue([{ id: 't1', problem_id: 'p1', sent_on: '2026-08-01', notes: 'beta' }]);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    expect(await screen.findByText('1 Aug 2026')).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Delete entry'));
+
+    await waitFor(() => expect(deleteTick).toHaveBeenCalledWith('t1'));
+    expect(screen.queryByText('1 Aug 2026')).not.toBeInTheDocument();
+  });
+
+  it('shows a sent count badge in the problem list', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 3, last_sent_on: '2026-08-20' },
     ]);
     render(<App />);
 
-    expect(await screen.findByText('Sent')).toBeInTheDocument();
+    expect(await screen.findByText('Sent ×3')).toBeInTheDocument();
   });
 });
 

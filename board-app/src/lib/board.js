@@ -84,15 +84,29 @@ export async function updateProblem(id, { name, grade, setter, notes }) {
   return data;
 }
 
-export async function tickProblem(id, ticked) {
+export async function listTicks(problemId) {
   const { data, error } = await supabase
-    .from('problems')
-    .update({ ticked_at: ticked ? new Date().toISOString() : null })
-    .eq('id', id)
+    .from('ticks')
+    .select('*')
+    .eq('problem_id', problemId)
+    .order('sent_on', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function createTick(problemId, { sentOn, notes }) {
+  const { data, error } = await supabase
+    .from('ticks')
+    .insert({ problem_id: problemId, sent_on: sentOn, notes: notes.trim() })
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function deleteTick(id) {
+  const { error } = await supabase.from('ticks').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export async function rateProblem(id, rating) {

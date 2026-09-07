@@ -13,8 +13,10 @@ import {
   deleteProblem,
   rateProblem,
   updateProblem,
-  tickProblem,
   restoreProblem,
+  listTicks,
+  createTick,
+  deleteTick,
 } from './board';
 
 function chain(result) {
@@ -147,32 +149,38 @@ describe('updateProblem', () => {
   });
 });
 
-describe('tickProblem', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-22T12:00:00.000Z'));
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('sets ticked_at to now when marking a problem as sent', async () => {
-    const updated = { id: 'p1', ticked_at: '2026-08-22T12:00:00.000Z' };
-    const c = chain({ data: updated, error: null });
+describe('listTicks', () => {
+  it('lists ticks for a problem, most recent send first', async () => {
+    const rows = [{ id: 't2', sent_on: '2026-08-20' }, { id: 't1', sent_on: '2026-08-01' }];
+    const c = chain({ data: rows, error: null });
     mocks.supabase.from.mockReturnValue(c);
-    const result = await tickProblem('p1', true);
-    expect(result).toEqual(updated);
-    expect(c.update).toHaveBeenCalledWith({ ticked_at: '2026-08-22T12:00:00.000Z' });
-    expect(c.eq).toHaveBeenCalledWith('id', 'p1');
+    const result = await listTicks('p1');
+    expect(result).toEqual(rows);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
+    expect(c.eq).toHaveBeenCalledWith('problem_id', 'p1');
+    expect(c.order).toHaveBeenCalledWith('sent_on', { ascending: false });
   });
+});
 
-  it('clears ticked_at when un-ticking a problem', async () => {
-    const updated = { id: 'p1', ticked_at: null };
-    const c = chain({ data: updated, error: null });
+describe('createTick', () => {
+  it('inserts a tick with the given date and trimmed notes', async () => {
+    const created = { id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy' };
+    const c = chain({ data: created, error: null });
     mocks.supabase.from.mockReturnValue(c);
-    const result = await tickProblem('p1', false);
-    expect(result).toEqual(updated);
-    expect(c.update).toHaveBeenCalledWith({ ticked_at: null });
+    const result = await createTick('p1', { sentOn: '2026-08-22', notes: ' felt easy ' });
+    expect(result).toEqual(created);
+    expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy' });
+  });
+});
+
+describe('deleteTick', () => {
+  it('deletes a tick by id', async () => {
+    const c = chain({ data: null, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    await deleteTick('t1');
+    expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
+    expect(c.delete).toHaveBeenCalled();
+    expect(c.eq).toHaveBeenCalledWith('id', 't1');
   });
 });
 

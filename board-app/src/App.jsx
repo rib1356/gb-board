@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Circle } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, tickProblem, restoreProblem } from './lib/board';
+import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2 } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
 import { GRADES } from './lib/grades';
@@ -84,6 +84,12 @@ function StarRating({ rating, onRate, readOnly = false }) {
   );
 }
 
+function formatSendDate(dateStr) {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
+
 function Field({ label, children }) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -114,6 +120,12 @@ export default function App() {
   const [deletedProblem, setDeletedProblem] = useState(null);
   const [gradeFilter, setGradeFilter] = useState('');
 
+  const [ticks, setTicks] = useState([]);
+  const [showLogForm, setShowLogForm] = useState(false);
+  const [tickDate, setTickDate] = useState('');
+  const [tickNotes, setTickNotes] = useState('');
+  const [loggingTick, setLoggingTick] = useState(false);
+
   const imgWrapRef = useRef(null);
 
   useEffect(() => {
@@ -136,6 +148,19 @@ export default function App() {
     const timer = setTimeout(() => setDeletedProblem(null), 6000);
     return () => clearTimeout(timer);
   }, [deletedProblem]);
+
+  useEffect(() => {
+    if (view !== 'detail' || !selectedId) return;
+    (async () => {
+      try {
+        const t = await listTicks(selectedId);
+        setTicks(t);
+      } catch (err) {
+        console.error(err);
+        setError('Could not load the send log — check your connection and try again.');
+      }
+    })();
+  }, [view, selectedId]);
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -206,13 +231,45 @@ export default function App() {
     }
   };
 
-  const handleTick = async (id, ticked) => {
+  const startLogTick = () => {
+    setTickDate(new Date().toISOString().slice(0, 10));
+    setTickNotes('');
+    setShowLogForm(true);
+  };
+
+  const handleAddTick = async (problemId) => {
+    if (!tickDate) return;
+    setLoggingTick(true);
+    setError('');
     try {
-      const updated = await tickProblem(id, ticked);
-      setProblems((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes });
+      setTicks((prev) => [created, ...prev]);
+      setProblems((prev) => prev.map((p) => (p.id === problemId ? {
+        ...p,
+        send_count: (p.send_count || 0) + 1,
+        last_sent_on: p.last_sent_on && p.last_sent_on > created.sent_on ? p.last_sent_on : created.sent_on,
+      } : p)));
+      setShowLogForm(false);
     } catch (err) {
       console.error(err);
-      setError('Could not update that — check your connection and try again.');
+      setError('Could not log that send — check your connection and try again.');
+    }
+    setLoggingTick(false);
+  };
+
+  const handleDeleteTick = async (problemId, tickId) => {
+    try {
+      await deleteTick(tickId);
+      const remaining = ticks.filter((t) => t.id !== tickId);
+      setTicks(remaining);
+      setProblems((prev) => prev.map((p) => (p.id === problemId ? {
+        ...p,
+        send_count: remaining.length,
+        last_sent_on: remaining.length ? remaining.reduce((max, t) => (t.sent_on > max ? t.sent_on : max), remaining[0].sent_on) : null,
+      } : p)));
+    } catch (err) {
+      console.error(err);
+      setError('Could not delete that log entry — check your connection and try again.');
     }
   };
 
@@ -395,7 +452,7 @@ export default function App() {
               </div>
             )}
             {visibleProblems.map((p) => (
-              <button key={p.id} onClick={() => { setSelectedId(p.id); setConfirmingDelete(false); setView('detail'); }} style={{
+              <button key={p.id} onClick={() => { setSelectedId(p.id); setConfirmingDelete(false); setShowLogForm(false); setTicks([]); setView('detail'); }} style={{
                 width: '100%', textAlign: 'left', background: '#232427', border: '1px solid #2A2B2E',
                 borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', color: '#EDEAE3',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -405,9 +462,9 @@ export default function App() {
                   <div style={{ fontSize: 12, color: '#8b8d91', marginTop: 2 }}>{p.setter ? `Set by ${p.setter}` : 'Unknown setter'}</div>
                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StarRating rating={p.rating} readOnly />
-                    {p.ticked_at && (
+                    {p.send_count > 0 && (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#5C8A66', textTransform: 'uppercase' }}>
-                        <CheckCircle2 size={12} /> Sent
+                        <CheckCircle2 size={12} /> Sent ×{p.send_count}
                       </span>
                     )}
                   </div>
@@ -433,14 +490,75 @@ export default function App() {
             </div>
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 14 }}>
               <StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} />
-              <button onClick={() => handleTick(selected.id, !selected.ticked_at)} style={{
-                display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0,
-                color: selected.ticked_at ? '#5C8A66' : '#8b8d91', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              <span style={{
+                display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700,
+                color: selected.send_count > 0 ? '#5C8A66' : '#8b8d91',
               }}>
-                {selected.ticked_at ? <CheckCircle2 size={16} /> : <Circle size={16} />} {selected.ticked_at ? 'Sent' : 'Mark as sent'}
-              </button>
+                {selected.send_count > 0 ? <CheckCircle2 size={16} /> : null}
+                {selected.send_count > 0 ? `Sent ×${selected.send_count}` : 'Not sent yet'}
+              </span>
             </div>
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
+
+            <div style={{ marginTop: 16 }}>
+              {!showLogForm ? (
+                <button onClick={startLogTick} style={{
+                  display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                  color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                }}><Plus size={14} /> Log a send</button>
+              ) : (
+                <div style={{ background: '#232427', border: '1px solid #2A2B2E', borderRadius: 10, padding: 12 }}>
+                  <Field label="Date">
+                    <input aria-label="Send date" type="date" value={tickDate} onChange={(e) => setTickDate(e.target.value)} style={inputStyle} />
+                  </Field>
+                  <Field label="Notes">
+                    <textarea aria-label="Send notes" value={tickNotes} onChange={(e) => setTickNotes(e.target.value)} placeholder="Anything worth remembering" rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
+                  </Field>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => handleAddTick(selected.id)} disabled={loggingTick || !tickDate} style={{
+                      display: 'flex', alignItems: 'center', gap: 6, background: '#5C8A66', border: 'none',
+                      color: '#17181A', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    }}>
+                      {loggingTick ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save entry
+                    </button>
+                    <button onClick={() => setShowLogForm(false)} style={{
+                      background: 'none', border: '1px solid #3a3b3e', color: '#8b8d91',
+                      borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                    }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {ticks.length > 0 && (() => {
+                const firstSendId = ticks.reduce((earliest, t) => (
+                  !earliest || t.sent_on < earliest.sent_on ? t : earliest
+                ), null)?.id;
+                return (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {ticks.map((t) => (
+                      <div key={t.id} style={{
+                        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
+                        background: '#1d1e20', border: '1px solid #2A2B2E', borderRadius: 8, padding: '8px 10px',
+                      }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>{formatSendDate(t.sent_on)}</span>
+                            <span style={{
+                              fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
+                              color: t.id === firstSendId ? '#5C8A66' : '#8b8d91',
+                            }}>{t.id === firstSendId ? 'First send' : 'Repeat'}</span>
+                          </div>
+                          {t.notes && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#c7c8cb' }}>{t.notes}</p>}
+                        </div>
+                        <button aria-label="Delete entry" onClick={() => handleDeleteTick(selected.id, t.id)} style={{
+                          background: 'none', border: 'none', color: '#8b8d91', cursor: 'pointer', padding: 2,
+                        }}><Trash2 size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
             <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
               {confirmingDelete ? (
                 <>
