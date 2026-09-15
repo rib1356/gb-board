@@ -616,6 +616,31 @@ describe('App (edit flow)', () => {
 
     expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
   });
+
+  it('clears the stale hold overlay after finishing an edit and returning to the list', async () => {
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'crimpy',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+      },
+    ]);
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    updateProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'crimpy',
+      holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+    await user.click(screen.getByText('Save changes'));
+
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+    expect(
+      screen.getByAltText('Climbing board').parentElement.querySelectorAll('svg circle')
+    ).toHaveLength(0);
+  });
 });
 
 describe('App (tick log flow)', () => {

@@ -356,6 +356,11 @@ export default function App() {
 
         setProblems((prev) => [problem, ...prev]);
       }
+      // Otherwise the just-saved problem's holds keep overlaying the board
+      // photo on the list view, since it's still the "selected"/"editing"
+      // problem even though we've navigated away from it.
+      setSelectedId(null);
+      setEditingId(null);
       setView('list');
     } catch (err) {
       console.error(err);
@@ -467,7 +472,7 @@ export default function App() {
           {view === 'list' ? (
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>THE BOARD</h1>
           ) : (
-            <button onClick={() => { setSelectedId(null); setView('list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
+            <button onClick={() => { setSelectedId(null); setEditingId(null); setView('list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
               <ChevronLeft size={18} /> Board
             </button>
           )}
