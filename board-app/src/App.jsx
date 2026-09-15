@@ -236,6 +236,10 @@ export default function App() {
 
   const handleImageClick = (e) => {
     if (view !== 'new' || editingId) return;
+    // Wait for highlight mode to finish loading (or fail) before placing a
+    // hold -- otherwise an early tap gets stuck as a plain circle forever,
+    // since a hold's mask is only ever attempted at tap time.
+    if (!segmentModule && !segmentUnavailable) return;
     const rect = imgWrapRef.current.getBoundingClientRect();
     const point = pointFromClientCoords(rect, e.clientX, e.clientY);
 

@@ -338,6 +338,34 @@ describe('App (hold highlighting)', () => {
     await waitFor(() => expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument());
   });
 
+  it('ignores a tap while highlight mode is still loading, so it never leaves a permanent circle marker', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    let resolveLoad;
+    loadSegmenter.mockReturnValue(new Promise((resolve) => { resolveLoad = resolve; }));
+    computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
+    maskAtPoint.mockResolvedValue({ width: 400, height: 200, data: new Uint8Array(400 * 200) });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200,
+    });
+
+    expect(await screen.findByText(/Preparing highlight/i)).toBeInTheDocument();
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 100 });
+
+    expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hold-highlight')).not.toBeInTheDocument();
+
+    resolveLoad({ device: 'webgpu' });
+    await waitFor(() => expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument());
+
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 100 });
+    await waitFor(() => expect(screen.getByTestId('hold-highlight')).toBeInTheDocument());
+  });
+
   it('shows an unavailable notice instead of the loading indicator when highlight mode fails to load', async () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     loadSegmenter.mockRejectedValue(new Error('no webgpu'));

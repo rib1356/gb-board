@@ -128,21 +128,19 @@ function isBoundaryPixel(mask, x, y) {
 }
 
 export const DEFAULT_FILL_ALPHA = 0.65;
-export const DEFAULT_BORDER_COLOR = '#17181A';
 export const DEFAULT_BORDER_ALPHA = 0.9;
+const BORDER_BRIGHTNESS = 0.45;
 
-// A dark border around the mask's boundary keeps it visible regardless of
-// fill color -- a pale fill (e.g. the white "hold" type) can otherwise
-// disappear against a light board.
-export function maskToRgba(
-  mask,
-  hexColor,
-  alpha = DEFAULT_FILL_ALPHA,
-  borderColor = DEFAULT_BORDER_COLOR,
-  borderAlpha = DEFAULT_BORDER_ALPHA
-) {
+function darken({ r, g, b }, factor) {
+  return { r: Math.round(r * factor), g: Math.round(g * factor), b: Math.round(b * factor) };
+}
+
+// A border around the mask's boundary, in a darker shade of the same fill
+// color, keeps it visible regardless of fill color -- a pale fill (e.g. the
+// white "hold" type) can otherwise disappear against a light board.
+export function maskToRgba(mask, hexColor, alpha = DEFAULT_FILL_ALPHA, borderAlpha = DEFAULT_BORDER_ALPHA) {
   const fill = hexToRgb(hexColor);
-  const border = hexToRgb(borderColor);
+  const border = darken(fill, BORDER_BRIGHTNESS);
   const fillA = Math.round(alpha * 255);
   const borderA = Math.round(borderAlpha * 255);
   const out = new Uint8ClampedArray(mask.width * mask.height * 4);
