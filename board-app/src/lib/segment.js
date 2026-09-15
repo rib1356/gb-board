@@ -16,9 +16,29 @@ let segmenterPromise = null;
 // constrained mobile hardware regardless of the fp16 bug.
 const DTYPE_BY_DEVICE = { webgpu: 'fp16', wasm: 'q8' };
 
+// onnxruntime's default wasm session pre-reserves memory in growing arena
+// chunks (enableCpuMemArena) and caches a buffer-reuse plan (enableMemPattern)
+// -- both trade peak memory for speed. Confirmed crash point (via the
+// localStorage breadcrumb) is inside get_image_embeddings -- the encoder
+// forward pass, the single largest allocation in this pipeline -- on iPhone
+// Firefox (FxiOS) specifically, while the same q8/wasm path succeeds in
+// Safari on the same device. All iOS browsers embed WebKit, but third-party
+// WKWebView apps (Firefox, Chrome) get a stricter OS memory ceiling than
+// Safari itself, so shaving reserved memory here is the only lever available
+// against that ceiling. Disabling both is the documented onnxruntime
+// recommendation for memory-constrained environments; only applies to wasm
+// (webgpu ignores these options).
+const SESSION_OPTIONS_BY_DEVICE = {
+  wasm: { enableCpuMemArena: false, enableMemPattern: false },
+};
+
 async function loadModel(device) {
   recordSegmentStep(`loadModel:${device}:start`);
-  const model = await SamModel.from_pretrained(MODEL_ID, { dtype: DTYPE_BY_DEVICE[device], device });
+  const model = await SamModel.from_pretrained(MODEL_ID, {
+    dtype: DTYPE_BY_DEVICE[device],
+    device,
+    session_options: SESSION_OPTIONS_BY_DEVICE[device],
+  });
   recordSegmentStep(`loadModel:${device}:model-ready`);
   const processor = await AutoProcessor.from_pretrained(MODEL_ID);
   recordSegmentStep(`loadModel:${device}:processor-ready`);
