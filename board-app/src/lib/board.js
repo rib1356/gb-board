@@ -88,15 +88,22 @@ export async function createProblem(boardId, { name, grade, setter, notes, holds
   return data;
 }
 
-export async function updateProblem(id, { name, grade, setter, notes }) {
+export async function updateProblem(id, { name, grade, setter, notes, holds }) {
+  const payload = {
+    name: name.trim(),
+    grade: grade.trim(),
+    setter: setter.trim(),
+    notes: notes.trim(),
+  };
+  // A hold-list change invalidates any previously composited highlight image
+  // -- callers that recompute one call uploadProblemMask right after this.
+  if (holds !== undefined) {
+    payload.holds = holds;
+    payload.mask_url = null;
+  }
   const { data, error } = await supabase
     .from('problems')
-    .update({
-      name: name.trim(),
-      grade: grade.trim(),
-      setter: setter.trim(),
-      notes: notes.trim(),
-    })
+    .update(payload)
     .eq('id', id)
     .select()
     .single();

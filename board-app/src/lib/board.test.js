@@ -148,6 +148,20 @@ describe('updateProblem', () => {
     });
     expect(c.eq).toHaveBeenCalledWith('id', 'p1');
   });
+
+  it('persists an updated hold list and clears the now-stale composited mask', async () => {
+    const holds = [{ x: 0.4, y: 0.4, type: 'foot' }];
+    const updated = { id: 'p1', name: 'Gaston Traverse', grade: 'V6', setter: 'Rob', notes: 'beta', holds, mask_url: null };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await updateProblem('p1', {
+      name: 'Gaston Traverse', grade: 'V6', setter: 'Rob', notes: 'beta', holds,
+    });
+    expect(result).toEqual(updated);
+    expect(c.update).toHaveBeenCalledWith({
+      name: 'Gaston Traverse', grade: 'V6', setter: 'Rob', notes: 'beta', holds, mask_url: null,
+    });
+  });
 });
 
 describe('listTicks', () => {

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2 } from 'lucide-react';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2 } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
-import { pointFromClientCoords, validateDraft } from './lib/holds';
+import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
 import { GRADES } from './lib/grades';
 
 // Dynamically imported so the segmentation library (and its model weights)
@@ -13,10 +13,14 @@ const loadSegmentModule = () => import('./lib/segment');
 
 const HOLD_COLORS = {
   start: '#5C8A66',
-  hold: '#EDEAE3',
-  foot: '#4A7A94',
+  hold: '#F2C230',
+  foot: '#2E9BE0',
   finish: '#D9552B',
 };
+
+// Tap-to-remove hit radius (as a fraction of the photo's displayed size) for
+// a hold that's still showing as a circle marker rather than a real mask.
+const HOLD_HIT_RADIUS_PX = 22;
 
 function ChalkRing({ x, y, color, label, size = 34 }) {
   return (
@@ -149,8 +153,15 @@ export default function App() {
   const segmenterRef = useRef(null);
   const embeddingRef = useRef(null);
 
+  // Editing must target the problem's own saved photo, not the board's
+  // current one -- the board photo may have been replaced since this
+  // problem was set, and the holds' x/y fractions only line up with the
+  // photo they were originally placed on.
+  const editingProblem = editingId ? problems.find((p) => p.id === editingId) : null;
+  const activePhotoUrl = editingProblem?.photo_url || board?.photo_url;
+
   useEffect(() => {
-    if (view !== 'new' || editingId || !board?.photo_url) return;
+    if (view !== 'new' || !activePhotoUrl) return;
     let cancelled = false;
     let mod;
     segmenterRef.current = null;
@@ -164,12 +175,30 @@ export default function App() {
       .then((seg) => {
         if (cancelled || !seg) return undefined;
         segmenterRef.current = seg;
-        return mod.computeEmbedding(seg, board.photo_url);
+        return mod.computeEmbedding(seg, activePhotoUrl);
       })
       .then((emb) => {
         if (cancelled || !emb) return;
         embeddingRef.current = emb;
         setSegmentModule(mod);
+        // Editing seeds draftHolds from the saved problem, without masks --
+        // decode each one now so they become tap-removable/highlighted just
+        // like a freshly-placed hold. Matched by object identity (not index)
+        // so an in-flight decode can't land on the wrong hold if the user
+        // removes another one before it resolves.
+        const seg = segmenterRef.current;
+        setDraftHolds((prev) => {
+          prev.forEach((h) => {
+            if (h._mask) return;
+            mod.maskAtPoint(seg, emb, h.x, h.y)
+              .then((mask) => {
+                if (cancelled) return;
+                setDraftHolds((cur) => cur.map((hh) => (hh === h ? { ...hh, _mask: mask } : hh)));
+              })
+              .catch((err) => console.error('Highlight decode failed for this hold:', err));
+          });
+          return prev;
+        });
       })
       .catch((err) => {
         // No highlight support this session -- taps fall back to circle markers.
@@ -182,7 +211,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [view, editingId, board?.photo_url]);
+  }, [view, activePhotoUrl]);
 
   useEffect(() => {
     (async () => {
@@ -235,7 +264,7 @@ export default function App() {
   };
 
   const handleImageClick = (e) => {
-    if (view !== 'new' || editingId) return;
+    if (view !== 'new') return;
     // Wait for highlight mode to finish loading (or fail) before placing a
     // hold -- otherwise an early tap gets stuck as a plain circle forever,
     // since a hold's mask is only ever attempted at tap time.
@@ -243,18 +272,23 @@ export default function App() {
     const rect = imgWrapRef.current.getBoundingClientRect();
     const point = pointFromClientCoords(rect, e.clientX, e.clientY);
 
-    let insertedIndex;
-    setDraftHolds((prev) => {
-      insertedIndex = prev.length;
-      return [...prev, { ...point, type: placeType }];
-    });
+    const radiusXFrac = HOLD_HIT_RADIUS_PX / rect.width;
+    const radiusYFrac = HOLD_HIT_RADIUS_PX / rect.height;
+    const hitIndex = holdAtPoint(draftHolds, point.x, point.y, radiusXFrac, radiusYFrac);
+    if (hitIndex !== -1) {
+      setDraftHolds((prev) => prev.filter((_, i) => i !== hitIndex));
+      return;
+    }
+
+    const newHold = { ...point, type: placeType };
+    setDraftHolds((prev) => [...prev, newHold]);
 
     const segmenter = segmenterRef.current;
     const embedding = embeddingRef.current;
     if (segmenter && embedding && segmentModule) {
       segmentModule.maskAtPoint(segmenter, embedding, point.x, point.y)
         .then((mask) => {
-          setDraftHolds((prev) => prev.map((h, i) => (i === insertedIndex ? { ...h, _mask: mask } : h)));
+          setDraftHolds((prev) => prev.map((h) => (h === newHold ? { ...h, _mask: mask } : h)));
         })
         .catch((err) => {
           // This hold just keeps its circle marker.
@@ -284,14 +318,28 @@ export default function App() {
     setSaving(true);
     setError('');
     try {
+      const cleanHolds = draftHolds.map(({ x, y, type }) => ({ x, y, type }));
+      const allMasked = draftHolds.length > 0 && draftHolds.every((h) => h._mask);
+
       if (editingId) {
-        const updated = await updateProblem(editingId, { name, grade, setter, notes });
+        let updated = await updateProblem(editingId, { name, grade, setter, notes, holds: cleanHolds });
+        if (allMasked) {
+          try {
+            const blob = await segmentModule.compositeMaskBlob(
+              draftHolds.map((h) => ({ mask: h._mask, color: HOLD_COLORS[h.type] })),
+              embeddingRef.current.width,
+              embeddingRef.current.height
+            );
+            updated = await uploadProblemMask(editingId, blob);
+          } catch (maskErr) {
+            console.error(maskErr);
+            // Problem is already saved -- it just falls back to circle markers.
+          }
+        }
         setProblems((prev) => prev.map((p) => (p.id === editingId ? updated : p)));
       } else {
-        const cleanHolds = draftHolds.map(({ x, y, type }) => ({ x, y, type }));
         let problem = await createProblem(board.id, { name, grade, setter, notes, holds: cleanHolds, photoUrl: board.photo_url });
 
-        const allMasked = draftHolds.length > 0 && draftHolds.every((h) => h._mask);
         if (allMasked) {
           try {
             const blob = await segmentModule.compositeMaskBlob(
@@ -397,8 +445,8 @@ export default function App() {
   const selected = problems.find((p) => p.id === selectedId);
   const visibleProblems = gradeFilter ? problems.filter((p) => p.grade === gradeFilter) : problems;
   const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
-  const lockedProblem = (view === 'detail' || editingId) ? selected : null;
-  const displayPhotoUrl = lockedProblem?.photo_url || board?.photo_url;
+  const lockedProblem = view === 'detail' ? selected : null;
+  const displayPhotoUrl = lockedProblem?.photo_url || activePhotoUrl;
   const lockedMaskUrl = lockedProblem?.mask_url;
 
   if (loading) {
@@ -463,7 +511,7 @@ export default function App() {
               )
             ))
           )}
-          {view === 'new' && !editingId && !segmentModule && !segmentUnavailable && (
+          {view === 'new' && !segmentModule && !segmentUnavailable && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
               display: 'flex', alignItems: 'center', gap: 8, background: '#17181Ae6', color: '#EDEAE3',
@@ -505,29 +553,23 @@ export default function App() {
 
         {view === 'new' && (
           <div style={{ marginTop: 16 }}>
-            {!editingId && (
-              <>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                  {['start', 'hold', 'foot', 'finish'].map((t) => (
-                    <button key={t} onClick={() => setPlaceType(t)} style={{
-                      flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
-                      letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,
-                      background: placeType === t ? HOLD_COLORS[t] : 'transparent',
-                      color: placeType === t ? '#17181A' : HOLD_COLORS[t], cursor: 'pointer',
-                    }}>{t}</button>
-                  ))}
-                  <button onClick={() => setDraftHolds((d) => d.slice(0, -1))} disabled={!draftHolds.length} style={{
-                    width: 42, borderRadius: 8, border: '1.5px solid #3a3b3e', background: 'transparent',
-                    color: draftHolds.length ? '#EDEAE3' : '#4a4b4e', cursor: draftHolds.length ? 'pointer' : 'default',
-                  }}><Undo2 size={16} style={{ margin: '0 auto' }} /></button>
-                </div>
-                <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>Pick a hold type, then tap the board photo above to place it.</p>
-                {segmentUnavailable && (
-                  <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
-                    Highlight mode unavailable on this device — holds will show as markers instead.
-                  </p>
-                )}
-              </>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              {['start', 'hold', 'foot', 'finish'].map((t) => (
+                <button key={t} onClick={() => setPlaceType(t)} style={{
+                  flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,
+                  background: placeType === t ? HOLD_COLORS[t] : 'transparent',
+                  color: placeType === t ? '#17181A' : HOLD_COLORS[t], cursor: 'pointer',
+                }}>{t}</button>
+              ))}
+            </div>
+            <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>
+              Pick a hold type, then tap the board photo above to place one — tap an existing hold to remove it.
+            </p>
+            {segmentUnavailable && (
+              <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
+                Highlight mode unavailable on this device — holds will show as markers instead.
+              </p>
             )}
 
             <Field label="Problem name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gaston Traverse" style={inputStyle} /></Field>

@@ -274,6 +274,32 @@ describe('App (hold highlighting)', () => {
     await waitFor(() => expect(uploadProblemMask).toHaveBeenCalledWith('p1', blob));
   });
 
+  it('removes a highlighted hold when tapping it again, instead of placing a new one', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    loadSegmenter.mockResolvedValue({ device: 'webgpu' });
+    computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
+    const mask = { width: 400, height: 200, data: new Uint8Array(400 * 200).fill(1) };
+    maskAtPoint.mockResolvedValue(mask);
+
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200,
+    });
+
+    await waitFor(() => expect(computeEmbedding).toHaveBeenCalled());
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 100 });
+    await waitFor(() => expect(screen.getByTestId('hold-highlight')).toBeInTheDocument());
+
+    fireEvent.click(photo.parentElement, { clientX: 210, clientY: 110 });
+
+    expect(screen.queryByTestId('hold-highlight')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
+  });
+
   it('falls back to circle markers and skips the mask upload when segmentation is unavailable', async () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     createProblem.mockResolvedValue({
@@ -535,12 +561,13 @@ describe('App (edit flow)', () => {
     await waitFor(() =>
       expect(updateProblem).toHaveBeenCalledWith('p1', {
         name: 'Gaston Traverse v2', grade: 'V6', setter: 'Rob', notes: 'crimpy',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
       })
     );
     expect(await screen.findByText('Gaston Traverse v2')).toBeInTheDocument();
   });
 
-  it('does not add a hold when tapping the photo while editing', async () => {
+  it('adds a hold when tapping empty space on the photo while editing', async () => {
     listProblems.mockResolvedValue([
       {
         id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
@@ -562,7 +589,32 @@ describe('App (edit flow)', () => {
 
     fireEvent.click(photo.parentElement, { clientX: 150, clientY: 80 });
 
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(2);
+  });
+
+  it('removes a hold when tapping directly on it while editing, instead of adding a new one', async () => {
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+      },
+    ]);
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
     expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+
+    fireEvent.click(photo.parentElement, { clientX: 40, clientY: 30 });
+
+    expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
   });
 });
 
