@@ -463,6 +463,16 @@ export default function App() {
               )
             ))
           )}
+          {view === 'new' && !editingId && !segmentModule && !segmentUnavailable && (
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+              display: 'flex', alignItems: 'center', gap: 8, background: '#17181Ae6', color: '#EDEAE3',
+              padding: '10px 16px', borderRadius: 10, border: '1px solid #3a3b3e', fontSize: 13.5,
+              fontWeight: 600, pointerEvents: 'none', textAlign: 'center',
+            }}>
+              <Loader2 size={15} className="animate-spin" /> Preparing highlight mode…
+            </div>
+          )}
         </div>
 
         {view === 'list' && (
@@ -512,11 +522,6 @@ export default function App() {
                   }}><Undo2 size={16} style={{ margin: '0 auto' }} /></button>
                 </div>
                 <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>Pick a hold type, then tap the board photo above to place it.</p>
-                {!segmentModule && !segmentUnavailable && (
-                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
-                    <Loader2 size={13} className="animate-spin" /> Preparing highlight mode…
-                  </p>
-                )}
                 {segmentUnavailable && (
                   <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
                     Highlight mode unavailable on this device — holds will show as markers instead.

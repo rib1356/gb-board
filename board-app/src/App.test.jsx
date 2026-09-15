@@ -331,7 +331,9 @@ describe('App (hold highlighting)', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByText('New problem'));
 
-    expect(await screen.findByText(/Preparing highlight/i)).toBeInTheDocument();
+    const photo = await screen.findByAltText('Climbing board');
+    const banner = await screen.findByText(/Preparing highlight/i);
+    expect(photo.parentElement.contains(banner)).toBe(true);
 
     resolveLoad({ device: 'webgpu' });
 
