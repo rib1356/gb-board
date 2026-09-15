@@ -18,6 +18,8 @@ import {
   listTicks,
   createTick,
   deleteTick,
+  listClimbers,
+  createClimber,
 } from './board';
 
 function chain(result) {
@@ -164,6 +166,30 @@ describe('updateProblem', () => {
   });
 });
 
+describe('listClimbers', () => {
+  it('lists climbers alphabetically by name', async () => {
+    const rows = [{ id: 'c1', name: 'Alice' }, { id: 'c2', name: 'Bob' }];
+    const c = chain({ data: rows, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await listClimbers();
+    expect(result).toEqual(rows);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('climbers');
+    expect(c.order).toHaveBeenCalledWith('name', { ascending: true });
+  });
+});
+
+describe('createClimber', () => {
+  it('inserts a trimmed climber name', async () => {
+    const created = { id: 'c1', name: 'Rob' };
+    const c = chain({ data: created, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await createClimber('  Rob  ');
+    expect(result).toEqual(created);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('climbers');
+    expect(c.insert).toHaveBeenCalledWith({ name: 'Rob' });
+  });
+});
+
 describe('listTicks', () => {
   it('lists ticks for a problem, most recent send first', async () => {
     const rows = [{ id: 't2', sent_on: '2026-08-20' }, { id: 't1', sent_on: '2026-08-01' }];
@@ -185,6 +211,15 @@ describe('createTick', () => {
     const result = await createTick('p1', { sentOn: '2026-08-22', notes: ' felt easy ' });
     expect(result).toEqual(created);
     expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy' });
+  });
+
+  it('stores the climber name that logged the send', async () => {
+    const created = { id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob' };
+    const c = chain({ data: created, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await createTick('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob' });
+    expect(result).toEqual(created);
+    expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob' });
   });
 });
 

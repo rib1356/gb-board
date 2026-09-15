@@ -111,6 +111,25 @@ export async function updateProblem(id, { name, grade, setter, notes, holds }) {
   return data;
 }
 
+export async function listClimbers() {
+  const { data, error } = await supabase
+    .from('climbers')
+    .select('*')
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function createClimber(name) {
+  const { data, error } = await supabase
+    .from('climbers')
+    .insert({ name: name.trim() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function listTicks(problemId) {
   const { data, error } = await supabase
     .from('ticks')
@@ -121,10 +140,10 @@ export async function listTicks(problemId) {
   return data;
 }
 
-export async function createTick(problemId, { sentOn, notes }) {
+export async function createTick(problemId, { sentOn, notes, sentBy }) {
   const { data, error } = await supabase
     .from('ticks')
-    .insert({ problem_id: problemId, sent_on: sentOn, notes: notes.trim() })
+    .insert({ problem_id: problemId, sent_on: sentOn, notes: notes.trim(), sent_by: sentBy })
     .select()
     .single();
   if (error) throw error;
