@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2 } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber } from './lib/board';
+import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
 import { GRADES } from './lib/grades';
@@ -120,6 +121,42 @@ function Field({ label, children }) {
   );
 }
 
+function ClimberPicker({ climbers, currentClimber, open, onToggle, newName, onNewNameChange, onAdd, onSelect, adding }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button onClick={onToggle} style={{
+        display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+        color: '#c7c8cb', borderRadius: 20, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+      }}>
+        {currentClimber ? `You: ${currentClimber.name}` : "Who's climbing?"}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, background: '#232427', border: '1px solid #2A2B2E', borderRadius: 10, padding: 10 }}>
+          {climbers.map((c) => (
+            <button key={c.id} onClick={() => onSelect(c.id)} style={{
+              display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none',
+              color: '#EDEAE3', padding: '6px 4px', fontSize: 13.5, cursor: 'pointer',
+            }}>{c.name}</button>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <input
+              aria-label="New climber name"
+              value={newName}
+              onChange={(e) => onNewNameChange(e.target.value)}
+              placeholder="Add a climber"
+              style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+            />
+            <button onClick={onAdd} disabled={adding || !newName.trim()} style={{
+              background: '#5C8A66', border: 'none', color: '#17181A', borderRadius: 8,
+              padding: '0 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+            }}>Add</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [board, setBoard] = useState(null);
   const [problems, setProblems] = useState([]);
@@ -146,6 +183,12 @@ export default function App() {
   const [tickDate, setTickDate] = useState('');
   const [tickNotes, setTickNotes] = useState('');
   const [loggingTick, setLoggingTick] = useState(false);
+
+  const [climbers, setClimbers] = useState([]);
+  const [currentClimberId, setCurrentClimberId] = useState(null);
+  const [showClimberPanel, setShowClimberPanel] = useState(false);
+  const [newClimberName, setNewClimberName] = useState('');
+  const [addingClimber, setAddingClimber] = useState(false);
 
   const imgWrapRef = useRef(null);
   const [segmentModule, setSegmentModule] = useState(null);
@@ -231,6 +274,12 @@ export default function App() {
         setBoard(b);
         const p = await listProblems(b.id);
         setProblems(p);
+        const c = await listClimbers();
+        setClimbers(c);
+        const storedId = getStoredClimberId();
+        if (storedId && c.some((climber) => climber.id === storedId)) {
+          setCurrentClimberId(storedId);
+        }
       } catch (e) {
         console.error(e);
         setError('Could not load the board — check your connection and try again.');
@@ -272,6 +321,30 @@ export default function App() {
       setError('Could not upload that photo — try a different one.');
     }
     setUploading(false);
+  };
+
+  const handleSelectClimber = (id) => {
+    setCurrentClimberId(id);
+    setStoredClimberId(id);
+    setShowClimberPanel(false);
+  };
+
+  const handleAddClimber = async () => {
+    if (!newClimberName.trim()) return;
+    setAddingClimber(true);
+    setError('');
+    try {
+      const created = await createClimber(newClimberName);
+      setClimbers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setCurrentClimberId(created.id);
+      setStoredClimberId(created.id);
+      setNewClimberName('');
+      setShowClimberPanel(false);
+    } catch (err) {
+      console.error(err);
+      setError('Could not add that climber — check your connection and try again.');
+    }
+    setAddingClimber(false);
   };
 
   const handleImageClick = (e) => {
@@ -459,6 +532,7 @@ export default function App() {
     }
   };
 
+  const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
   const selected = problems.find((p) => p.id === selectedId);
   const visibleProblems = gradeFilter ? problems.filter((p) => p.grade === gradeFilter) : problems;
   const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
@@ -497,6 +571,17 @@ export default function App() {
             </button>
           )}
         </div>
+        <ClimberPicker
+          climbers={climbers}
+          currentClimber={currentClimber}
+          open={showClimberPanel}
+          onToggle={() => setShowClimberPanel((prev) => !prev)}
+          newName={newClimberName}
+          onNewNameChange={setNewClimberName}
+          onAdd={handleAddClimber}
+          onSelect={handleSelectClimber}
+          adding={addingClimber}
+        />
       </div>
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>

@@ -15,6 +15,8 @@ vi.mock('./lib/board', () => ({
   listTicks: vi.fn(),
   createTick: vi.fn(),
   deleteTick: vi.fn(),
+  listClimbers: vi.fn(),
+  createClimber: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
@@ -27,7 +29,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import App from './App';
@@ -36,9 +38,11 @@ const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   getOrCreateBoard.mockResolvedValue(BOARD);
   listProblems.mockResolvedValue([]);
   listTicks.mockResolvedValue([]);
+  listClimbers.mockResolvedValue([]);
   loadSegmenter.mockRejectedValue(new Error('segmentation unavailable in tests'));
 });
 
@@ -816,5 +820,53 @@ describe('App (rating flow)', () => {
     render(<App />);
 
     expect(await screen.findByLabelText('Rating: 4 out of 5')).toBeInTheDocument();
+  });
+});
+
+describe('App (climber picker)', () => {
+  it('shows a prompt to pick a climber when none is selected', async () => {
+    render(<App />);
+    expect(await screen.findByText("Who's climbing?")).toBeInTheDocument();
+  });
+
+  it('lists fetched climbers in the panel and selects one', async () => {
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Alice' }, { id: 'c2', name: 'Bob' }]);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Who's climbing?"));
+    await user.click(await screen.findByText('Bob'));
+
+    expect(await screen.findByText('You: Bob')).toBeInTheDocument();
+    expect(localStorage.getItem('board-app:currentClimberId')).toBe('c2');
+  });
+
+  it('adds a new climber and selects it immediately', async () => {
+    createClimber.mockResolvedValue({ id: 'c3', name: 'Charlie' });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Who's climbing?"));
+    await user.type(screen.getByLabelText('New climber name'), 'Charlie');
+    await user.click(screen.getByText('Add'));
+
+    await waitFor(() => expect(createClimber).toHaveBeenCalledWith('Charlie'));
+    expect(await screen.findByText('You: Charlie')).toBeInTheDocument();
+  });
+
+  it('restores a previously selected climber from localStorage on load', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Alice' }]);
+    render(<App />);
+
+    expect(await screen.findByText('You: Alice')).toBeInTheDocument();
+  });
+
+  it('ignores a stored climber id that no longer matches any fetched climber', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'ghost');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Alice' }]);
+    render(<App />);
+
+    expect(await screen.findByText("Who's climbing?")).toBeInTheDocument();
   });
 });
