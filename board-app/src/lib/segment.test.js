@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fracToPixel, maskToRgba, isWebGpuUnreliable, capMaskTargetSize } from './segment';
+import { fracToPixel, maskToRgba, isWebGpuUnreliable, capMaskTargetSize, scaledBorderThickness } from './segment';
 
 describe('isWebGpuUnreliable', () => {
   it('flags iPhone Safari as unreliable', () => {
@@ -54,6 +54,24 @@ describe('capMaskTargetSize', () => {
 
   it('leaves a photo exactly at the cap unchanged', () => {
     expect(capMaskTargetSize(640, 480, 640)).toEqual([640, 480]);
+  });
+});
+
+describe('scaledBorderThickness', () => {
+  it('keeps the tuned thickness at the reference (full photo) resolution', () => {
+    const mask = { width: 1400, height: 933 };
+    expect(scaledBorderThickness(mask, 1400, 4)).toBe(4);
+  });
+
+  it('scales the border down proportionally for a smaller (capped) mask', () => {
+    // 1024/1400 of the reference edge -> border shrinks by the same factor.
+    const mask = { width: 1024, height: 683 };
+    expect(scaledBorderThickness(mask, 1400, 4)).toBe(3);
+  });
+
+  it('never rounds down to zero, even for a tiny mask', () => {
+    const mask = { width: 20, height: 20 };
+    expect(scaledBorderThickness(mask, 1400, 4)).toBe(1);
   });
 });
 

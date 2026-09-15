@@ -98,11 +98,15 @@ let tapCount = 0;
 // *both* Safari and Firefox on iOS, died after placing "too many holds" (the
 // browser-specific WebKit-ceiling theory doesn't explain a crash that scales
 // with hold count on every browser). Capping the upsample target instead of
-// using the true photo resolution cuts every hold's retained memory by the
-// same factor, with no loss to segmentation accuracy -- the encoder still
-// ran at full 1024px internally; this only controls how big the final
-// (already-decided) binary mask gets blown up to.
-const MAX_MASK_EDGE = 640;
+// using the true photo resolution cuts every hold's retained memory by a
+// real factor, with no loss to segmentation accuracy versus the model's own
+// ceiling -- the decoder's prediction is upsampled to 1024x1024 as a fixed
+// intermediate step regardless of what final size we ask for (see
+// post_process_masks), so 1024 is the point beyond which more "resolution"
+// is pure waste: it adds retained memory with zero additional real detail.
+// (A first attempt capped this at 640 -- half again as much memory saved --
+// but broke visibly on real holds: see BORDER_REFERENCE_EDGE below.)
+const MAX_MASK_EDGE = 1024;
 
 export function capMaskTargetSize(height, width, maxEdge = MAX_MASK_EDGE) {
   const longestEdge = Math.max(height, width);
@@ -175,7 +179,7 @@ export function maskToDataUrl(mask, hexColor, alpha = DEFAULT_FILL_ALPHA) {
   canvas.width = mask.width;
   canvas.height = mask.height;
   const ctx = canvas.getContext('2d');
-  const rgba = maskToRgba(mask, hexColor, alpha);
+  const rgba = maskToRgba(mask, hexColor, alpha, DEFAULT_BORDER_ALPHA, scaledBorderThickness(mask));
   ctx.putImageData(new ImageData(rgba, mask.width, mask.height), 0, 0);
   return canvas.toDataURL('image/png');
 }
@@ -196,7 +200,7 @@ export function compositeMaskBlob(entries, width, height) {
     layer.width = mask.width;
     layer.height = mask.height;
     const layerCtx = layer.getContext('2d');
-    const rgba = maskToRgba(mask, color);
+    const rgba = maskToRgba(mask, color, DEFAULT_FILL_ALPHA, DEFAULT_BORDER_ALPHA, scaledBorderThickness(mask));
     layerCtx.putImageData(new ImageData(rgba, mask.width, mask.height), 0, 0);
     // Each mask is capped to MAX_MASK_EDGE (see maskAtPoint), smaller than
     // the full-resolution save canvas -- drawImage's destination-size form
@@ -227,7 +231,23 @@ function hexToRgb(hex) {
 // A single-pixel-wide outline follows SAM's rough mask edges exactly, which
 // reads as jagged/squiggly. Widening the border to a band a few pixels thick
 // makes that far less noticeable without smoothing the mask itself.
+//
+// This thickness was tuned by eye against masks at (near) full photo
+// resolution -- the only resolution that existed until MAX_MASK_EDGE was
+// introduced. It's a fixed pixel count in the MASK's own coordinate space,
+// not a fraction of it, so shrinking the mask resolution (for memory) without
+// scaling this down makes the border cover a proportionally bigger slice of
+// every hold -- confirmed as a real regression: at MAX_MASK_EDGE=640, small
+// holds lost almost all their visible fill color to an over-thick border.
+// scaledBorderThickness() below restores the original proportion at any
+// mask resolution.
 const BORDER_THICKNESS_PX = 4;
+const BORDER_REFERENCE_EDGE = 1400; // resizeFileToBlob's maxWidth -- the resolution this was tuned at.
+
+export function scaledBorderThickness(mask, reference = BORDER_REFERENCE_EDGE, base = BORDER_THICKNESS_PX) {
+  const longestEdge = Math.max(mask.width, mask.height);
+  return Math.max(1, Math.round(base * (longestEdge / reference)));
+}
 
 function isBoundaryPixel(mask, x, y, thickness = BORDER_THICKNESS_PX) {
   const { width, height, data } = mask;
@@ -255,7 +275,13 @@ function darken({ r, g, b }, factor) {
 // A border around the mask's boundary, in a darker shade of the same fill
 // color, keeps it visible regardless of fill color -- a pale fill (e.g. the
 // white "hold" type) can otherwise disappear against a light board.
-export function maskToRgba(mask, hexColor, alpha = DEFAULT_FILL_ALPHA, borderAlpha = DEFAULT_BORDER_ALPHA) {
+export function maskToRgba(
+  mask,
+  hexColor,
+  alpha = DEFAULT_FILL_ALPHA,
+  borderAlpha = DEFAULT_BORDER_ALPHA,
+  borderThicknessPx = BORDER_THICKNESS_PX
+) {
   const fill = hexToRgb(hexColor);
   const border = darken(fill, BORDER_BRIGHTNESS);
   const fillA = Math.round(alpha * 255);
@@ -267,7 +293,7 @@ export function maskToRgba(mask, hexColor, alpha = DEFAULT_FILL_ALPHA, borderAlp
       const i = y * mask.width + x;
       if (!mask.data[i]) continue;
       const offset = i * 4;
-      const { r, g, b, a } = isBoundaryPixel(mask, x, y)
+      const { r, g, b, a } = isBoundaryPixel(mask, x, y, borderThicknessPx)
         ? { r: border.r, g: border.g, b: border.b, a: borderA }
         : { r: fill.r, g: fill.g, b: fill.b, a: fillA };
       out[offset] = r;
