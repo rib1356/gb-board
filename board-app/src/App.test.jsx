@@ -29,7 +29,7 @@ vi.mock('./lib/segment', () => ({
 
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
-import { loadSegmenter, computeEmbedding, maskAtPoint, compositeMaskBlob } from './lib/segment';
+import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import App from './App';
 
 const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
@@ -404,6 +404,61 @@ describe('App (hold highlighting)', () => {
 
     expect(await screen.findByText(/Highlight mode unavailable/i)).toBeInTheDocument();
     expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the loading indicator again for a later editing session, even though highlight mode already loaded once', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [{ x: 0.2, y: 0.3, type: 'start' }] },
+    ]);
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    loadSegmenter.mockResolvedValue({ device: 'webgpu' });
+    computeEmbedding.mockResolvedValueOnce({ width: 400, height: 200 });
+    let resolveSecond;
+    computeEmbedding.mockImplementation(() => new Promise((resolve) => { resolveSecond = resolve; }));
+
+    render(<App />);
+    const user = userEvent.setup();
+
+    // First session -- loads and settles normally.
+    await user.click(await screen.findByText('New problem'));
+    await waitFor(() => expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /board/i }));
+
+    // A later session (editing) needs its own embedding for its own photo --
+    // the banner shouldn't skip itself just because the model is cached.
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+
+    expect(await screen.findByText(/Preparing highlight/i)).toBeInTheDocument();
+
+    resolveSecond({ width: 400, height: 200 });
+    await waitFor(() => expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument());
+  });
+
+  it("computes a hold's highlight image once, instead of recomputing it on every re-render", async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    loadSegmenter.mockResolvedValue({ device: 'webgpu' });
+    computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
+    maskAtPoint.mockResolvedValue({ width: 400, height: 200, data: new Uint8Array(400 * 200) });
+
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200,
+    });
+
+    await waitFor(() => expect(computeEmbedding).toHaveBeenCalled());
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 100 });
+    await waitFor(() => expect(screen.getByTestId('hold-highlight')).toBeInTheDocument());
+
+    expect(maskToDataUrl).toHaveBeenCalledTimes(1);
+
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Gaston');
+
+    expect(maskToDataUrl).toHaveBeenCalledTimes(1);
   });
 });
 

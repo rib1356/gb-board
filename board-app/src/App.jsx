@@ -12,7 +12,7 @@ import { GRADES } from './lib/grades';
 const loadSegmentModule = () => import('./lib/segment');
 
 const HOLD_COLORS = {
-  start: '#5C8A66',
+  start: '#2E6B3E',
   hold: '#22C7C0',
   foot: '#9B5DE5',
   finish: '#D9552B',
@@ -149,6 +149,10 @@ export default function App() {
 
   const imgWrapRef = useRef(null);
   const [segmentModule, setSegmentModule] = useState(null);
+  // Whether THIS session's embedding (not just the session-wide model) is
+  // ready -- the model only needs loading once per page session, but each
+  // new/edit session needs its own embedding computed against its own photo.
+  const [embeddingReady, setEmbeddingReady] = useState(false);
   const [segmentUnavailable, setSegmentUnavailable] = useState(false);
   const segmenterRef = useRef(null);
   const embeddingRef = useRef(null);
@@ -181,6 +185,7 @@ export default function App() {
         if (cancelled || !emb) return;
         embeddingRef.current = emb;
         setSegmentModule(mod);
+        setEmbeddingReady(true);
         // Editing seeds draftHolds from the saved problem, without masks --
         // decode each one now so they become tap-removable/highlighted just
         // like a freshly-placed hold. Matched by object identity (not index)
@@ -193,7 +198,8 @@ export default function App() {
             mod.maskAtPoint(seg, emb, h.x, h.y)
               .then((mask) => {
                 if (cancelled) return;
-                setDraftHolds((cur) => cur.map((hh) => (hh === h ? { ...hh, _mask: mask } : hh)));
+                const maskUrl = mod.maskToDataUrl(mask, HOLD_COLORS[h.type]);
+                setDraftHolds((cur) => cur.map((hh) => (hh === h ? { ...hh, _mask: mask, _maskUrl: maskUrl } : hh)));
               })
               .catch((err) => console.error('Highlight decode failed for this hold:', err));
           });
@@ -210,6 +216,11 @@ export default function App() {
       });
     return () => {
       cancelled = true;
+      // Runs before the next session's body (even a same-photo re-edit,
+      // since `view` itself changed to get back here) -- so this is what
+      // makes the loading banner reappear for a later session instead of
+      // staying stuck "ready" from a previous one.
+      setEmbeddingReady(false);
     };
   }, [view, activePhotoUrl]);
 
@@ -268,7 +279,7 @@ export default function App() {
     // Wait for highlight mode to finish loading (or fail) before placing a
     // hold -- otherwise an early tap gets stuck as a plain circle forever,
     // since a hold's mask is only ever attempted at tap time.
-    if (!segmentModule && !segmentUnavailable) return;
+    if (!embeddingReady && !segmentUnavailable) return;
     const rect = imgWrapRef.current.getBoundingClientRect();
     const point = pointFromClientCoords(rect, e.clientX, e.clientY);
 
@@ -288,7 +299,8 @@ export default function App() {
     if (segmenter && embedding && segmentModule) {
       segmentModule.maskAtPoint(segmenter, embedding, point.x, point.y)
         .then((mask) => {
-          setDraftHolds((prev) => prev.map((h) => (h === newHold ? { ...h, _mask: mask } : h)));
+          const maskUrl = segmentModule.maskToDataUrl(mask, HOLD_COLORS[newHold.type]);
+          setDraftHolds((prev) => prev.map((h) => (h === newHold ? { ...h, _mask: mask, _maskUrl: maskUrl } : h)));
         })
         .catch((err) => {
           // This hold just keeps its circle marker.
@@ -509,14 +521,14 @@ export default function App() {
             <HoldHighlight src={lockedMaskUrl} />
           ) : (
             displayHolds.map((h, i) => (
-              h._mask ? (
-                <HoldHighlight key={i} src={segmentModule.maskToDataUrl(h._mask, HOLD_COLORS[h.type])} />
+              h._maskUrl ? (
+                <HoldHighlight key={i} src={h._maskUrl} />
               ) : (
                 <ChalkRing key={i} x={h.x} y={h.y} color={HOLD_COLORS[h.type]} label={h.type === 'hold' ? String(i + 1) : ''} />
               )
             ))
           )}
-          {view === 'new' && !segmentModule && !segmentUnavailable && (
+          {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
               display: 'flex', alignItems: 'center', gap: 8, background: '#17181Ae6', color: '#EDEAE3',
