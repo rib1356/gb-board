@@ -532,7 +532,7 @@ export default function App() {
             }}>
               {uploading ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
               {board?.photo_url ? 'Replace board photo' : 'Upload a photo of your board'}
-              <input type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+              <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
             </label>
           </div>
         )}
