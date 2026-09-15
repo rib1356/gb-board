@@ -421,6 +421,9 @@ describe('App (hold highlighting)', () => {
 
     expect(await screen.findByText(/Highlight mode unavailable/i)).toBeInTheDocument();
     expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument();
+    // The underlying error is surfaced in the UI, not just the console -- the
+    // person hitting this on a phone has no devtools to read console.error.
+    expect(screen.getByText(/no webgpu/i)).toBeInTheDocument();
   });
 
   it('shows the loading indicator again for a later editing session, even though highlight mode already loaded once', async () => {

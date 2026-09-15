@@ -197,6 +197,7 @@ export default function App() {
   // new/edit session needs its own embedding computed against its own photo.
   const [embeddingReady, setEmbeddingReady] = useState(false);
   const [segmentUnavailable, setSegmentUnavailable] = useState(false);
+  const [segmentError, setSegmentError] = useState('');
   const segmenterRef = useRef(null);
   const embeddingRef = useRef(null);
 
@@ -255,6 +256,9 @@ export default function App() {
         // of the page session rather than needing to be reset on retry.)
         if (cancelled) return;
         setSegmentUnavailable(true);
+        // Surfaced in the UI, not just here -- someone hitting this on a
+        // phone has no devtools to read console.error from.
+        setSegmentError(err?.message || String(err));
         console.error('Highlight setup failed:', err);
       });
     return () => {
@@ -671,6 +675,7 @@ export default function App() {
             {segmentUnavailable && (
               <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
                 Highlight mode unavailable on this device — holds will show as markers instead.
+                {segmentError ? ` (${segmentError})` : ''}
               </p>
             )}
 
