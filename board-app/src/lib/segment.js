@@ -118,13 +118,24 @@ function hexToRgb(hex) {
   };
 }
 
-function isBoundaryPixel(mask, x, y) {
+// A single-pixel-wide outline follows SAM's rough mask edges exactly, which
+// reads as jagged/squiggly. Widening the border to a band a few pixels thick
+// makes that far less noticeable without smoothing the mask itself.
+const BORDER_THICKNESS_PX = 6;
+
+function isBoundaryPixel(mask, x, y, thickness = BORDER_THICKNESS_PX) {
   const { width, height, data } = mask;
-  const up = y === 0 || !data[(y - 1) * width + x];
-  const down = y === height - 1 || !data[(y + 1) * width + x];
-  const left = x === 0 || !data[y * width + (x - 1)];
-  const right = x === width - 1 || !data[y * width + (x + 1)];
-  return up || down || left || right;
+  const t2 = thickness * thickness;
+  for (let dy = -thickness; dy <= thickness; dy++) {
+    const ny = y + dy;
+    if (ny < 0 || ny >= height) return true;
+    for (let dx = -thickness; dx <= thickness; dx++) {
+      if (dx * dx + dy * dy > t2) continue;
+      const nx = x + dx;
+      if (nx < 0 || nx >= width || !data[ny * width + nx]) return true;
+    }
+  }
+  return false;
 }
 
 export const DEFAULT_FILL_ALPHA = 0.65;

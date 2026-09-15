@@ -13,7 +13,7 @@ const loadSegmentModule = () => import('./lib/segment');
 
 const HOLD_COLORS = {
   start: '#5C8A66',
-  hold: '#F2C230',
+  hold: '#22C7C0',
   foot: '#2E9BE0',
   finish: '#D9552B',
 };

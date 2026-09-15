@@ -11,26 +11,43 @@ describe('fracToPixel', () => {
   });
 });
 
+function filledSquare(size) {
+  return { width: size, height: size, data: new Array(size * size).fill(1) };
+}
+
 describe('maskToRgba', () => {
-  it('tints an interior masked pixel with the fill color', () => {
-    // 3x3 fully-masked square: the center pixel has all 4 neighbors masked,
-    // so it's interior; every other pixel touches the mask's edge.
-    const mask = { width: 3, height: 3, data: [1, 1, 1, 1, 1, 1, 1, 1, 1] };
+  it('tints a deep-interior masked pixel with the fill color', () => {
+    // 20x20 fully-masked square: the center pixel is far from every edge,
+    // so it's interior even with a multi-pixel-thick border band.
+    const mask = filledSquare(20);
     const result = maskToRgba(mask, '#D9552B', 0.5);
 
-    const centerOffset = 4 * 4; // pixel index 4 = (1,1)
+    const centerIndex = 10 * 20 + 10;
+    const centerOffset = centerIndex * 4;
     expect(Array.from(result.slice(centerOffset, centerOffset + 4))).toEqual([
       217, 85, 43, Math.round(0.5 * 255),
     ]);
   });
 
   it('outlines the mask boundary with a darker shade of the fill color, not a fixed color', () => {
-    const mask = { width: 3, height: 3, data: [1, 1, 1, 1, 1, 1, 1, 1, 1] };
+    const mask = filledSquare(20);
     const result = maskToRgba(mask, '#D9552B', 0.5, 1);
 
     const topLeftOffset = 0; // pixel index 0 = (0,0), touches the mask edge
     // Darkened #D9552B (217, 85, 43) at 45% brightness.
     expect(Array.from(result.slice(topLeftOffset, topLeftOffset + 4))).toEqual([98, 38, 19, 255]);
+  });
+
+  it('gives the border band real width, not just the single outermost pixel', () => {
+    // A pixel a few pixels in from the edge should still read as border --
+    // a single-pixel-wide outline looks jagged against SAM's rough mask
+    // edges, so the band needs to be thick enough to smooth that out.
+    const mask = filledSquare(20);
+    const result = maskToRgba(mask, '#D9552B', 0.5, 1);
+
+    const nearEdgeIndex = 3 * 20 + 3; // (3,3) -- a few px in from the (0,0) corner
+    const nearEdgeOffset = nearEdgeIndex * 4;
+    expect(Array.from(result.slice(nearEdgeOffset, nearEdgeOffset + 4))).toEqual([98, 38, 19, 255]);
   });
 
   it('leaves unmasked pixels transparent', () => {
