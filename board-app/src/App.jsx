@@ -844,9 +844,13 @@ export default function App() {
               )}
 
               {ticks.length > 0 && (() => {
-                const firstSendId = ticks.reduce((earliest, t) => (
-                  !earliest || t.sent_on < earliest.sent_on ? t : earliest
-                ), null)?.id;
+                const firstSendId = ticks.reduce((earliest, t) => {
+                  if (!earliest) return t;
+                  if (t.sent_on !== earliest.sent_on) return t.sent_on < earliest.sent_on ? t : earliest;
+                  // Same date -- whoever logged it into the app first (by created_at)
+                  // keeps the tag, so a same-day repeat can't bump the original logger.
+                  return t.created_at < earliest.created_at ? t : earliest;
+                }, null)?.id;
                 return (
                   <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {ticks.map((t) => (

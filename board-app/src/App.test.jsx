@@ -852,6 +852,29 @@ describe('App (tick log flow)', () => {
     expect(repeatEntry).toHaveTextContent('Repeat');
   });
 
+  it('keeps first send on whoever logged first when two sends share the same date', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 2, last_sent_on: '2026-08-20' },
+    ]);
+    // Same sent_on date for both -- order here deliberately puts the later
+    // logger (Alex) first, mirroring how Postgres/local state can return
+    // same-date ticks in either order. Rob logged it into the app first
+    // (earlier created_at) and should keep the "First send" tag.
+    listTicks.mockResolvedValue([
+      { id: 't2', problem_id: 'p1', sent_on: '2026-08-20', notes: '', sent_by: 'Alex', created_at: '2026-08-20T15:00:00Z' },
+      { id: 't1', problem_id: 'p1', sent_on: '2026-08-20', notes: '', sent_by: 'Rob', created_at: '2026-08-20T09:00:00Z' },
+    ]);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    const robEntry = (await screen.findByText('Rob · 20 Aug 2026')).closest('div');
+    const alexEntry = screen.getByText('Alex · 20 Aug 2026').closest('div');
+    expect(robEntry).toHaveTextContent('First send');
+    expect(alexEntry).toHaveTextContent('Repeat');
+  });
+
   it('deletes a log entry from the detail view', async () => {
     listProblems.mockResolvedValue([
       { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
