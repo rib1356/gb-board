@@ -50,6 +50,26 @@ export async function uploadBoardPhoto(boardId, blob) {
   return updated;
 }
 
+export async function uploadProblemMask(problemId, blob) {
+  const path = `masks/${problemId}.png`;
+  const { error: uploadError } = await supabase.storage
+    .from('board-photos')
+    .upload(path, blob, { upsert: true, contentType: 'image/png' });
+  if (uploadError) throw uploadError;
+
+  const { data: publicUrlData } = supabase.storage.from('board-photos').getPublicUrl(path);
+  const maskUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+
+  const { data: updated, error: updateError } = await supabase
+    .from('problems')
+    .update({ mask_url: maskUrl })
+    .eq('id', problemId)
+    .select()
+    .single();
+  if (updateError) throw updateError;
+  return updated;
+}
+
 export async function createProblem(boardId, { name, grade, setter, notes, holds, photoUrl }) {
   const { data, error } = await supabase
     .from('problems')

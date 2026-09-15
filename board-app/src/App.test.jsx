@@ -6,6 +6,7 @@ vi.mock('./lib/board', () => ({
   getOrCreateBoard: vi.fn(),
   listProblems: vi.fn(),
   uploadBoardPhoto: vi.fn(),
+  uploadProblemMask: vi.fn(),
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
   rateProblem: vi.fn(),
@@ -18,9 +19,17 @@ vi.mock('./lib/board', () => ({
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
+vi.mock('./lib/segment', () => ({
+  loadSegmenter: vi.fn(),
+  computeEmbedding: vi.fn(),
+  maskAtPoint: vi.fn(),
+  maskToDataUrl: vi.fn(() => 'data:image/png;base64,FAKE'),
+  compositeMaskBlob: vi.fn(),
+}));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
+import { loadSegmenter, computeEmbedding, maskAtPoint, compositeMaskBlob } from './lib/segment';
 import App from './App';
 
 const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
@@ -30,6 +39,7 @@ beforeEach(() => {
   getOrCreateBoard.mockResolvedValue(BOARD);
   listProblems.mockResolvedValue([]);
   listTicks.mockResolvedValue([]);
+  loadSegmenter.mockRejectedValue(new Error('segmentation unavailable in tests'));
 });
 
 describe('App (read paths)', () => {
@@ -222,6 +232,93 @@ describe('App (create flow)', () => {
 
     expect(await screen.findByText('Tap the board to mark at least one hold.')).toBeInTheDocument();
     expect(createProblem).not.toHaveBeenCalled();
+  });
+});
+
+describe('App (hold highlighting)', () => {
+  it('highlights a tapped hold instead of a circle when segmentation succeeds, and saves the composited mask', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    loadSegmenter.mockResolvedValue({ device: 'webgpu' });
+    computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
+    const mask = { width: 400, height: 200, data: new Uint8Array(400 * 200) };
+    maskAtPoint.mockResolvedValue(mask);
+    const blob = new Blob(['mask'], { type: 'image/png' });
+    compositeMaskBlob.mockResolvedValue(blob);
+    createProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: '', setter: '', notes: '',
+      holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+    });
+    uploadProblemMask.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: '', setter: '', notes: '',
+      holds: [{ x: 0.5, y: 0.5, type: 'hold' }], mask_url: 'https://cdn.example/board-photos/masks/p1.png',
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200,
+    });
+
+    await waitFor(() => expect(computeEmbedding).toHaveBeenCalled());
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 100 });
+
+    await waitFor(() => expect(screen.getByTestId('hold-highlight')).toBeInTheDocument());
+    expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
+
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Gaston Traverse');
+    await user.click(screen.getByText('Save problem'));
+
+    await waitFor(() => expect(uploadProblemMask).toHaveBeenCalledWith('p1', blob));
+  });
+
+  it('falls back to circle markers and skips the mask upload when segmentation is unavailable', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    createProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: '', setter: '', notes: '',
+      holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200,
+    });
+
+    await waitFor(() => expect(loadSegmenter).toHaveBeenCalled());
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 100 });
+
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+    expect(screen.queryByTestId('hold-highlight')).not.toBeInTheDocument();
+
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Gaston Traverse');
+    await user.click(screen.getByText('Save problem'));
+
+    await waitFor(() => expect(createProblem).toHaveBeenCalled());
+    expect(uploadProblemMask).not.toHaveBeenCalled();
+  });
+
+  it("shows a saved problem's composited highlight instead of circle markers in the detail view", async () => {
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+        mask_url: 'https://cdn.example/board-photos/masks/p1.png',
+      },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    const highlight = await screen.findByTestId('hold-highlight');
+    expect(highlight).toHaveAttribute('src', 'https://cdn.example/board-photos/masks/p1.png');
+    expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
   });
 });
 

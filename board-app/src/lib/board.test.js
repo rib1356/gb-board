@@ -9,6 +9,7 @@ import {
   getOrCreateBoard,
   listProblems,
   uploadBoardPhoto,
+  uploadProblemMask,
   createProblem,
   deleteProblem,
   rateProblem,
@@ -230,5 +231,34 @@ describe('uploadBoardPhoto', () => {
       })
     );
     expect(result).toEqual({ id: 'b1', photo_url: 'stored-url' });
+  });
+});
+
+describe('uploadProblemMask', () => {
+  it('uploads the mask blob then stores the public url on the problem', async () => {
+    const storageBuilder = {
+      upload: vi.fn(() => Promise.resolve({ error: null })),
+      getPublicUrl: vi.fn(() => ({
+        data: { publicUrl: 'https://cdn.example/board-photos/masks/p1.png' },
+      })),
+    };
+    mocks.supabase.storage.from.mockReturnValue(storageBuilder);
+    const updateChain = chain({ data: { id: 'p1', mask_url: 'stored-url' }, error: null });
+    mocks.supabase.from.mockReturnValue(updateChain);
+
+    const blob = new Blob(['fake'], { type: 'image/png' });
+    const result = await uploadProblemMask('p1', blob);
+
+    expect(mocks.supabase.storage.from).toHaveBeenCalledWith('board-photos');
+    expect(storageBuilder.upload).toHaveBeenCalledWith('masks/p1.png', blob, {
+      upsert: true,
+      contentType: 'image/png',
+    });
+    expect(updateChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mask_url: expect.stringMatching(/^https:\/\/cdn\.example\/board-photos\/masks\/p1\.png\?t=\d+$/),
+      })
+    );
+    expect(result).toEqual({ id: 'p1', mask_url: 'stored-url' });
   });
 });

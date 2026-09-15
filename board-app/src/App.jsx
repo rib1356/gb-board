@@ -1,9 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Undo2, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2 } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft } from './lib/holds';
 import { GRADES } from './lib/grades';
+
+// Dynamically imported so the segmentation library (and its model weights)
+// only load once someone actually opens "New problem" -- most visits are
+// just browsing existing problems, and this is the biggest chunk in the
+// bundle by far.
+const loadSegmentModule = () => import('./lib/segment');
 
 const HOLD_COLORS = {
   start: '#5C8A66',
@@ -44,6 +50,17 @@ function ChalkRing({ x, y, color, label, size = 34 }) {
         }}>{label}</div>
       ) : null}
     </div>
+  );
+}
+
+function HoldHighlight({ src }) {
+  return (
+    <img
+      data-testid="hold-highlight"
+      src={src}
+      alt=""
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+    />
   );
 }
 
@@ -127,6 +144,39 @@ export default function App() {
   const [loggingTick, setLoggingTick] = useState(false);
 
   const imgWrapRef = useRef(null);
+  const [segmentModule, setSegmentModule] = useState(null);
+  const segmenterRef = useRef(null);
+  const embeddingRef = useRef(null);
+
+  useEffect(() => {
+    if (view !== 'new' || editingId || !board?.photo_url) return;
+    let cancelled = false;
+    let mod;
+    segmenterRef.current = null;
+    embeddingRef.current = null;
+    loadSegmentModule()
+      .then((loaded) => {
+        if (cancelled) return undefined;
+        mod = loaded;
+        return mod.loadSegmenter();
+      })
+      .then((seg) => {
+        if (cancelled || !seg) return undefined;
+        segmenterRef.current = seg;
+        return mod.computeEmbedding(seg, board.photo_url);
+      })
+      .then((emb) => {
+        if (cancelled || !emb) return;
+        embeddingRef.current = emb;
+        setSegmentModule(mod);
+      })
+      .catch(() => {
+        // No highlight support this session -- taps fall back to circle markers.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, editingId, board?.photo_url]);
 
   useEffect(() => {
     (async () => {
@@ -182,7 +232,24 @@ export default function App() {
     if (view !== 'new' || editingId) return;
     const rect = imgWrapRef.current.getBoundingClientRect();
     const point = pointFromClientCoords(rect, e.clientX, e.clientY);
-    setDraftHolds((prev) => [...prev, { ...point, type: placeType }]);
+
+    let insertedIndex;
+    setDraftHolds((prev) => {
+      insertedIndex = prev.length;
+      return [...prev, { ...point, type: placeType }];
+    });
+
+    const segmenter = segmenterRef.current;
+    const embedding = embeddingRef.current;
+    if (segmenter && embedding && segmentModule) {
+      segmentModule.maskAtPoint(segmenter, embedding, point.x, point.y)
+        .then((mask) => {
+          setDraftHolds((prev) => prev.map((h, i) => (i === insertedIndex ? { ...h, _mask: mask } : h)));
+        })
+        .catch(() => {
+          // This hold just keeps its circle marker.
+        });
+    }
   };
 
   const startNewProblem = () => {
@@ -210,7 +277,24 @@ export default function App() {
         const updated = await updateProblem(editingId, { name, grade, setter, notes });
         setProblems((prev) => prev.map((p) => (p.id === editingId ? updated : p)));
       } else {
-        const problem = await createProblem(board.id, { name, grade, setter, notes, holds: draftHolds, photoUrl: board.photo_url });
+        const cleanHolds = draftHolds.map(({ x, y, type }) => ({ x, y, type }));
+        let problem = await createProblem(board.id, { name, grade, setter, notes, holds: cleanHolds, photoUrl: board.photo_url });
+
+        const allMasked = draftHolds.length > 0 && draftHolds.every((h) => h._mask);
+        if (allMasked) {
+          try {
+            const blob = await segmentModule.compositeMaskBlob(
+              draftHolds.map((h) => ({ mask: h._mask, color: HOLD_COLORS[h.type] })),
+              embeddingRef.current.width,
+              embeddingRef.current.height
+            );
+            problem = await uploadProblemMask(problem.id, blob);
+          } catch (maskErr) {
+            console.error(maskErr);
+            // Problem is already saved -- it just falls back to circle markers.
+          }
+        }
+
         setProblems((prev) => [problem, ...prev]);
       }
       setView('list');
@@ -304,6 +388,7 @@ export default function App() {
   const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
   const lockedProblem = (view === 'detail' || editingId) ? selected : null;
   const displayPhotoUrl = lockedProblem?.photo_url || board?.photo_url;
+  const lockedMaskUrl = lockedProblem?.mask_url;
 
   if (loading) {
     return (
@@ -356,9 +441,17 @@ export default function App() {
               <span style={{ fontSize: 13.5 }}>No board photo yet</span>
             </div>
           )}
-          {displayHolds.map((h, i) => (
-            <ChalkRing key={i} x={h.x} y={h.y} color={HOLD_COLORS[h.type]} label={h.type === 'hold' ? String(i + 1) : ''} />
-          ))}
+          {lockedMaskUrl ? (
+            <HoldHighlight src={lockedMaskUrl} />
+          ) : (
+            displayHolds.map((h, i) => (
+              h._mask ? (
+                <HoldHighlight key={i} src={segmentModule.maskToDataUrl(h._mask, HOLD_COLORS[h.type], 0.55)} />
+              ) : (
+                <ChalkRing key={i} x={h.x} y={h.y} color={HOLD_COLORS[h.type]} label={h.type === 'hold' ? String(i + 1) : ''} />
+              )
+            ))
+          )}
         </div>
 
         {view === 'list' && (

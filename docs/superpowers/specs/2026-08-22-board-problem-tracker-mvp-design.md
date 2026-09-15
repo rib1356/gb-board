@@ -86,6 +86,7 @@ create table problems (
   holds jsonb not null, -- [{x: 0.42, y: 0.61, type: "start"|"hold"|"finish"}, ...]
   rating smallint check (rating between 1 and 5),
   ticked_at timestamptz,
+  mask_url text,
   created_at timestamptz default now(),
   deleted_at timestamptz
 );
@@ -101,6 +102,21 @@ because Phase 1 has exactly one user (no accounts) — it means "have I
 done this," not a per-person log; a per-person tick log with real
 accounts is a bigger, separate feature to design later if/when other
 people need their own logins.
+
+`mask_url` (added post-MVP, ahead of first schema run) points at a
+per-problem highlight image in the `board-photos` bucket
+(`masks/<problem-id>.png`) — a flattened, tinted-by-hold-type mask
+covering every hold in the problem, generated client-side by tapping
+the board photo through a small segmentation model (SlimSAM, run via
+`@huggingface/transformers` with WebGPU). It's uploaded once, right
+after `createProblem` succeeds, replacing the dashed chalk-ring
+markers for that problem's detail/edit view. Nullable and best-effort:
+if segmentation isn't available on the creator's device (no WebGPU/WASM
+support, slow network) or the upload fails, the problem still saves
+fine and just falls back to chalk-ring markers per hold — same as any
+problem created before this existed. No new bucket or RLS policy is
+needed; the existing `board-photos` policies already cover any path
+within that bucket.
 
 Row Level Security stays **disabled** on both tables (Supabase's
 default for SQL-editor-created tables) so the anon key can read/write
