@@ -426,6 +426,19 @@ describe('App (hold highlighting)', () => {
     expect(screen.getByText(/no webgpu/i)).toBeInTheDocument();
   });
 
+  it('shows a debug notice when a previous attempt left an unfinished step (a crash signature)', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    localStorage.setItem(
+      'board-app:segmentDebugStep',
+      JSON.stringify({ step: 'loadModel:wasm:model-ready', ts: Date.now() - 5000 })
+    );
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+
+    expect(await screen.findByText(/loadModel:wasm:model-ready/)).toBeInTheDocument();
+  });
+
   it('shows the loading indicator again for a later editing session, even though highlight mode already loaded once', async () => {
     listProblems.mockResolvedValue([
       { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [{ x: 0.2, y: 0.3, type: 'start' }] },

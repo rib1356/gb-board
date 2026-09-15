@@ -1,4 +1,5 @@
 import { SamModel, AutoProcessor, RawImage, Tensor } from '@huggingface/transformers';
+import { recordSegmentStep } from './segmentDebug';
 
 const MODEL_ID = 'Xenova/slimsam-77-uniform';
 
@@ -16,8 +17,11 @@ let segmenterPromise = null;
 const DTYPE_BY_DEVICE = { webgpu: 'fp16', wasm: 'q8' };
 
 async function loadModel(device) {
+  recordSegmentStep(`loadModel:${device}:start`);
   const model = await SamModel.from_pretrained(MODEL_ID, { dtype: DTYPE_BY_DEVICE[device], device });
+  recordSegmentStep(`loadModel:${device}:model-ready`);
   const processor = await AutoProcessor.from_pretrained(MODEL_ID);
+  recordSegmentStep(`loadModel:${device}:processor-ready`);
   return { model, processor, device };
 }
 
@@ -42,6 +46,7 @@ export function isWebGpuUnreliable(userAgent) {
 // skips straight to wasm on WebKit, see isWebGpuUnreliable above).
 export function loadSegmenter() {
   if (!segmenterPromise) {
+    recordSegmentStep('loadSegmenter:start');
     segmenterPromise = isWebGpuUnreliable(navigator.userAgent)
       ? loadModel('wasm')
       : loadModel('webgpu').catch(() => loadModel('wasm'));
@@ -52,9 +57,13 @@ export function loadSegmenter() {
 // Runs the (expensive, ~1-3s) image encoder once per photo. Everything after
 // this is a cheap per-point decode against the cached embeddings.
 export async function computeEmbedding(segmenter, photoUrl) {
+  recordSegmentStep('computeEmbedding:start');
   const image = await RawImage.fromURL(photoUrl);
+  recordSegmentStep(`computeEmbedding:image-loaded:${image.width}x${image.height}`);
   const imageProcessed = await segmenter.processor(image);
+  recordSegmentStep('computeEmbedding:processed');
   const imageEmbeddings = await segmenter.model.get_image_embeddings(imageProcessed);
+  recordSegmentStep('computeEmbedding:embeddings-done');
   return { imageEmbeddings, imageProcessed, width: image.width, height: image.height };
 }
 
