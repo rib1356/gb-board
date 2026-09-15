@@ -121,7 +121,7 @@ function hexToRgb(hex) {
 // A single-pixel-wide outline follows SAM's rough mask edges exactly, which
 // reads as jagged/squiggly. Widening the border to a band a few pixels thick
 // makes that far less noticeable without smoothing the mask itself.
-const BORDER_THICKNESS_PX = 6;
+const BORDER_THICKNESS_PX = 4;
 
 function isBoundaryPixel(mask, x, y, thickness = BORDER_THICKNESS_PX) {
   const { width, height, data } = mask;

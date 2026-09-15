@@ -50,6 +50,17 @@ describe('maskToRgba', () => {
     expect(Array.from(result.slice(nearEdgeOffset, nearEdgeOffset + 4))).toEqual([98, 38, 19, 255]);
   });
 
+  it('keeps the border band from getting too thick', () => {
+    const mask = filledSquare(20);
+    const result = maskToRgba(mask, '#D9552B', 0.5);
+
+    // (5,5) is close enough to the (0,0) corner to have been swallowed by an
+    // overly generous border band -- it should read as fill, not border.
+    const index = 5 * 20 + 5;
+    const offset = index * 4;
+    expect(Array.from(result.slice(offset, offset + 4))).toEqual([217, 85, 43, 128]);
+  });
+
   it('leaves unmasked pixels transparent', () => {
     const mask = { width: 2, height: 1, data: [1, 0] };
     const result = maskToRgba(mask, '#D9552B', 0.5, 1);
