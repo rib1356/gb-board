@@ -14,7 +14,7 @@ const loadSegmentModule = () => import('./lib/segment');
 const HOLD_COLORS = {
   start: '#5C8A66',
   hold: '#22C7C0',
-  foot: '#EDEAE3',
+  foot: '#9B5DE5',
   finish: '#D9552B',
 };
 
@@ -130,7 +130,7 @@ export default function App() {
   const [error, setError] = useState('');
 
   const [draftHolds, setDraftHolds] = useState([]);
-  const [placeType, setPlaceType] = useState('hold');
+  const [placeType, setPlaceType] = useState('start');
   const [name, setName] = useState('');
   const [grade, setGrade] = useState('');
   const [setter, setSetter] = useState('');
@@ -298,7 +298,7 @@ export default function App() {
   };
 
   const startNewProblem = () => {
-    setDraftHolds([]); setName(''); setGrade(''); setSetter(''); setNotes(''); setPlaceType('hold');
+    setDraftHolds([]); setName(''); setGrade(''); setSetter(''); setNotes(''); setPlaceType('start');
     setEditingId(null);
     setError('');
     setView('new');

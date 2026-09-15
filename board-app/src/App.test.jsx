@@ -138,7 +138,7 @@ describe('App (create flow)', () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     createProblem.mockResolvedValue({
       id: 'p1', name: 'Gaston Traverse', grade: '', setter: '', notes: '',
-      holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+      holds: [{ x: 0.5, y: 0.5, type: 'start' }],
     });
     render(<App />);
     const user = userEvent.setup();
@@ -156,7 +156,7 @@ describe('App (create flow)', () => {
     await waitFor(() =>
       expect(createProblem).toHaveBeenCalledWith('b1', {
         name: 'Gaston Traverse', grade: '', setter: '', notes: '',
-        holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+        holds: [{ x: 0.5, y: 0.5, type: 'start' }],
         photoUrl: 'https://cdn.example/b1.jpg',
       })
     );
@@ -167,7 +167,7 @@ describe('App (create flow)', () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     createProblem.mockResolvedValue({
       id: 'p1', name: 'Gaston Traverse', grade: 'V4', setter: '', notes: '',
-      holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+      holds: [{ x: 0.5, y: 0.5, type: 'start' }],
     });
     render(<App />);
     const user = userEvent.setup();
@@ -186,7 +186,7 @@ describe('App (create flow)', () => {
     await waitFor(() =>
       expect(createProblem).toHaveBeenCalledWith('b1', {
         name: 'Gaston Traverse', grade: 'V4', setter: '', notes: '',
-        holds: [{ x: 0.5, y: 0.5, type: 'hold' }],
+        holds: [{ x: 0.5, y: 0.5, type: 'start' }],
         photoUrl: 'https://cdn.example/b1.jpg',
       })
     );
