@@ -237,6 +237,19 @@ describe('App (create flow)', () => {
     expect(await screen.findByText('Tap the board to mark at least one hold.')).toBeInTheDocument();
     expect(createProblem).not.toHaveBeenCalled();
   });
+
+  it('prefills the setter field with the current climber on a new problem', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByText('New problem'));
+
+    expect(screen.getByPlaceholderText('Your name')).toHaveValue('Rob');
+  });
 });
 
 describe('App (hold highlighting)', () => {
@@ -715,14 +728,30 @@ describe('App (tick log flow)', () => {
     expect(await screen.findByText('Not sent yet')).toBeInTheDocument();
   });
 
-  it('logs a send from the detail view', async () => {
+  it('gates logging a send behind selecting a climber first', async () => {
     listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null },
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: '', notes: '', holds: [], send_count: 0, last_sent_on: null },
     ]);
-    createTick.mockResolvedValue({ id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy' });
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    expect(await screen.findByText('Select who you are to log a send')).toBeInTheDocument();
+    expect(screen.queryByText('Log a send')).not.toBeInTheDocument();
+  });
+
+  it('logs a send attributed to the current climber', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: '', notes: '', holds: [], send_count: 0, last_sent_on: null },
+    ]);
+    createTick.mockResolvedValue({ id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy', sent_by: 'Rob' });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText('You: Rob');
     await user.click(await screen.findByText('Gaston Traverse'));
     await user.click(await screen.findByText('Log a send'));
     fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-22' } });
@@ -730,9 +759,57 @@ describe('App (tick log flow)', () => {
     await user.click(screen.getByText('Save entry'));
 
     await waitFor(() =>
-      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: 'felt easy' })
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: 'felt easy', sentBy: 'Rob' })
     );
     expect(await screen.findByText('Sent ×1')).toBeInTheDocument();
+    expect(screen.getByText('Rob · 22 Aug 2026')).toBeInTheDocument();
+  });
+
+  it('shows a log entry with no name when sent_by is absent', async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: '', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
+    ]);
+    listTicks.mockResolvedValue([{ id: 't1', problem_id: 'p1', sent_on: '2026-08-01', notes: '' }]);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    expect(await screen.findByText('1 Aug 2026')).toBeInTheDocument();
+  });
+
+  it('attributes sends correctly after switching to a different climber', async () => {
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Alex' }]);
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: '', notes: '', holds: [], send_count: 0, last_sent_on: null },
+    ]);
+    createTick
+      .mockResolvedValueOnce({ id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob' })
+      .mockResolvedValueOnce({ id: 't2', problem_id: 'p1', sent_on: '2026-08-23', notes: '', sent_by: 'Alex' });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByText("Who's climbing?"));
+    await user.click(await screen.findByText('Rob'));
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Log a send'));
+    fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-22' } });
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() =>
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob' })
+    );
+
+    await user.click(screen.getByText('You: Rob'));
+    await user.click(await screen.findByText('Alex'));
+    await user.click(await screen.findByText('Log a send'));
+    fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-23' } });
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() =>
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-23', notes: '', sentBy: 'Alex' })
+    );
+
+    expect(screen.getByText('Rob · 22 Aug 2026')).toBeInTheDocument();
+    expect(screen.getByText('Alex · 23 Aug 2026')).toBeInTheDocument();
   });
 
   it('marks the earliest logged entry as the first send and later ones as repeats', async () => {

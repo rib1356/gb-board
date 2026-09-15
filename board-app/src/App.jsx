@@ -383,7 +383,7 @@ export default function App() {
   };
 
   const startNewProblem = () => {
-    setDraftHolds([]); setName(''); setGrade(''); setSetter(''); setNotes(''); setPlaceType('start');
+    setDraftHolds([]); setName(''); setGrade(''); setSetter(currentClimber?.name || ''); setNotes(''); setPlaceType('start');
     setEditingId(null);
     setError('');
     setView('new');
@@ -475,7 +475,7 @@ export default function App() {
     setLoggingTick(true);
     setError('');
     try {
-      const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes });
+      const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes, sentBy: currentClimber?.name });
       setTicks((prev) => [created, ...prev]);
       setProblems((prev) => prev.map((p) => (p.id === problemId ? {
         ...p,
@@ -764,7 +764,15 @@ export default function App() {
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
 
             <div style={{ marginTop: 16 }}>
-              {!showLogForm ? (
+              {!currentClimber ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, color: '#8b8d91' }}>Select who you are to log a send</span>
+                  <button onClick={() => setShowClimberPanel(true)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                    color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                  }}>Pick a climber</button>
+                </div>
+              ) : !showLogForm ? (
                 <button onClick={startLogTick} style={{
                   display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
                   color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
@@ -805,7 +813,9 @@ export default function App() {
                       }}>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600 }}>{formatSendDate(t.sent_on)}</span>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>
+                              {t.sent_by ? `${t.sent_by} · ${formatSendDate(t.sent_on)}` : formatSendDate(t.sent_on)}
+                            </span>
                             <span style={{
                               fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
                               color: t.id === firstSendId ? '#5C8A66' : '#8b8d91',
