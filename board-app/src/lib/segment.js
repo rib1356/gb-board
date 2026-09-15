@@ -1,4 +1,4 @@
-import { SamModel, AutoProcessor, RawImage } from '@huggingface/transformers';
+import { SamModel, AutoProcessor, RawImage, Tensor } from '@huggingface/transformers';
 
 const MODEL_ID = 'Xenova/slimsam-77-uniform';
 
@@ -32,32 +32,46 @@ export async function computeEmbedding(segmenter, photoUrl) {
 // Decodes a mask for a single tapped point (fractions 0-1, same space as a
 // hold's stored x/y) against embeddings already computed for this photo.
 export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
-  const { x, y } = fracToPixel(xFrac, yFrac, embedding.width, embedding.height);
+  // The point prompt must be in the processor's reshaped/padded input space
+  // (not the original photo's pixel space) -- reshaped_input_sizes is [h, w].
+  const [reshapedHeight, reshapedWidth] = embedding.imageProcessed.reshaped_input_sizes[0];
+  const { x, y } = fracToPixel(xFrac, yFrac, reshapedWidth, reshapedHeight);
+
+  // input_points/input_labels must be real Tensor instances -- plain nested
+  // arrays are silently treated as absent by the model's input validator.
+  const input_points = new Tensor('float32', [x, y], [1, 1, 1, 2]);
+  const input_labels = new Tensor('int64', [1n], [1, 1, 1]);
 
   const { pred_masks, iou_scores } = await segmenter.model({
     ...embedding.imageEmbeddings,
-    input_points: [[[[x, y]]]],
-    input_labels: [[[1]]],
+    input_points,
+    input_labels,
   });
 
-  const masks = await segmenter.processor.post_process_masks(
+  const masksPerImage = await segmenter.processor.post_process_masks(
     pred_masks,
     embedding.imageProcessed.original_sizes,
     embedding.imageProcessed.reshaped_input_sizes
   );
 
-  const [maskTensor] = masks;
+  // SAM returns 3 candidate masks per point; post_process_masks comes back
+  // channel-interleaved (mask.data[numMasks * pixel + maskIndex]) once read
+  // through RawImage.fromTensor, so the highest-IoU candidate is picked per
+  // pixel that way rather than by slicing a contiguous block.
+  const mask = RawImage.fromTensor(masksPerImage[0][0]);
   const scores = iou_scores.data;
+  const numMasks = scores.length;
   let bestIndex = 0;
-  for (let i = 1; i < scores.length; i++) {
+  for (let i = 1; i < numMasks; i++) {
     if (scores[i] > scores[bestIndex]) bestIndex = i;
   }
 
-  const [, , height, width] = maskTensor.dims;
-  const stride = height * width;
-  const data = maskTensor.data.slice(bestIndex * stride, (bestIndex + 1) * stride);
+  const data = new Uint8Array(mask.width * mask.height);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = mask.data[numMasks * i + bestIndex] === 1 ? 1 : 0;
+  }
 
-  return { width, height, data };
+  return { width: mask.width, height: mask.height, data };
 }
 
 // DOM-dependent glue (canvas) -- not unit tested here, same as image.js's

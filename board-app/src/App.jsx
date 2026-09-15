@@ -170,8 +170,9 @@ export default function App() {
         embeddingRef.current = emb;
         setSegmentModule(mod);
       })
-      .catch(() => {
+      .catch((err) => {
         // No highlight support this session -- taps fall back to circle markers.
+        console.error('Highlight setup failed:', err);
       });
     return () => {
       cancelled = true;
@@ -246,8 +247,9 @@ export default function App() {
         .then((mask) => {
           setDraftHolds((prev) => prev.map((h, i) => (i === insertedIndex ? { ...h, _mask: mask } : h)));
         })
-        .catch(() => {
+        .catch((err) => {
           // This hold just keeps its circle marker.
+          console.error('Highlight decode failed for this hold:', err);
         });
     }
   };
