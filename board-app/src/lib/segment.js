@@ -76,7 +76,7 @@ export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
 
 // DOM-dependent glue (canvas) -- not unit tested here, same as image.js's
 // resizeFileToBlob. Verified by manual QA in a real browser.
-export function maskToDataUrl(mask, hexColor, alpha = 0.55) {
+export function maskToDataUrl(mask, hexColor, alpha = DEFAULT_FILL_ALPHA) {
   const canvas = document.createElement('canvas');
   canvas.width = mask.width;
   canvas.height = mask.height;
@@ -94,7 +94,7 @@ export function compositeMaskBlob(entries, width, height) {
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   for (const { mask, color } of entries) {
-    const rgba = maskToRgba(mask, color, 0.55);
+    const rgba = maskToRgba(mask, color);
     ctx.putImageData(new ImageData(rgba, mask.width, mask.height), 0, 0);
   }
   return new Promise((resolve, reject) => {
@@ -118,18 +118,48 @@ function hexToRgb(hex) {
   };
 }
 
-export function maskToRgba(mask, hexColor, alpha) {
-  const { r, g, b } = hexToRgb(hexColor);
-  const a = Math.round(alpha * 255);
+function isBoundaryPixel(mask, x, y) {
+  const { width, height, data } = mask;
+  const up = y === 0 || !data[(y - 1) * width + x];
+  const down = y === height - 1 || !data[(y + 1) * width + x];
+  const left = x === 0 || !data[y * width + (x - 1)];
+  const right = x === width - 1 || !data[y * width + (x + 1)];
+  return up || down || left || right;
+}
+
+export const DEFAULT_FILL_ALPHA = 0.65;
+export const DEFAULT_BORDER_COLOR = '#17181A';
+export const DEFAULT_BORDER_ALPHA = 0.9;
+
+// A dark border around the mask's boundary keeps it visible regardless of
+// fill color -- a pale fill (e.g. the white "hold" type) can otherwise
+// disappear against a light board.
+export function maskToRgba(
+  mask,
+  hexColor,
+  alpha = DEFAULT_FILL_ALPHA,
+  borderColor = DEFAULT_BORDER_COLOR,
+  borderAlpha = DEFAULT_BORDER_ALPHA
+) {
+  const fill = hexToRgb(hexColor);
+  const border = hexToRgb(borderColor);
+  const fillA = Math.round(alpha * 255);
+  const borderA = Math.round(borderAlpha * 255);
   const out = new Uint8ClampedArray(mask.width * mask.height * 4);
 
-  for (let i = 0; i < mask.data.length; i++) {
-    if (!mask.data[i]) continue;
-    const offset = i * 4;
-    out[offset] = r;
-    out[offset + 1] = g;
-    out[offset + 2] = b;
-    out[offset + 3] = a;
+  for (let y = 0; y < mask.height; y++) {
+    for (let x = 0; x < mask.width; x++) {
+      const i = y * mask.width + x;
+      if (!mask.data[i]) continue;
+      const offset = i * 4;
+      const { r, g, b, a } = isBoundaryPixel(mask, x, y)
+        ? { r: border.r, g: border.g, b: border.b, a: borderA }
+        : { r: fill.r, g: fill.g, b: fill.b, a: fillA };
+      out[offset] = r;
+      out[offset + 1] = g;
+      out[offset + 2] = b;
+      out[offset + 3] = a;
+    }
   }
 
   return out;

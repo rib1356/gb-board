@@ -145,6 +145,7 @@ export default function App() {
 
   const imgWrapRef = useRef(null);
   const [segmentModule, setSegmentModule] = useState(null);
+  const [segmentUnavailable, setSegmentUnavailable] = useState(false);
   const segmenterRef = useRef(null);
   const embeddingRef = useRef(null);
 
@@ -172,6 +173,10 @@ export default function App() {
       })
       .catch((err) => {
         // No highlight support this session -- taps fall back to circle markers.
+        // (loadSegmenter's result is cached, so this stays true for the rest
+        // of the page session rather than needing to be reset on retry.)
+        if (cancelled) return;
+        setSegmentUnavailable(true);
         console.error('Highlight setup failed:', err);
       });
     return () => {
@@ -448,7 +453,7 @@ export default function App() {
           ) : (
             displayHolds.map((h, i) => (
               h._mask ? (
-                <HoldHighlight key={i} src={segmentModule.maskToDataUrl(h._mask, HOLD_COLORS[h.type], 0.55)} />
+                <HoldHighlight key={i} src={segmentModule.maskToDataUrl(h._mask, HOLD_COLORS[h.type])} />
               ) : (
                 <ChalkRing key={i} x={h.x} y={h.y} color={HOLD_COLORS[h.type]} label={h.type === 'hold' ? String(i + 1) : ''} />
               )
@@ -503,6 +508,16 @@ export default function App() {
                   }}><Undo2 size={16} style={{ margin: '0 auto' }} /></button>
                 </div>
                 <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>Pick a hold type, then tap the board photo above to place it.</p>
+                {!segmentModule && !segmentUnavailable && (
+                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
+                    <Loader2 size={13} className="animate-spin" /> Preparing highlight mode…
+                  </p>
+                )}
+                {segmentUnavailable && (
+                  <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
+                    Highlight mode unavailable on this device — holds will show as markers instead.
+                  </p>
+                )}
               </>
             )}
 

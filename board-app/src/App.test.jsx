@@ -320,6 +320,35 @@ describe('App (hold highlighting)', () => {
     expect(highlight).toHaveAttribute('src', 'https://cdn.example/board-photos/masks/p1.png');
     expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
   });
+
+  it('shows a loading indicator while highlight mode is preparing, then hides it once ready', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    let resolveLoad;
+    loadSegmenter.mockReturnValue(new Promise((resolve) => { resolveLoad = resolve; }));
+    computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+
+    expect(await screen.findByText(/Preparing highlight/i)).toBeInTheDocument();
+
+    resolveLoad({ device: 'webgpu' });
+
+    await waitFor(() => expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument());
+  });
+
+  it('shows an unavailable notice instead of the loading indicator when highlight mode fails to load', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    loadSegmenter.mockRejectedValue(new Error('no webgpu'));
+
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+
+    expect(await screen.findByText(/Highlight mode unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('App (delete flow)', () => {
