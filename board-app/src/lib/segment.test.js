@@ -119,7 +119,7 @@ describe('maskToRgba', () => {
     const mask = filledSquare(20);
     const result = maskToRgba(mask, '#D9552B', 0.5, 1);
 
-    const nearEdgeIndex = 3 * 20 + 3; // (3,3) -- a few px in from the (0,0) corner
+    const nearEdgeIndex = 2 * 20 + 2; // (2,2) -- a couple px in from the (0,0) corner
     const nearEdgeOffset = nearEdgeIndex * 4;
     expect(Array.from(result.slice(nearEdgeOffset, nearEdgeOffset + 4))).toEqual([98, 38, 19, 255]);
   });

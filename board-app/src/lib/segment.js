@@ -241,7 +241,7 @@ function hexToRgb(hex) {
 // holds lost almost all their visible fill color to an over-thick border.
 // scaledBorderThickness() below restores the original proportion at any
 // mask resolution.
-const BORDER_THICKNESS_PX = 4;
+const BORDER_THICKNESS_PX = 3;
 const BORDER_REFERENCE_EDGE = 1400; // resizeFileToBlob's maxWidth -- the resolution this was tuned at.
 
 export function scaledBorderThickness(mask, reference = BORDER_REFERENCE_EDGE, base = BORDER_THICKNESS_PX) {
