@@ -4,18 +4,47 @@ const MODEL_ID = 'Xenova/slimsam-77-uniform';
 
 let segmenterPromise = null;
 
+// fp16 is well-supported natively on GPU (webgpu) but onnxruntime-web's wasm/CPU
+// path has broken fp16 support for this model -- session creation throws on
+// internal precision-cast fusion nodes, and even with that fusion pass
+// disabled, a separate fp16 type-mismatch error follows. q8 (int8 quantized,
+// transformers.js's own documented default dtype for the wasm device) avoids
+// this entirely -- verified directly: the full encode-then-decode pipeline
+// produces a real mask with q8 on wasm, where fp16 never got past session
+// creation. It also downloads a smaller model, which helps on memory-
+// constrained mobile hardware regardless of the fp16 bug.
+const DTYPE_BY_DEVICE = { webgpu: 'fp16', wasm: 'q8' };
+
 async function loadModel(device) {
-  const model = await SamModel.from_pretrained(MODEL_ID, { dtype: 'fp16', device });
+  const model = await SamModel.from_pretrained(MODEL_ID, { dtype: DTYPE_BY_DEVICE[device], device });
   const processor = await AutoProcessor.from_pretrained(MODEL_ID);
   return { model, processor, device };
 }
 
+// onnxruntime-web's WebGPU backend fails to register on WebKit -- the engine
+// every iOS browser is required to embed (Safari, Chrome, Firefox all run on
+// WebKit on iOS, Apple-mandated) -- even though navigator.gpu itself reports
+// as available there (confirmed directly: requestAdapter() resolves fine,
+// but onnxruntime-web's own EP registration still throws). Trying webgpu
+// anyway means paying for a full, wasted onnxruntime-web WASM-runtime
+// initialization on every load before the wasm fallback gets its turn --
+// exactly the kind of memory spike that's the leading suspect for the tab
+// getting killed and silently reloaded on constrained mobile hardware.
+export function isWebGpuUnreliable(userAgent) {
+  const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+  const isDesktopSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
+  return isIOS || isDesktopSafari;
+}
+
 // Loads once per page session (the encoder/decoder weights are cached by the
 // browser after the first successful load). Tries WebGPU first for fast
-// per-tap decoding; falls back to wasm on devices without WebGPU support.
+// per-tap decoding; falls back to wasm on devices without WebGPU support (or
+// skips straight to wasm on WebKit, see isWebGpuUnreliable above).
 export function loadSegmenter() {
   if (!segmenterPromise) {
-    segmenterPromise = loadModel('webgpu').catch(() => loadModel('wasm'));
+    segmenterPromise = isWebGpuUnreliable(navigator.userAgent)
+      ? loadModel('wasm')
+      : loadModel('webgpu').catch(() => loadModel('wasm'));
   }
   return segmenterPromise;
 }

@@ -1,5 +1,42 @@
 import { describe, it, expect } from 'vitest';
-import { fracToPixel, maskToRgba } from './segment';
+import { fracToPixel, maskToRgba, isWebGpuUnreliable } from './segment';
+
+describe('isWebGpuUnreliable', () => {
+  it('flags iPhone Safari as unreliable', () => {
+    const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+    expect(isWebGpuUnreliable(ua)).toBe(true);
+  });
+
+  it('flags iPhone Firefox (FxiOS, still WebKit under the hood) as unreliable', () => {
+    const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/124.0 Mobile/15E148 Safari/605.1.15';
+    expect(isWebGpuUnreliable(ua)).toBe(true);
+  });
+
+  it('flags iPhone Chrome (CriOS, still WebKit under the hood) as unreliable', () => {
+    const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0.0.0 Mobile/15E148 Safari/604.1';
+    expect(isWebGpuUnreliable(ua)).toBe(true);
+  });
+
+  it('flags desktop Safari as unreliable', () => {
+    const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15';
+    expect(isWebGpuUnreliable(ua)).toBe(true);
+  });
+
+  it('does not flag desktop Chrome', () => {
+    const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    expect(isWebGpuUnreliable(ua)).toBe(false);
+  });
+
+  it('does not flag Android Chrome', () => {
+    const ua = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+    expect(isWebGpuUnreliable(ua)).toBe(false);
+  });
+
+  it('does not flag Android Firefox', () => {
+    const ua = 'Mozilla/5.0 (Android 14; Mobile; rv:125.0) Gecko/125.0 Firefox/125.0';
+    expect(isWebGpuUnreliable(ua)).toBe(false);
+  });
+});
 
 describe('fracToPixel', () => {
   it('converts the center fraction to the center pixel', () => {
