@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fracToPixel, maskToRgba, isWebGpuUnreliable } from './segment';
+import { fracToPixel, maskToRgba, isWebGpuUnreliable, capMaskTargetSize } from './segment';
 
 describe('isWebGpuUnreliable', () => {
   it('flags iPhone Safari as unreliable', () => {
@@ -35,6 +35,25 @@ describe('isWebGpuUnreliable', () => {
   it('does not flag Android Firefox', () => {
     const ua = 'Mozilla/5.0 (Android 14; Mobile; rv:125.0) Gecko/125.0 Firefox/125.0';
     expect(isWebGpuUnreliable(ua)).toBe(false);
+  });
+});
+
+describe('capMaskTargetSize', () => {
+  it('leaves a photo already within the cap unchanged', () => {
+    expect(capMaskTargetSize(480, 640, 640)).toEqual([480, 640]);
+  });
+
+  it('downscales a portrait photo, preserving aspect ratio', () => {
+    // 1400x1866 -> longest edge (height) capped to 640.
+    expect(capMaskTargetSize(1866, 1400, 640)).toEqual([640, 480]);
+  });
+
+  it('downscales a landscape photo, preserving aspect ratio', () => {
+    expect(capMaskTargetSize(1050, 1400, 640)).toEqual([480, 640]);
+  });
+
+  it('leaves a photo exactly at the cap unchanged', () => {
+    expect(capMaskTargetSize(640, 480, 640)).toEqual([640, 480]);
   });
 });
 

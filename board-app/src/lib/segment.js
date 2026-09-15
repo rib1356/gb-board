@@ -78,6 +78,7 @@ export function loadSegmenter() {
 // this is a cheap per-point decode against the cached embeddings.
 export async function computeEmbedding(segmenter, photoUrl) {
   recordSegmentStep('computeEmbedding:start');
+  tapCount = 0;
   const image = await RawImage.fromURL(photoUrl);
   recordSegmentStep(`computeEmbedding:image-loaded:${image.width}x${image.height}`);
   const imageProcessed = await segmenter.processor(image);
@@ -87,9 +88,39 @@ export async function computeEmbedding(segmenter, photoUrl) {
   return { imageEmbeddings, imageProcessed, width: image.width, height: image.height };
 }
 
+let tapCount = 0;
+
+// post_process_masks upsamples its output to whatever size it's told is the
+// "original" image -- by default the full board photo (up to 1400px wide,
+// per resizeFileToBlob). That's 3+ MB of retained Uint8Array PER HOLD, kept
+// in React state for the whole "new problem" session -- confirmed as the
+// cause of a real crash: it worked on the first several holds and then, on
+// *both* Safari and Firefox on iOS, died after placing "too many holds" (the
+// browser-specific WebKit-ceiling theory doesn't explain a crash that scales
+// with hold count on every browser). Capping the upsample target instead of
+// using the true photo resolution cuts every hold's retained memory by the
+// same factor, with no loss to segmentation accuracy -- the encoder still
+// ran at full 1024px internally; this only controls how big the final
+// (already-decided) binary mask gets blown up to.
+const MAX_MASK_EDGE = 640;
+
+export function capMaskTargetSize(height, width, maxEdge = MAX_MASK_EDGE) {
+  const longestEdge = Math.max(height, width);
+  if (longestEdge <= maxEdge) return [height, width];
+  const scale = maxEdge / longestEdge;
+  return [Math.round(height * scale), Math.round(width * scale)];
+}
+
 // Decodes a mask for a single tapped point (fractions 0-1, same space as a
 // hold's stored x/y) against embeddings already computed for this photo.
 export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
+  tapCount += 1;
+  // Captured once per call -- taps aren't awaited sequentially by the caller,
+  // so overlapping calls are common. Reading the shared `tapCount` at each
+  // step below (instead of this local snapshot) would let a later tap's
+  // progress overwrite an earlier in-flight tap's own breadcrumbs.
+  const tapIndex = tapCount;
+  recordSegmentStep(`maskAtPoint:${tapIndex}:start`);
   // The point prompt must be in the processor's reshaped/padded input space
   // (not the original photo's pixel space) -- reshaped_input_sizes is [h, w].
   const [reshapedHeight, reshapedWidth] = embedding.imageProcessed.reshaped_input_sizes[0];
@@ -105,12 +136,16 @@ export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
     input_points,
     input_labels,
   });
+  recordSegmentStep(`maskAtPoint:${tapIndex}:model-called`);
 
+  const [originalHeight, originalWidth] = embedding.imageProcessed.original_sizes[0];
+  const targetSize = capMaskTargetSize(originalHeight, originalWidth);
   const masksPerImage = await segmenter.processor.post_process_masks(
     pred_masks,
-    embedding.imageProcessed.original_sizes,
+    [targetSize],
     embedding.imageProcessed.reshaped_input_sizes
   );
+  recordSegmentStep(`maskAtPoint:${tapIndex}:post-processed`);
 
   // SAM returns 3 candidate masks per point; post_process_masks comes back
   // channel-interleaved (mask.data[numMasks * pixel + maskIndex]) once read
@@ -129,6 +164,7 @@ export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
     data[i] = mask.data[numMasks * i + bestIndex] === 1 ? 1 : 0;
   }
 
+  recordSegmentStep(`maskAtPoint:${tapIndex}:done`);
   return { width: mask.width, height: mask.height, data };
 }
 
@@ -162,7 +198,10 @@ export function compositeMaskBlob(entries, width, height) {
     const layerCtx = layer.getContext('2d');
     const rgba = maskToRgba(mask, color);
     layerCtx.putImageData(new ImageData(rgba, mask.width, mask.height), 0, 0);
-    ctx.drawImage(layer, 0, 0);
+    // Each mask is capped to MAX_MASK_EDGE (see maskAtPoint), smaller than
+    // the full-resolution save canvas -- drawImage's destination-size form
+    // scales it back up so the saved highlight still matches the photo.
+    ctx.drawImage(layer, 0, 0, width, height);
   }
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not create mask blob'))), 'image/png');
