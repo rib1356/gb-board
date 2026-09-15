@@ -94,8 +94,17 @@ export function compositeMaskBlob(entries, width, height) {
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   for (const { mask, color } of entries) {
+    // putImageData writes raw pixels -- including each mask's transparent
+    // background -- straight onto the canvas, wiping out any hold drawn
+    // there before it. Painting onto a throwaway layer first and compositing
+    // that with drawImage (which alpha-blends) keeps every hold visible.
+    const layer = document.createElement('canvas');
+    layer.width = mask.width;
+    layer.height = mask.height;
+    const layerCtx = layer.getContext('2d');
     const rgba = maskToRgba(mask, color);
-    ctx.putImageData(new ImageData(rgba, mask.width, mask.height), 0, 0);
+    layerCtx.putImageData(new ImageData(rgba, mask.width, mask.height), 0, 0);
+    ctx.drawImage(layer, 0, 0);
   }
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not create mask blob'))), 'image/png');
