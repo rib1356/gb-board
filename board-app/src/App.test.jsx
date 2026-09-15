@@ -802,6 +802,9 @@ describe('App (tick log flow)', () => {
     createTick
       .mockResolvedValueOnce({ id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob' })
       .mockResolvedValueOnce({ id: 't2', problem_id: 'p1', sent_on: '2026-08-23', notes: '', sent_by: 'Alex' });
+    listTicks
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob' }]);
     const user = userEvent.setup();
     render(<App />);
 
@@ -815,8 +818,10 @@ describe('App (tick log flow)', () => {
       expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob' })
     );
 
+    await user.click(screen.getByText('Board'));
     await user.click(screen.getByText('You: Rob'));
     await user.click(await screen.findByText('Alex'));
+    await user.click(await screen.findByText('Gaston Traverse'));
     await user.click(await screen.findByText('Log a send'));
     fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-23' } });
     await user.click(screen.getByText('Save entry'));

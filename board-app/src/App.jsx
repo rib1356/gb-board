@@ -124,7 +124,7 @@ function Field({ label, children }) {
 
 function ClimberPicker({ climbers, currentClimber, open, onToggle, newName, onNewNameChange, onAdd, onSelect, adding }) {
   return (
-    <div style={{ marginTop: 10 }}>
+    <div>
       <button onClick={onToggle} style={{
         display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
         color: '#c7c8cb', borderRadius: 20, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
@@ -602,17 +602,6 @@ export default function App() {
             </button>
           )}
         </div>
-        <ClimberPicker
-          climbers={climbers}
-          currentClimber={currentClimber}
-          open={showClimberPanel}
-          onToggle={() => setShowClimberPanel((prev) => !prev)}
-          newName={newClimberName}
-          onNewNameChange={setNewClimberName}
-          onAdd={handleAddClimber}
-          onSelect={handleSelectClimber}
-          adding={addingClimber}
-        />
       </div>
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
@@ -736,16 +725,32 @@ export default function App() {
 
         {view === 'list' && (
           <div style={{ marginTop: 22 }}>
-            {problems.length === 0 ? (
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div>
+                {problems.length > 0 && (
+                  <select aria-label="Filter by grade" value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, marginBottom: 0, width: 'auto' }}>
+                    <option value="">All grades</option>
+                    {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                )}
+              </div>
+              <ClimberPicker
+                climbers={climbers}
+                currentClimber={currentClimber}
+                open={showClimberPanel}
+                onToggle={() => setShowClimberPanel((prev) => !prev)}
+                newName={newClimberName}
+                onNewNameChange={setNewClimberName}
+                onAdd={handleAddClimber}
+                onSelect={handleSelectClimber}
+                adding={addingClimber}
+              />
+            </div>
+            {problems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
                 <CircleDot size={26} style={{ marginBottom: 8, opacity: 0.5 }} />
                 <p style={{ fontSize: 14, margin: 0 }}>No problems set yet. Upload a photo and add your first one.</p>
               </div>
-            ) : (
-              <select aria-label="Filter by grade" value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, marginBottom: 12, width: 'auto' }}>
-                <option value="">All grades</option>
-                {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
             )}
             {problems.length > 0 && visibleProblems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
@@ -805,7 +810,7 @@ export default function App() {
               {!currentClimber ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: '#8b8d91' }}>Select who you are to log a send</span>
-                  <button onClick={() => setShowClimberPanel(true)} style={{
+                  <button onClick={() => { setView('list'); setShowClimberPanel(true); }} style={{
                     display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
                     color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
                   }}>Pick a climber</button>
