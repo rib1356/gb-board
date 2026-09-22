@@ -572,6 +572,59 @@ describe('App (photo snapshot)', () => {
 
     expect(await screen.findByAltText('Climbing board')).toHaveAttribute('src', 'https://cdn.example/old-board.jpg');
   });
+
+  it('warns on the detail view when the board has been re-shot since the problem was set', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/new-board.jpg' });
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }], photo_url: 'https://cdn.example/old-board.jpg',
+      },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    expect(await screen.findByText(/Set on an older board photo/i)).toBeInTheDocument();
+  });
+
+  it('shows no photo warning when the problem was set on the photo still in use', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/current.jpg' });
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }], photo_url: 'https://cdn.example/current.jpg',
+      },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    expect(await screen.findByAltText('Climbing board')).toBeInTheDocument();
+    expect(screen.queryByText(/older board photo/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/may not line up/i)).not.toBeInTheDocument();
+  });
+
+  // Pre-dates photo snapshots, so the detail view falls back to the CURRENT
+  // board photo -- the holds are drawn over a photo they were never placed on.
+  it('warns more strongly when the problem never recorded a photo of its own', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/current.jpg' });
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }], photo_url: null,
+      },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    expect(await screen.findByText(/may not line up/i)).toBeInTheDocument();
+    expect(screen.queryByText(/older board photo/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('App (grade filter)', () => {

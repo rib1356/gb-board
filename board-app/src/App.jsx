@@ -4,6 +4,7 @@ import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, cr
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
+import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 
 // Dynamically imported so the segmentation library (and its model weights)
@@ -539,6 +540,7 @@ export default function App() {
   const lockedProblem = view === 'detail' ? selected : null;
   const displayPhotoUrl = lockedProblem?.photo_url || activePhotoUrl;
   const lockedMaskUrl = lockedProblem?.mask_url;
+  const detailPhotoStatus = lockedProblem ? photoStatus(lockedProblem, board) : null;
 
   if (loading) {
     return (
@@ -756,6 +758,19 @@ export default function App() {
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#232427', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 14, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{selected.grade}</span>
               )}
             </div>
+            {/* The photo above is this problem's own snapshot, which may not be
+                the board photo currently in use -- say so, since the two can
+                look similar enough to mistake for each other at the wall. */}
+            {detailPhotoStatus === 'stale' && (
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: '#8b8d91' }}>
+                Set on an older board photo
+              </p>
+            )}
+            {detailPhotoStatus === 'unknown' && (
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: '#D9552B' }}>
+                Holds may not line up — this problem predates photo tracking
+              </p>
+            )}
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 14 }}>
               <StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} />
               <span style={{
