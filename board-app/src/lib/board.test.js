@@ -270,16 +270,99 @@ describe('uploadBoardPhoto', () => {
     const blob = new Blob(['fake'], { type: 'image/jpeg' });
     const result = await uploadBoardPhoto('b1', blob);
 
-    expect(storageBuilder.upload).toHaveBeenCalledWith('b1.jpg', blob, {
-      upsert: true,
-      contentType: 'image/jpeg',
-    });
+    expect(storageBuilder.upload).toHaveBeenCalledWith(
+      expect.stringMatching(/^b1\/\d+-[0-9a-f-]{36}\.jpg$/),
+      blob,
+      { contentType: 'image/jpeg' }
+    );
     expect(updateChain.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        photo_url: expect.stringMatching(/^https:\/\/cdn\.example\/board-photos\/b1\.jpg\?t=\d+$/),
+        photo_url: 'https://cdn.example/board-photos/b1.jpg',
       })
     );
     expect(result).toEqual({ id: 'b1', photo_url: 'stored-url' });
+  });
+
+  // Re-shooting the board must not overwrite the photo earlier problems were
+  // set on -- their holds are x/y fractions that only line up with the exact
+  // frame they were placed against.
+  it('writes a new object each time instead of overwriting the previous photo', async () => {
+    const paths = [];
+    const storageBuilder = {
+      upload: vi.fn((path) => {
+        paths.push(path);
+        return Promise.resolve({ error: null });
+      }),
+      getPublicUrl: vi.fn((path) => ({
+        data: { publicUrl: `https://cdn.example/board-photos/${path}` },
+      })),
+    };
+    mocks.supabase.storage.from.mockReturnValue(storageBuilder);
+    mocks.supabase.from.mockReturnValue(chain({ data: { id: 'b1' }, error: null }));
+
+    await uploadBoardPhoto('b1', new Blob(['first'], { type: 'image/jpeg' }));
+    await uploadBoardPhoto('b1', new Blob(['second'], { type: 'image/jpeg' }));
+
+    expect(paths).toHaveLength(2);
+    expect(paths[0]).not.toEqual(paths[1]);
+  });
+
+  // crypto.randomUUID only exists in a secure context, so it's missing when the
+  // dev server is opened over a plain-http LAN address on a phone. Uploading a
+  // board photo has to keep working there.
+  it('still writes a unique path when crypto.randomUUID is unavailable', async () => {
+    // randomUUID lives on Crypto.prototype, so shadow it with an own property
+    // rather than deleting (which would be a silent no-op).
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      value: undefined,
+      configurable: true,
+    });
+    try {
+      const paths = [];
+      const storageBuilder = {
+        upload: vi.fn((path) => {
+          paths.push(path);
+          return Promise.resolve({ error: null });
+        }),
+        getPublicUrl: vi.fn((path) => ({
+          data: { publicUrl: `https://cdn.example/board-photos/${path}` },
+        })),
+      };
+      mocks.supabase.storage.from.mockReturnValue(storageBuilder);
+      mocks.supabase.from.mockReturnValue(chain({ data: { id: 'b1' }, error: null }));
+
+      await uploadBoardPhoto('b1', new Blob(['first'], { type: 'image/jpeg' }));
+      await uploadBoardPhoto('b1', new Blob(['second'], { type: 'image/jpeg' }));
+
+      expect(paths).toHaveLength(2);
+      expect(paths[0]).not.toEqual(paths[1]);
+    } finally {
+      delete globalThis.crypto.randomUUID;
+    }
+  });
+
+  it('stores a url that resolves to the exact object it just wrote', async () => {
+    let writtenPath;
+    const storageBuilder = {
+      upload: vi.fn((path) => {
+        writtenPath = path;
+        return Promise.resolve({ error: null });
+      }),
+      getPublicUrl: vi.fn((path) => ({
+        data: { publicUrl: `https://cdn.example/board-photos/${path}` },
+      })),
+    };
+    mocks.supabase.storage.from.mockReturnValue(storageBuilder);
+    const updateChain = chain({ data: { id: 'b1' }, error: null });
+    mocks.supabase.from.mockReturnValue(updateChain);
+
+    await uploadBoardPhoto('b1', new Blob(['fake'], { type: 'image/jpeg' }));
+
+    // No `?t=` cache-buster: the path is already unique per upload, so the
+    // bytes behind the stored url can never change under an old problem.
+    expect(updateChain.update).toHaveBeenCalledWith({
+      photo_url: `https://cdn.example/board-photos/${writtenPath}`,
+    });
   });
 });
 

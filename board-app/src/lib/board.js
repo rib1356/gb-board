@@ -31,14 +31,24 @@ export async function listProblems(boardId) {
 }
 
 export async function uploadBoardPhoto(boardId, blob) {
-  const path = `${boardId}.jpg`;
+  // Every upload gets its own object, and no upsert -- problems store the url
+  // of the photo their holds were placed against, so re-shooting the board
+  // must never change the bytes behind an older problem's url. The timestamp
+  // keeps the bucket readable in upload order; the uuid makes two shots in the
+  // same millisecond still distinct.
+  // randomUUID needs a secure context, so it's absent when the dev server is
+  // opened over a plain-http LAN address on a phone -- fall back there.
+  const unique = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
+  const path = `${boardId}/${Date.now()}-${unique}.jpg`;
   const { error: uploadError } = await supabase.storage
     .from('board-photos')
-    .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+    .upload(path, blob, { contentType: 'image/jpeg' });
   if (uploadError) throw uploadError;
 
+  // No `?t=` cache-buster needed: the path is unique per upload, so the url is
+  // already immutable and can be cached hard.
   const { data: publicUrlData } = supabase.storage.from('board-photos').getPublicUrl(path);
-  const photoUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+  const photoUrl = publicUrlData.publicUrl;
 
   const { data: updated, error: updateError } = await supabase
     .from('boards')
