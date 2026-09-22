@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2 } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
-import { readLastSegmentStep, clearSegmentStep } from './lib/segmentDebug';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
 import { GRADES } from './lib/grades';
@@ -198,12 +197,6 @@ export default function App() {
   // new/edit session needs its own embedding computed against its own photo.
   const [embeddingReady, setEmbeddingReady] = useState(false);
   const [segmentUnavailable, setSegmentUnavailable] = useState(false);
-  const [segmentError, setSegmentError] = useState('');
-  // A step left over from a PREVIOUS attempt that never reached success or a
-  // caught failure -- the signature of a hard crash (e.g. iOS killing the tab
-  // for memory) rather than a normal error. Read once per attempt, before
-  // this attempt's own steps overwrite it.
-  const [lastCrashStep, setLastCrashStep] = useState(null);
   const segmenterRef = useRef(null);
   const embeddingRef = useRef(null);
 
@@ -233,10 +226,6 @@ export default function App() {
       })
       .then((emb) => {
         if (cancelled || !emb) return;
-        // A clean, successful end to this attempt -- not a crash. Clear the
-        // breadcrumb so it doesn't wrongly look like a crash leftover on the
-        // next attempt.
-        clearSegmentStep();
         embeddingRef.current = emb;
         setSegmentModule(mod);
         setEmbeddingReady(true);
@@ -265,13 +254,7 @@ export default function App() {
         // (loadSegmenter's result is cached, so this stays true for the rest
         // of the page session rather than needing to be reset on retry.)
         if (cancelled) return;
-        // A clean, caught failure -- not a crash. Clear the breadcrumb so it
-        // doesn't wrongly look like a crash leftover on the next attempt.
-        clearSegmentStep();
         setSegmentUnavailable(true);
-        // Surfaced in the UI, not just here -- someone hitting this on a
-        // phone has no devtools to read console.error from.
-        setSegmentError(err?.message || String(err));
         console.error('Highlight setup failed:', err);
       });
     return () => {
@@ -399,23 +382,10 @@ export default function App() {
     }
   };
 
-  // A step left over from the PREVIOUS attempt that never reached success or
-  // a caught failure -- the signature of a hard crash (e.g. iOS killing the
-  // tab for memory) rather than a normal error. Snapshotting it (with the
-  // elapsed time frozen at capture time, not recomputed on every render) is
-  // the "event" that starts a new attempt, not something to derive reactively
-  // inside the segmentation effect itself.
-  const captureLastCrashStep = () => {
-    const previous = readLastSegmentStep();
-    setLastCrashStep(previous ? { ...previous, secondsAgo: Math.round((Date.now() - previous.ts) / 1000) } : null);
-    clearSegmentStep();
-  };
-
   const startNewProblem = () => {
     setDraftHolds([]); setName(''); setGrade(''); setSetter(currentClimber?.name || ''); setNotes(''); setPlaceType('start');
     setEditingId(null);
     setError('');
-    captureLastCrashStep();
     setView('new');
   };
 
@@ -424,7 +394,6 @@ export default function App() {
     setDraftHolds(problem.holds);
     setName(problem.name); setGrade(problem.grade || ''); setSetter(problem.setter || ''); setNotes(problem.notes || '');
     setError('');
-    captureLastCrashStep();
     setView('new');
   };
 
@@ -688,16 +657,9 @@ export default function App() {
             <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>
               Pick a hold type, then tap the board photo above to place one — tap an existing hold to remove it.
             </p>
-            {lastCrashStep && (
-              <p style={{ fontSize: 12, color: '#D9552B', marginTop: -10, marginBottom: 16 }}>
-                Debug: the last highlight-mode attempt didn't finish cleanly — it got as far as
-                {' '}"{lastCrashStep.step}" ({lastCrashStep.secondsAgo}s ago) before stopping.
-              </p>
-            )}
             {segmentUnavailable && (
               <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
                 Highlight mode unavailable on this device — holds will show as markers instead.
-                {segmentError ? ` (${segmentError})` : ''}
               </p>
             )}
 

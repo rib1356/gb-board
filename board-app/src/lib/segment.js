@@ -1,5 +1,4 @@
 import { SamModel, AutoProcessor, RawImage, Tensor } from '@huggingface/transformers';
-import { recordSegmentStep } from './segmentDebug';
 
 const MODEL_ID = 'Xenova/slimsam-77-uniform';
 
@@ -18,9 +17,9 @@ const DTYPE_BY_DEVICE = { webgpu: 'fp16', wasm: 'q8' };
 
 // onnxruntime's default wasm session pre-reserves memory in growing arena
 // chunks (enableCpuMemArena) and caches a buffer-reuse plan (enableMemPattern)
-// -- both trade peak memory for speed. Confirmed crash point (via the
-// localStorage breadcrumb) is inside get_image_embeddings -- the encoder
-// forward pass, the single largest allocation in this pipeline -- on iPhone
+// -- both trade peak memory for speed. Confirmed crash point is inside
+// get_image_embeddings -- the encoder forward pass, the single largest
+// allocation in this pipeline -- on iPhone
 // Firefox (FxiOS) specifically, while the same q8/wasm path succeeds in
 // Safari on the same device. All iOS browsers embed WebKit, but third-party
 // WKWebView apps (Firefox, Chrome) get a stricter OS memory ceiling than
@@ -33,15 +32,12 @@ const SESSION_OPTIONS_BY_DEVICE = {
 };
 
 async function loadModel(device) {
-  recordSegmentStep(`loadModel:${device}:start`);
   const model = await SamModel.from_pretrained(MODEL_ID, {
     dtype: DTYPE_BY_DEVICE[device],
     device,
     session_options: SESSION_OPTIONS_BY_DEVICE[device],
   });
-  recordSegmentStep(`loadModel:${device}:model-ready`);
   const processor = await AutoProcessor.from_pretrained(MODEL_ID);
-  recordSegmentStep(`loadModel:${device}:processor-ready`);
   return { model, processor, device };
 }
 
@@ -66,7 +62,6 @@ export function isWebGpuUnreliable(userAgent) {
 // skips straight to wasm on WebKit, see isWebGpuUnreliable above).
 export function loadSegmenter() {
   if (!segmenterPromise) {
-    recordSegmentStep('loadSegmenter:start');
     segmenterPromise = isWebGpuUnreliable(navigator.userAgent)
       ? loadModel('wasm')
       : loadModel('webgpu').catch(() => loadModel('wasm'));
@@ -77,18 +72,11 @@ export function loadSegmenter() {
 // Runs the (expensive, ~1-3s) image encoder once per photo. Everything after
 // this is a cheap per-point decode against the cached embeddings.
 export async function computeEmbedding(segmenter, photoUrl) {
-  recordSegmentStep('computeEmbedding:start');
-  tapCount = 0;
   const image = await RawImage.fromURL(photoUrl);
-  recordSegmentStep(`computeEmbedding:image-loaded:${image.width}x${image.height}`);
   const imageProcessed = await segmenter.processor(image);
-  recordSegmentStep('computeEmbedding:processed');
   const imageEmbeddings = await segmenter.model.get_image_embeddings(imageProcessed);
-  recordSegmentStep('computeEmbedding:embeddings-done');
   return { imageEmbeddings, imageProcessed, width: image.width, height: image.height };
 }
-
-let tapCount = 0;
 
 // post_process_masks upsamples its output to whatever size it's told is the
 // "original" image -- by default the full board photo (up to 1400px wide,
@@ -118,13 +106,6 @@ export function capMaskTargetSize(height, width, maxEdge = MAX_MASK_EDGE) {
 // Decodes a mask for a single tapped point (fractions 0-1, same space as a
 // hold's stored x/y) against embeddings already computed for this photo.
 export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
-  tapCount += 1;
-  // Captured once per call -- taps aren't awaited sequentially by the caller,
-  // so overlapping calls are common. Reading the shared `tapCount` at each
-  // step below (instead of this local snapshot) would let a later tap's
-  // progress overwrite an earlier in-flight tap's own breadcrumbs.
-  const tapIndex = tapCount;
-  recordSegmentStep(`maskAtPoint:${tapIndex}:start`);
   // The point prompt must be in the processor's reshaped/padded input space
   // (not the original photo's pixel space) -- reshaped_input_sizes is [h, w].
   const [reshapedHeight, reshapedWidth] = embedding.imageProcessed.reshaped_input_sizes[0];
@@ -140,7 +121,6 @@ export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
     input_points,
     input_labels,
   });
-  recordSegmentStep(`maskAtPoint:${tapIndex}:model-called`);
 
   const [originalHeight, originalWidth] = embedding.imageProcessed.original_sizes[0];
   const targetSize = capMaskTargetSize(originalHeight, originalWidth);
@@ -149,7 +129,6 @@ export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
     [targetSize],
     embedding.imageProcessed.reshaped_input_sizes
   );
-  recordSegmentStep(`maskAtPoint:${tapIndex}:post-processed`);
 
   // SAM returns 3 candidate masks per point; post_process_masks comes back
   // channel-interleaved (mask.data[numMasks * pixel + maskIndex]) once read
@@ -168,7 +147,6 @@ export async function maskAtPoint(segmenter, embedding, xFrac, yFrac) {
     data[i] = mask.data[numMasks * i + bestIndex] === 1 ? 1 : 0;
   }
 
-  recordSegmentStep(`maskAtPoint:${tapIndex}:done`);
   return { width: mask.width, height: mask.height, data };
 }
 

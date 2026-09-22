@@ -421,22 +421,8 @@ describe('App (hold highlighting)', () => {
 
     expect(await screen.findByText(/Highlight mode unavailable/i)).toBeInTheDocument();
     expect(screen.queryByText(/Preparing highlight/i)).not.toBeInTheDocument();
-    // The underlying error is surfaced in the UI, not just the console -- the
-    // person hitting this on a phone has no devtools to read console.error.
-    expect(screen.getByText(/no webgpu/i)).toBeInTheDocument();
-  });
-
-  it('shows a debug notice when a previous attempt left an unfinished step (a crash signature)', async () => {
-    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
-    localStorage.setItem(
-      'board-app:segmentDebugStep',
-      JSON.stringify({ step: 'loadModel:wasm:model-ready', ts: Date.now() - 5000 })
-    );
-    render(<App />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByText('New problem'));
-
-    expect(await screen.findByText(/loadModel:wasm:model-ready/)).toBeInTheDocument();
+    // The raw error stays in the console -- the notice itself is plain English.
+    expect(screen.queryByText(/no webgpu/i)).not.toBeInTheDocument();
   });
 
   it('shows the loading indicator again for a later editing session, even though highlight mode already loaded once', async () => {
