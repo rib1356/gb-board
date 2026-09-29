@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2 } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber } from './lib/board';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems } from './lib/problemList';
+import { inputStyle } from './ui';
+import WarmupScreen from './warmup/WarmupScreen';
 
 // Dynamically imported so the segmentation library (and its model weights)
 // only load once someone actually opens "New problem" -- most visits are
@@ -73,12 +75,8 @@ function HoldHighlight({ src }) {
 
 const fontImport = `
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+  @media (max-width: 380px) { .warmup-label { display: none; } }
 `;
-
-const inputStyle = {
-  width: '100%', boxSizing: 'border-box', background: '#232427', border: '1px solid #3a3b3e',
-  borderRadius: 8, padding: '10px 12px', color: '#EDEAE3', fontSize: 14.5, fontFamily: "'Inter'", marginTop: 4,
-};
 
 function StarRating({ rating, onRate, readOnly = false }) {
   if (readOnly) {
@@ -180,6 +178,8 @@ export default function App() {
   const [deletedProblem, setDeletedProblem] = useState(null);
   const [sort, setSort] = useState('newest');
   const [unsentOnly, setUnsentOnly] = useState(false);
+  const [warmupFocusId, setWarmupFocusId] = useState(null);
+  const [warmupSessions, setWarmupSessions] = useState([]);
 
   const [ticks, setTicks] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
@@ -309,6 +309,18 @@ export default function App() {
       }
     })();
   }, [view, selectedId]);
+
+  useEffect(() => {
+    if (view !== 'warmup' || !board) return;
+    (async () => {
+      try {
+        setWarmupSessions(await listWarmupSessions(board.id));
+      } catch (err) {
+        console.error(err);
+        setError('Could not load past warm-ups — check your connection and try again.');
+      }
+    })();
+  }, [view, board]);
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -538,8 +550,11 @@ export default function App() {
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
   const selected = problems.find((p) => p.id === selectedId);
   const visibleProblems = sortAndFilterProblems(problems, { sort, unsentOnly });
-  const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
-  const lockedProblem = view === 'detail' ? selected : null;
+  const isWarmupView = view.startsWith('warmup');
+  const warmupRungs = board?.warmup || [];
+  const warmupFocus = isWarmupView && warmupFocusId ? problems.find((p) => p.id === warmupFocusId) || null : null;
+  const lockedProblem = view === 'detail' ? selected : warmupFocus;
+  const displayHolds = view === 'new' ? draftHolds : (lockedProblem ? lockedProblem.holds : []);
   const displayPhotoUrl = lockedProblem?.photo_url || activePhotoUrl;
   const lockedMaskUrl = lockedProblem?.mask_url;
   const detailPhotoStatus = lockedProblem ? photoStatus(lockedProblem, board) : null;
@@ -561,18 +576,28 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {view === 'list' ? (
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>THE BOARD</h1>
+          ) : view === 'warmup-run' ? (
+            <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>WARM-UP</h1>
           ) : (
             <button onClick={() => { setSelectedId(null); setEditingId(null); setView('list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
               <ChevronLeft size={18} /> Board
             </button>
           )}
           {view === 'list' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => { setWarmupFocusId(null); setView('warmup'); }} aria-label="Warm-up" style={{
+              display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', color: '#EDEAE3',
+              border: '1px solid #3a3b3e', borderRadius: 8, padding: '8px 12px', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            }}>
+              <Flame size={16} /> <span className="warmup-label">Warm-up</span>
+            </button>
             <button onClick={startNewProblem} disabled={!board?.photo_url} style={{
               display: 'flex', alignItems: 'center', gap: 6, background: board?.photo_url ? '#D9552B' : '#3a3b3e', color: '#17181A',
               border: 'none', borderRadius: 8, padding: '9px 14px', fontWeight: 700, fontSize: 14, cursor: board?.photo_url ? 'pointer' : 'not-allowed',
             }}>
               <Plus size={16} /> New problem
             </button>
+            </div>
           )}
         </div>
       </div>
@@ -891,6 +916,18 @@ export default function App() {
               )}
             </div>
           </div>
+        )}
+
+        {view === 'warmup' && (
+          <WarmupScreen
+            rungs={warmupRungs}
+            problems={problems}
+            sessions={warmupSessions}
+            climber={currentClimber}
+            onFocus={setWarmupFocusId}
+            onEdit={() => { setWarmupFocusId(null); setView('warmup-edit'); }}
+            onStart={() => setView('warmup-run')}
+          />
         )}
       </div>
     </div>

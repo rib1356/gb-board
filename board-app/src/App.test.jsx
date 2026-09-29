@@ -1050,3 +1050,73 @@ describe('App (climber picker)', () => {
     expect(await screen.findByText("Who's climbing?")).toBeInTheDocument();
   });
 });
+
+describe('App (warm-up screen)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Jug Haul', grade: 'V1', setter: 'Rob', notes: '', holds: [{ x: 0.2, y: 0.3, type: 'start' }], send_count: 2, last_sent_on: '2026-09-01' },
+    { id: 'p2', name: 'Crimp City', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-10' },
+  ];
+
+  it('opens from the header and shows the empty state when there is no ladder', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    expect(await screen.findByText('No warm-up yet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Build your ladder' })).toBeInTheDocument();
+    expect(listWarmupSessions).toHaveBeenCalledWith('b1');
+  });
+
+  it('keeps New problem in the header alongside Warm-up', async () => {
+    render(<App />);
+    expect(await screen.findByRole('button', { name: /new problem/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /warm-up/i })).toBeInTheDocument();
+  });
+
+  it('lists fixed, random and removed rungs, plus past sessions', async () => {
+    getOrCreateBoard.mockResolvedValue({
+      ...BOARD,
+      warmup: [{ grade: 'V1', problemId: 'p1' }, { grade: 'V2', problemId: null }, { grade: 'V3', problemId: 'deleted' }],
+    });
+    listProblems.mockResolvedValue(PROBLEMS);
+    listWarmupSessions.mockResolvedValue([
+      { id: 's1', done_on: '2026-09-27', climbed_by: 'Rob', feel: 'strong', problem_ids: ['p1', 'p2'], sent_ids: ['p1', 'p2'] },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    expect(await screen.findByText('Jug Haul')).toBeInTheDocument();
+    expect(screen.getByText('random V2')).toBeInTheDocument();
+    expect(screen.getByText('Problem removed')).toBeInTheDocument();
+    expect(await screen.findByText(/27 Sept? · Rob · Strong · 2\/2/)).toBeInTheDocument();
+  });
+
+  it('disables Start until a climber is selected', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    expect(await screen.findByRole('button', { name: 'Select who you are first' })).toBeDisabled();
+  });
+
+  it('enables Start when a climber is selected', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    expect(await screen.findByRole('button', { name: 'Start warm-up' })).toBeEnabled();
+  });
+
+  it('goes back to the list from the header', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: /board/i }));
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+  });
+});
