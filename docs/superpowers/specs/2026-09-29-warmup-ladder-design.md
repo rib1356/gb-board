@@ -152,6 +152,12 @@ create table warmup_sessions (
 );
 ```
 
+```sql
+-- Supabase enables RLS automatically on new tables; with no policies that
+-- silently blocks every read and insert. Match the other tables:
+alter table warmup_sessions disable row level security;
+```
+
 RLS stays disabled, matching every other table. `problem_ids` holds the
 rungs in order as climbed (random picks resolved; skipped rungs omitted);
 `sent_ids` is the subset ticked during the session. The board's existing
