@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { recencyWeight, rollLadder, rerollRung, canReroll, nextUnsentIndex, sessionPayload } from './warmup';
+import { FEELS, recencyWeight, rollLadder, rerollRung, canReroll, nextUnsentIndex, sessionPayload } from './warmup';
 
 const TODAY = '2026-09-29';
 const P = (id, grade, send_count = 1, last_sent_on = '2026-09-01') => ({ id, name: id, grade, send_count, last_sent_on });
@@ -126,5 +126,13 @@ describe('sessionPayload', () => {
   it('lists climbable rungs in ladder order and the sent subset in the same order', () => {
     const rolled = [{ problem: { id: 'a' } }, { problem: null }, { problem: { id: 'b' } }, { problem: { id: 'c' } }];
     expect(sessionPayload(rolled, ['c', 'a'])).toEqual({ problemIds: ['a', 'b', 'c'], sentIds: ['a', 'c'] });
+  });
+});
+
+describe('FEELS', () => {
+  it('shows Weak / OK / Good over the stored heavy / normal / strong values', () => {
+    expect(FEELS.map((f) => [f.value, f.label])).toEqual([
+      ['heavy', 'Weak'], ['normal', 'OK'], ['strong', 'Good'],
+    ]);
   });
 });

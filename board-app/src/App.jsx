@@ -78,7 +78,6 @@ function HoldHighlight({ src }) {
 
 const fontImport = `
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
-  @media (max-width: 380px) { .warmup-label { display: none; } }
 `;
 
 function StarRating({ rating, onRate, readOnly = false }) {
@@ -637,11 +636,11 @@ export default function App() {
           )}
           {view === 'list' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => { setWarmupFocusId(null); setView('warmup'); }} aria-label="Warm-up" style={{
-              display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', color: '#EDEAE3',
-              border: '1px solid #3a3b3e', borderRadius: 8, padding: '8px 12px', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            <button onClick={() => { setWarmupFocusId(null); setView('warmup'); }} aria-label="Warm-up" title="Warm-up" style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', color: '#EDEAE3',
+              border: '1px solid #3a3b3e', borderRadius: 8, width: 38, height: 38, padding: 0, cursor: 'pointer',
             }}>
-              <Flame size={16} /> <span className="warmup-label">Warm-up</span>
+              <Flame size={18} />
             </button>
             <button onClick={startNewProblem} disabled={!board?.photo_url} style={{
               display: 'flex', alignItems: 'center', gap: 6, background: board?.photo_url ? '#D9552B' : '#3a3b3e', color: '#17181A',

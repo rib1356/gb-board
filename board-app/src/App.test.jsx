@@ -1088,7 +1088,8 @@ describe('App (warm-up screen)', () => {
     expect(await screen.findByText('Jug Haul')).toBeInTheDocument();
     expect(screen.getByText('random V2')).toBeInTheDocument();
     expect(screen.getByText('Problem removed')).toBeInTheDocument();
-    expect(await screen.findByText(/27 Sept? · Rob · Strong · 2\/2/)).toBeInTheDocument();
+    const rows = await screen.findAllByRole('listitem');
+    expect(rows.map((r) => r.textContent)).toContainEqual(expect.stringMatching(/27 Sept? · Rob · Good · 2\/2/));
   });
 
   it('disables Start until a climber is selected', async () => {
@@ -1254,17 +1255,18 @@ describe('App (warm-up session)', () => {
   it('asks for a feel when the last rung is sent and saves the session', async () => {
     const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
     await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
-    await user.click(await screen.findByRole('button', { name: 'Strong' }));
+    await user.click(await screen.findByRole('button', { name: 'Good' }));
     await waitFor(() => expect(createWarmupSession).toHaveBeenCalledWith('b1', expect.objectContaining({
       climbedBy: 'Rob', feel: 'strong', problemIds: ['p1'], sentIds: ['p1'],
     })));
-    expect(await screen.findByText(/Rob · Strong · 1\/1/)).toBeInTheDocument();
+    const rows = await screen.findAllByRole('listitem');
+    expect(rows.map((r) => r.textContent)).toContainEqual(expect.stringMatching(/Rob · Good · 1\/1/));
   });
 
   it('ending part-way still asks for a feel and saves partial progress', async () => {
     const user = await startSession([{ grade: 'V1', problemId: 'p1' }, { grade: 'V2', problemId: 'p2' }]);
     await user.click(screen.getByRole('button', { name: 'End' }));
-    await user.click(await screen.findByRole('button', { name: 'Heavy' }));
+    await user.click(await screen.findByRole('button', { name: 'Weak' }));
     await waitFor(() => expect(createWarmupSession).toHaveBeenCalledWith('b1', expect.objectContaining({
       feel: 'heavy', problemIds: ['p1', 'p2'], sentIds: [],
     })));

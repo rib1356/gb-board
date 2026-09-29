@@ -58,7 +58,9 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
           <p style={{ margin: '0 0 12px', fontSize: 13.5, color: '#8b8d91' }}>How did it feel?</p>
           <div style={{ display: 'flex', gap: 8 }}>
             {FEELS.map((f) => (
-              <button key={f.value} disabled={savingSession} onClick={() => handleFeel(f.value)} style={{ ...primaryButton(!savingSession), flex: 1 }}>{f.label}</button>
+              <button key={f.value} disabled={savingSession} onClick={() => handleFeel(f.value)} style={{
+                ...primaryButton(!savingSession), flex: 1, background: f.color, color: f.text, opacity: savingSession ? 0.6 : 1,
+              }}>{f.label}</button>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>

@@ -1,7 +1,9 @@
+// Stored values stay heavy/normal/strong (the warmup_sessions check
+// constraint); only the wording and colours shown in the app changed.
 export const FEELS = [
-  { value: 'heavy', label: 'Heavy' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'strong', label: 'Strong' },
+  { value: 'heavy', label: 'Weak', color: '#B94A48', text: '#F4F1EA' },
+  { value: 'normal', label: 'OK', color: '#C9A227', text: '#17181A' },
+  { value: 'strong', label: 'Good', color: '#5C8A66', text: '#F4F1EA' },
 ];
 
 // Past this many days a problem counts as fully "fresh" -- stops something

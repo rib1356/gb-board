@@ -3,7 +3,7 @@ import { Pencil, RefreshCw } from 'lucide-react';
 import { FEELS } from '../lib/warmup';
 import { formatShortDate, gradeBadgeStyle, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
 
-const FEEL_LABELS = Object.fromEntries(FEELS.map((f) => [f.value, f.label]));
+const FEELS_BY_VALUE = Object.fromEntries(FEELS.map((f) => [f.value, f]));
 
 export default function WarmupScreen({ rungs, problems, sessions, climber, onFocus, onEdit, onStart }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -52,11 +52,18 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
       {sessions.length > 0 && (
         <div style={{ marginTop: 22 }}>
           <h2 style={sectionHeading}>Last sessions</h2>
-          {sessions.map((s) => (
-            <div key={s.id} style={{ fontSize: 13.5, color: '#c7c8cb', padding: '6px 0', borderBottom: '1px solid #2A2B2E' }}>
-              {[formatShortDate(s.done_on), s.climbed_by, FEEL_LABELS[s.feel], `${s.sent_ids.length}/${s.problem_ids.length}`].filter(Boolean).join(' · ')}
-            </div>
-          ))}
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {sessions.map((s) => {
+            const feel = FEELS_BY_VALUE[s.feel];
+            return (
+              <li key={s.id} style={{ fontSize: 13.5, color: '#c7c8cb', padding: '6px 0', borderBottom: '1px solid #2A2B2E' }}>
+                {[formatShortDate(s.done_on), s.climbed_by].filter(Boolean).join(' · ')}
+                {feel && <> · <span style={{ color: feel.color, fontWeight: 700 }}>{feel.label}</span></>}
+                {` · ${s.sent_ids.length}/${s.problem_ids.length}`}
+              </li>
+            );
+          })}
+          </ul>
         </div>
       )}
     </div>
