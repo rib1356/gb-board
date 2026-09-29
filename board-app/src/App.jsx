@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
@@ -9,6 +9,7 @@ import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems } from './lib/problemList';
 import { inputStyle } from './ui';
 import WarmupScreen from './warmup/WarmupScreen';
+import WarmupEditor from './warmup/WarmupEditor';
 
 // Dynamically imported so the segmentation library (and its model weights)
 // only load once someone actually opens "New problem" -- most visits are
@@ -180,6 +181,7 @@ export default function App() {
   const [unsentOnly, setUnsentOnly] = useState(false);
   const [warmupFocusId, setWarmupFocusId] = useState(null);
   const [warmupSessions, setWarmupSessions] = useState([]);
+  const [savingWarmup, setSavingWarmup] = useState(false);
 
   const [ticks, setTicks] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
@@ -519,6 +521,20 @@ export default function App() {
       console.error(err);
       setError('Could not delete that log entry — check your connection and try again.');
     }
+  };
+
+  const handleSaveWarmup = async (rungs) => {
+    setSavingWarmup(true);
+    setError('');
+    try {
+      const updated = await saveWarmup(board.id, rungs);
+      setBoard(updated);
+      setView('warmup');
+    } catch (err) {
+      console.error(err);
+      setError('Could not save the warm-up — check your connection and try again.');
+    }
+    setSavingWarmup(false);
   };
 
   const handleDelete = async (id) => {
@@ -927,6 +943,16 @@ export default function App() {
             onFocus={setWarmupFocusId}
             onEdit={() => { setWarmupFocusId(null); setView('warmup-edit'); }}
             onStart={() => setView('warmup-run')}
+          />
+        )}
+
+        {view === 'warmup-edit' && (
+          <WarmupEditor
+            initialRungs={warmupRungs}
+            problems={problems}
+            saving={savingWarmup}
+            onSave={handleSaveWarmup}
+            onCancel={() => setView('warmup')}
           />
         )}
       </div>

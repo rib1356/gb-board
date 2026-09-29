@@ -1120,3 +1120,94 @@ describe('App (warm-up screen)', () => {
     expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
   });
 });
+
+describe('App (warm-up editor)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Jug Haul', grade: 'V1', setter: 'Rob', notes: '', holds: [], send_count: 2 },
+    { id: 'p2', name: 'Crimp City', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 1 },
+  ];
+
+  const openEditor = async (user) => {
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: 'Build your ladder' }));
+  };
+
+  it('builds a ladder of fixed and random rungs and saves it in order', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    saveWarmup.mockImplementation(async (id, rungs) => ({ ...BOARD, warmup: rungs }));
+    render(<App />);
+    const user = userEvent.setup();
+    await openEditor(user);
+
+    await user.click(screen.getByRole('button', { name: '+ Add a problem' }));
+    await user.click(screen.getByRole('button', { name: /Jug Haul/ }));
+    await user.click(screen.getByRole('button', { name: '+ Add random slot' }));
+    await user.click(screen.getByRole('button', { name: 'V2' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(saveWarmup).toHaveBeenCalledWith('b1', [
+      { grade: 'V1', problemId: 'p1' },
+      { grade: 'V2', problemId: null },
+    ]));
+    expect(await screen.findByText('random V2')).toBeInTheDocument();
+  });
+
+  it('reorders and removes rungs', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }, { grade: 'V3', problemId: 'p2' }, { grade: 'V2', problemId: null }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    saveWarmup.mockImplementation(async (id, rungs) => ({ ...BOARD, warmup: rungs }));
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: /edit/i }));
+
+    await user.click(screen.getByRole('button', { name: 'Move rung 3 up' }));
+    await user.click(screen.getByRole('button', { name: 'Remove rung 1' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(saveWarmup).toHaveBeenCalledWith('b1', [
+      { grade: 'V2', problemId: null },
+      { grade: 'V3', problemId: 'p2' },
+    ]));
+  });
+
+  it('changes a fixed rung into a random slot at the same grade', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    saveWarmup.mockImplementation(async (id, rungs) => ({ ...BOARD, warmup: rungs }));
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: /edit/i }));
+
+    await user.click(screen.getByRole('button', { name: 'Change rung 1' }));
+    await user.click(screen.getByRole('button', { name: 'Make this a random V1' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(saveWarmup).toHaveBeenCalledWith('b1', [{ grade: 'V1', problemId: null }]));
+  });
+
+  it('filters the problem picker by name', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await openEditor(user);
+    await user.click(screen.getByRole('button', { name: '+ Add a problem' }));
+    await user.type(screen.getByRole('textbox', { name: 'Search problems' }), 'crimp');
+    expect(screen.getByRole('button', { name: /Crimp City/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Jug Haul/ })).not.toBeInTheDocument();
+  });
+
+  it('stays in the editor and shows an error when saving fails', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    saveWarmup.mockRejectedValue(new Error('offline'));
+    render(<App />);
+    const user = userEvent.setup();
+    await openEditor(user);
+    await user.click(screen.getByRole('button', { name: '+ Add random slot' }));
+    await user.click(screen.getByRole('button', { name: 'V2' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(await screen.findByText(/could not save the warm-up/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+});
