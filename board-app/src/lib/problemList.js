@@ -23,3 +23,13 @@ export function sortAndFilterProblems(problems, { sort = 'newest', unsentOnly = 
     return (ga - gb) * direction;
   });
 }
+
+// Mirrors what the database does to a problem when a tick is inserted, so the
+// list stays right without a refetch.
+export function applySend(problems, problemId, sentOn) {
+  return problems.map((p) => (p.id === problemId ? {
+    ...p,
+    send_count: (p.send_count || 0) + 1,
+    last_sent_on: p.last_sent_on && p.last_sent_on > sentOn ? p.last_sent_on : sentOn,
+  } : p));
+}

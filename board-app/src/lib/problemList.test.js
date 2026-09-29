@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortAndFilterProblems } from './problemList';
+import { sortAndFilterProblems, applySend } from './problemList';
 
 // Input order mirrors listProblems(): newest first.
 const PROBLEMS = [
@@ -39,5 +39,20 @@ describe('sortAndFilterProblems', () => {
     const copy = [...PROBLEMS];
     sortAndFilterProblems(PROBLEMS, { sort: 'grade-desc' });
     expect(PROBLEMS).toEqual(copy);
+  });
+});
+
+describe('applySend', () => {
+  it('bumps send_count and keeps the latest last_sent_on for that problem only', () => {
+    const list = [
+      { id: 'a', send_count: 1, last_sent_on: '2026-09-20' },
+      { id: 'b', send_count: 0, last_sent_on: null },
+    ];
+    expect(applySend(list, 'a', '2026-09-29')).toEqual([
+      { id: 'a', send_count: 2, last_sent_on: '2026-09-29' },
+      { id: 'b', send_count: 0, last_sent_on: null },
+    ]);
+    expect(applySend(list, 'a', '2026-09-01')[0].last_sent_on).toBe('2026-09-20');
+    expect(applySend(list, 'b', '2026-09-29')[1]).toEqual({ id: 'b', send_count: 1, last_sent_on: '2026-09-29' });
   });
 });

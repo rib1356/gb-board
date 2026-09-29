@@ -1211,3 +1211,93 @@ describe('App (warm-up editor)', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
   });
 });
+
+describe('App (warm-up session)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Jug Haul', grade: 'V1', setter: 'Rob', notes: '', holds: [], send_count: 2, last_sent_on: '2026-09-01' },
+    { id: 'p2', name: 'Pinch Party', grade: 'V2', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
+    { id: 'p3', name: 'Slab Dance', grade: 'V2', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
+  ];
+
+  const CLIMBER_KEY = 'board-app:currentClimberId';
+
+  const startSession = async (warmup) => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup });
+    listProblems.mockResolvedValue(PROBLEMS);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    localStorage.setItem(CLIMBER_KEY, 'c1');
+    createTick.mockImplementation(async (problemId, { sentOn }) => ({ id: `t-${problemId}`, problem_id: problemId, sent_on: sentOn }));
+    // Model the table: the Warm-up screen refetches sessions when it reopens.
+    const saved = [];
+    createWarmupSession.mockImplementation(async (boardId, s) => {
+      const row = { id: `s${saved.length + 1}`, done_on: s.doneOn, climbed_by: s.climbedBy, feel: s.feel, problem_ids: s.problemIds, sent_ids: s.sentIds };
+      saved.unshift(row);
+      return row;
+    });
+    listWarmupSessions.mockImplementation(async () => [...saved]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: 'Start warm-up' }));
+    return user;
+  };
+
+  it('logs a normal send for the current rung and moves to the next', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }, { grade: 'V2', problemId: 'p2' }]);
+    expect(screen.getByText('Rob · 0/2')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
+    expect(createTick).toHaveBeenCalledWith('p1', expect.objectContaining({ sentBy: 'Rob', notes: '' }));
+    expect(await screen.findByText('Rob · 1/2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sent Pinch Party' })).toBeInTheDocument();
+  });
+
+  it('asks for a feel when the last rung is sent and saves the session', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
+    await user.click(await screen.findByRole('button', { name: 'Strong' }));
+    await waitFor(() => expect(createWarmupSession).toHaveBeenCalledWith('b1', expect.objectContaining({
+      climbedBy: 'Rob', feel: 'strong', problemIds: ['p1'], sentIds: ['p1'],
+    })));
+    expect(await screen.findByText(/Rob · Strong · 1\/1/)).toBeInTheDocument();
+  });
+
+  it('ending part-way still asks for a feel and saves partial progress', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }, { grade: 'V2', problemId: 'p2' }]);
+    await user.click(screen.getByRole('button', { name: 'End' }));
+    await user.click(await screen.findByRole('button', { name: 'Heavy' }));
+    await waitFor(() => expect(createWarmupSession).toHaveBeenCalledWith('b1', expect.objectContaining({
+      feel: 'heavy', problemIds: ['p1', 'p2'], sentIds: [],
+    })));
+  });
+
+  it('discarding saves no session', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    await user.click(screen.getByRole('button', { name: 'End' }));
+    await user.click(await screen.findByRole('button', { name: 'Discard' }));
+    expect(createWarmupSession).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: 'Start warm-up' })).toBeInTheDocument();
+  });
+
+  it('re-rolls a random rung to another problem at that grade', async () => {
+    const user = await startSession([{ grade: 'V2', problemId: null }]);
+    const before = screen.getByText(/Pinch Party|Slab Dance/).textContent;
+    await user.click(screen.getByRole('button', { name: 'Re-roll rung 1' }));
+    const after = screen.getByText(/Pinch Party|Slab Dance/).textContent;
+    expect(after).not.toBe(before);
+  });
+
+  it('keeps the rung unsent and shows an error when the send fails', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    createTick.mockRejectedValueOnce(new Error('offline'));
+    await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
+    expect(await screen.findByText(/could not log that send/i)).toBeInTheDocument();
+    expect(screen.getByText('Rob · 0/1')).toBeInTheDocument();
+  });
+
+  it('skips removed rungs', async () => {
+    await startSession([{ grade: 'V1', problemId: 'gone' }, { grade: 'V1', problemId: 'p1' }]);
+    expect(screen.getByText('Rob · 0/1')).toBeInTheDocument();
+    expect(screen.getByText('Problem removed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sent Jug Haul' })).toBeInTheDocument();
+  });
+});

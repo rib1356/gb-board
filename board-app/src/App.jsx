@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, createWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
-import { SORTS, sortAndFilterProblems } from './lib/problemList';
+import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { inputStyle } from './ui';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
+import WarmupRun from './warmup/WarmupRun';
+import { todayISO } from './lib/warmup';
 
 // Dynamically imported so the segmentation library (and its model weights)
 // only load once someone actually opens "New problem" -- most visits are
@@ -494,11 +496,7 @@ export default function App() {
     try {
       const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes, sentBy: currentClimber?.name });
       setTicks((prev) => [created, ...prev]);
-      setProblems((prev) => prev.map((p) => (p.id === problemId ? {
-        ...p,
-        send_count: (p.send_count || 0) + 1,
-        last_sent_on: p.last_sent_on && p.last_sent_on > created.sent_on ? p.last_sent_on : created.sent_on,
-      } : p)));
+      setProblems((prev) => applySend(prev, problemId, created.sent_on));
       setShowLogForm(false);
     } catch (err) {
       console.error(err);
@@ -535,6 +533,35 @@ export default function App() {
       setError('Could not save the warm-up — check your connection and try again.');
     }
     setSavingWarmup(false);
+  };
+
+  const handleWarmupSend = async (problemId) => {
+    setError('');
+    try {
+      const created = await createTick(problemId, { sentOn: todayISO(), notes: '', sentBy: currentClimber?.name });
+      setProblems((prev) => applySend(prev, problemId, created.sent_on));
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError('Could not log that send — check your connection and try again.');
+      return false;
+    }
+  };
+
+  const handleFinishWarmup = async ({ feel, problemIds, sentIds }) => {
+    setError('');
+    try {
+      const session = await createWarmupSession(board.id, {
+        doneOn: todayISO(), climbedBy: currentClimber?.name, feel, problemIds, sentIds,
+      });
+      setWarmupSessions((prev) => [session, ...prev].slice(0, 10));
+      setView('warmup');
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError('Could not save that warm-up — check your connection and try again.');
+      return false;
+    }
   };
 
   const handleDelete = async (id) => {
@@ -953,6 +980,18 @@ export default function App() {
             saving={savingWarmup}
             onSave={handleSaveWarmup}
             onCancel={() => setView('warmup')}
+          />
+        )}
+
+        {view === 'warmup-run' && (
+          <WarmupRun
+            rungs={warmupRungs}
+            problems={problems}
+            climberName={currentClimber?.name || ''}
+            onFocus={setWarmupFocusId}
+            onSend={handleWarmupSend}
+            onFinish={handleFinishWarmup}
+            onDiscard={() => setView('warmup')}
           />
         )}
       </div>
