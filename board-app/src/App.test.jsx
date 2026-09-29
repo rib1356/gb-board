@@ -1301,3 +1301,49 @@ describe('App (warm-up session)', () => {
     expect(screen.getByRole('button', { name: 'Sent Jug Haul' })).toBeInTheDocument();
   });
 });
+
+describe('App (warm-up review fixes)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Jug Haul', grade: 'V1', setter: 'Rob', notes: '', holds: [], send_count: 2, last_sent_on: '2026-09-01' },
+    { id: 'p2', name: 'Pinch Party', grade: 'V2', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
+    { id: 'p3', name: 'Slab Dance', grade: 'V2', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
+  ];
+
+  const startSession = async (warmup) => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup });
+    listProblems.mockResolvedValue(PROBLEMS);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: 'Start warm-up' }));
+    return user;
+  };
+
+  it('does not offer a problem that is already in the ladder', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: /edit/i }));
+    await user.click(screen.getByRole('button', { name: '+ Add a problem' }));
+    expect(screen.getByRole('button', { name: /Pinch Party/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Jug Haul/ })).not.toBeInTheDocument();
+  });
+
+  it('locks re-roll while a send is still saving', async () => {
+    const user = await startSession([{ grade: 'V2', problemId: null }, { grade: 'V1', problemId: 'p1' }]);
+    createTick.mockReturnValue(new Promise(() => {}));
+    await user.click(screen.getByRole('button', { name: /^Sent (Pinch Party|Slab Dance)$/ }));
+    expect(screen.getByRole('button', { name: 'Re-roll rung 1' })).toBeDisabled();
+  });
+
+  it('shows a failed send right on the rung, not just at the top of the page', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    createTick.mockRejectedValueOnce(new Error('offline'));
+    await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
+    expect(await screen.findByText("Didn't save — tap Sent again")).toBeInTheDocument();
+  });
+});

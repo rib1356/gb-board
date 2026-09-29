@@ -12,6 +12,7 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
   const [sending, setSending] = useState(false);
   const [finishing, setFinishing] = useState(currentIndex === -1);
   const [savingSession, setSavingSession] = useState(false);
+  const [sendFailed, setSendFailed] = useState(false);
 
   const climbable = rolled.filter((e) => e.problem).length;
   const current = rolled[currentIndex];
@@ -22,9 +23,13 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
   const handleSend = async () => {
     if (!current?.problem) return;
     setSending(true);
+    setSendFailed(false);
     const ok = await onSend(current.problem.id);
     setSending(false);
-    if (!ok) return;
+    if (!ok) {
+      setSendFailed(true);
+      return;
+    }
     const nextSent = [...sentIds, current.problem.id];
     setSentIds(nextSent);
     const next = nextUnsentIndex(rolled, nextSent, currentIndex);
@@ -74,18 +79,19 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
           : SKIP_LABELS[entry.status] || `No ${entry.grade}s on the board`;
         return (
           <div key={i} style={{ ...rungRow(isCurrent, skipped), cursor: skipped ? 'default' : 'pointer' }}
-            onClick={() => { if (!skipped && !finishing) setCurrentIndex(i); }}>
+            onClick={() => { if (!skipped && !finishing && !sending) { setCurrentIndex(i); setSendFailed(false); } }}>
             {sent ? <CheckCircle2 size={16} color="#5C8A66" /> : isCurrent ? <Play size={16} color="#D9552B" /> : <Circle size={16} color="#6d6f73" />}
             <span style={gradeBadgeStyle}>{entry.grade}</span>
             <span style={{ flex: 1 }}>
               {label}
               {entry.status === 'unsent-fallback' && <span style={{ fontSize: 11, color: '#8b8d91', marginLeft: 6 }}>not sent yet</span>}
+              {isCurrent && sendFailed && <span style={{ display: 'block', fontSize: 12, color: '#D9552B', marginTop: 2 }}>Didn't save — tap Sent again</span>}
             </span>
             {entry.random && !sent && !finishing && (
               <button
                 aria-label={`Re-roll rung ${n}`}
                 title={canReroll(rolled, i, problems) ? 'Re-roll' : `only one ${entry.grade}`}
-                disabled={!canReroll(rolled, i, problems)}
+                disabled={sending || !canReroll(rolled, i, problems)}
                 onClick={(e) => { e.stopPropagation(); setRolled((prev) => rerollRung(prev, i, problems)); }}
                 style={{ background: 'none', border: 'none', color: '#C08552', cursor: 'pointer', padding: 4, display: 'flex' }}
               ><RefreshCw size={15} /></button>

@@ -24,7 +24,12 @@ export default function WarmupEditor({ initialRungs, problems, saving, onSave, o
     setSearch('');
   };
 
+  // A problem can only sit on one rung -- ticks are tracked per problem, so a
+  // duplicate would mark both rungs sent at once. The rung being changed keeps
+  // its own problem pickable.
+  const inLadder = new Set(rungs.filter((r, j) => r.problemId && j !== picker?.index).map((r) => r.problemId));
   const pickable = sortAndFilterProblems(problems, { sort: 'grade-asc' })
+    .filter((p) => !inLadder.has(p.id))
     .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
