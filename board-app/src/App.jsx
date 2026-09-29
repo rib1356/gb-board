@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, createWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
@@ -198,6 +198,9 @@ export default function App() {
   const [addingClimber, setAddingClimber] = useState(false);
 
   const imgWrapRef = useRef(null);
+  // Where the list was scrolled to when a problem was opened, so going back
+  // lands you on the same spot instead of wherever the detail view left off.
+  const listScrollRef = useRef(null);
   const [segmentModule, setSegmentModule] = useState(null);
   // Whether THIS session's embedding (not just the session-wide model) is
   // ready -- the model only needs loading once per page session, but each
@@ -313,6 +316,12 @@ export default function App() {
       }
     })();
   }, [view, selectedId]);
+
+  useLayoutEffect(() => {
+    if (view !== 'list' || listScrollRef.current === null) return;
+    window.scrollTo(0, listScrollRef.current);
+    listScrollRef.current = null;
+  }, [view]);
 
   useEffect(() => {
     if (view !== 'warmup' || !board) return;
@@ -799,7 +808,7 @@ export default function App() {
               </div>
             )}
             {visibleProblems.map((p) => (
-              <button key={p.id} onClick={() => { setSelectedId(p.id); setConfirmingDelete(false); setShowLogForm(false); setTicks([]); setView('detail'); }} style={{
+              <button key={p.id} onClick={() => { listScrollRef.current = window.scrollY; window.scrollTo(0, 0); setSelectedId(p.id); setConfirmingDelete(false); setShowLogForm(false); setTicks([]); setView('detail'); }} style={{
                 width: '100%', textAlign: 'left', background: '#232427', border: '1px solid #2A2B2E',
                 borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', color: '#EDEAE3',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -864,7 +873,7 @@ export default function App() {
               {!currentClimber ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: '#8b8d91' }}>Select who you are to log a send</span>
-                  <button onClick={() => { setView('list'); setShowClimberPanel(true); }} style={{
+                  <button onClick={() => { listScrollRef.current = 0; setView('list'); setShowClimberPanel(true); }} style={{
                     display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
                     color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
                   }}>Pick a climber</button>

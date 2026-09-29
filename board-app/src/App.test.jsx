@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -1345,5 +1345,62 @@ describe('App (warm-up review fixes)', () => {
     createTick.mockRejectedValueOnce(new Error('offline'));
     await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
     expect(await screen.findByText("Didn't save — tap Sent again")).toBeInTheDocument();
+  });
+});
+
+describe('App (list scroll position)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
+    { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [] },
+  ];
+  let scrollTo;
+
+  beforeEach(() => {
+    scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    Object.defineProperty(window, 'scrollY', { value: 640, configurable: true, writable: true });
+  });
+
+  afterEach(() => {
+    scrollTo.mockRestore();
+    window.scrollY = 0;
+  });
+
+  it('opens a problem at the top of the page', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Crimpy Corner'));
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('puts you back where you were in the list when you go back', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Crimpy Corner'));
+    window.scrollY = 0;
+    await user.click(await screen.findByRole('button', { name: /board/i }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+  });
+
+  it('keeps the climber picker in view when a problem sends you to pick who you are', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Crimpy Corner'));
+    await user.click(await screen.findByRole('button', { name: 'Pick a climber' }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).not.toHaveBeenCalledWith(0, 640);
+  });
+
+  it('does not jump the list when coming back from somewhere other than a problem', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await user.click(await screen.findByRole('button', { name: /board/i }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).not.toHaveBeenCalledWith(0, 640);
   });
 });
