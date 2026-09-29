@@ -79,7 +79,8 @@ wraps; New problem keeps its label.
 ### Running a session (`'warmup-run'`)
 
 - On start, `rollLadder` fills the random slots. The header shows
-  `‹ End` on the left and `<climber> · <sent>/<total>` on the right.
+  no back button (so a stray tap can't drop a session); the panel shows
+  `<climber> · <sent>/<total>` and an `End` button.
 - Photo shows the current rung's holds.
 - Rungs show ✓ (sent), ▶ (current), ○ (to do). Random picks show `⟳`;
   tapping it re-rolls that rung only (excluding its current pick and every
@@ -91,7 +92,7 @@ wraps; New problem keeps its label.
 - Tapping any rung makes it current (skipping is allowed).
 - Skipped rungs ("No V2s on the board", "Problem removed") are shown greyed
   and never become current.
-- When every climbable rung is sent, or on `‹ End`, the feel prompt
+- When every climbable rung is sent, or on `End`, the feel prompt
   appears: "Warm-up done · 4 / 6 — How did it feel? [Heavy] [Normal]
   [Strong]". Choosing one saves the session and returns to the Warm-up
   screen. The prompt also has "Discard" (no session saved; ticks already
@@ -104,18 +105,18 @@ wraps; New problem keeps its label.
 Pure module `src/lib/warmup.js`:
 
 ```js
-rollLadder(rungs, problems, lastClimbed, rng = Math.random)
+rollLadder(rungs, problems, { rng, today })
   // -> [{ rung, problem | null, random: bool, status }]
   // status: 'ok' | 'unsent-fallback' | 'no-problems' | 'removed'
-rerollRung(rolled, index, problems, lastClimbed, rng = Math.random)
+rerollRung(rolled, index, problems, { rng, today })
   // -> new rolled array with that rung re-picked, or unchanged if no alternative
 canReroll(rolled, index, problems) // -> bool
 ```
 
 - `rungs`: `[{ grade: 'V2', problemId: 'uuid' | null }]` (null = random).
 - `problems`: the loaded (non-deleted) problem list.
-- `lastClimbed`: `Map<problemId, 'YYYY-MM-DD'>` — the most recent tick date
-  per problem by anyone.
+- `last_sent_on` on each problem (the database already maintains it alongside
+  `send_count`) is the last-climbed date — no extra query.
 
 Rules:
 
@@ -160,9 +161,6 @@ rungs in order as climbed (random picks resolved; skipped rungs omitted);
 
 - `saveWarmup(boardId, rungs)` — `update({ warmup: rungs })` on `boards`,
   returns the updated board.
-- `listTickDates(problemIds)` — `ticks.select('problem_id, sent_on')
-  .in('problem_id', ids)`; the caller reduces it to a `lastClimbed` map.
-  Fetched when entering the Warm-up screen.
 - `listWarmupSessions(boardId)` — latest 10, newest first.
 - `createWarmupSession(boardId, { climbedBy, feel, problemIds, sentIds })`.
 
