@@ -17,6 +17,9 @@ vi.mock('./lib/board', () => ({
   deleteTick: vi.fn(),
   listClimbers: vi.fn(),
   createClimber: vi.fn(),
+  saveWarmup: vi.fn(),
+  listWarmupSessions: vi.fn(),
+  createWarmupSession: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
@@ -29,7 +32,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, listWarmupSessions, createWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import App from './App';
@@ -43,6 +46,7 @@ beforeEach(() => {
   listProblems.mockResolvedValue([]);
   listTicks.mockResolvedValue([]);
   listClimbers.mockResolvedValue([]);
+  listWarmupSessions.mockResolvedValue([]);
   loadSegmenter.mockRejectedValue(new Error('segmentation unavailable in tests'));
 });
 

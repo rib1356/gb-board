@@ -20,6 +20,9 @@ import {
   deleteTick,
   listClimbers,
   createClimber,
+  saveWarmup,
+  listWarmupSessions,
+  createWarmupSession,
 } from './board';
 
 function chain(result) {
@@ -392,5 +395,52 @@ describe('uploadProblemMask', () => {
       })
     );
     expect(result).toEqual({ id: 'p1', mask_url: 'stored-url' });
+  });
+});
+
+describe('saveWarmup', () => {
+  it('writes the whole ladder to the board and returns the updated board', async () => {
+    const rungs = [{ grade: 'V1', problemId: 'p1' }, { grade: 'V2', problemId: null }];
+    const updated = { id: 'b1', warmup: rungs };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    expect(await saveWarmup('b1', rungs)).toEqual(updated);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('boards');
+    expect(c.update).toHaveBeenCalledWith({ warmup: rungs });
+    expect(c.eq).toHaveBeenCalledWith('id', 'b1');
+  });
+
+  it('throws when the update fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
+    await expect(saveWarmup('b1', [])).rejects.toThrow('nope');
+  });
+});
+
+describe('listWarmupSessions', () => {
+  it('lists the latest 10 sessions for the board, newest first', async () => {
+    const sessions = [{ id: 's1' }];
+    const c = chain({ data: sessions, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    expect(await listWarmupSessions('b1')).toEqual(sessions);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('warmup_sessions');
+    expect(c.eq).toHaveBeenCalledWith('board_id', 'b1');
+    expect(c.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(c.limit).toHaveBeenCalledWith(10);
+  });
+});
+
+describe('createWarmupSession', () => {
+  it('inserts a session row with snake_case columns', async () => {
+    const created = { id: 's1' };
+    const c = chain({ data: created, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await createWarmupSession('b1', {
+      doneOn: '2026-09-29', climbedBy: 'Rob', feel: 'strong', problemIds: ['a', 'b'], sentIds: ['a'],
+    });
+    expect(result).toEqual(created);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('warmup_sessions');
+    expect(c.insert).toHaveBeenCalledWith({
+      board_id: 'b1', done_on: '2026-09-29', climbed_by: 'Rob', feel: 'strong', problem_ids: ['a', 'b'], sent_ids: ['a'],
+    });
   });
 });

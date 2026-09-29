@@ -194,3 +194,35 @@ export async function restoreProblem(id) {
   if (error) throw error;
   return data;
 }
+
+export async function saveWarmup(boardId, rungs) {
+  const { data, error } = await supabase
+    .from('boards')
+    .update({ warmup: rungs })
+    .eq('id', boardId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function listWarmupSessions(boardId) {
+  const { data, error } = await supabase
+    .from('warmup_sessions')
+    .select('*')
+    .eq('board_id', boardId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) throw error;
+  return data;
+}
+
+export async function createWarmupSession(boardId, { doneOn, climbedBy, feel, problemIds, sentIds }) {
+  const { data, error } = await supabase
+    .from('warmup_sessions')
+    .insert({ board_id: boardId, done_on: doneOn, climbed_by: climbedBy, feel, problem_ids: problemIds, sent_ids: sentIds })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
