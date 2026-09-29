@@ -627,37 +627,53 @@ describe('App (photo snapshot)', () => {
   });
 });
 
-describe('App (grade filter)', () => {
-  it('filters the problem list by grade', async () => {
-    listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
-      { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [] },
-    ]);
+describe('App (list sort and unsent filter)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 3 },
+    { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 0 },
+    { id: 'p3', name: 'Tension Sucks', grade: 'V7', setter: 'Rob', notes: '', holds: [], send_count: 0 },
+  ];
+  const listedNames = () =>
+    screen.getAllByText(/Gaston Traverse|Crimpy Corner|Tension Sucks/).map((el) => el.textContent);
+
+  it('sorts the list easiest first and hardest first', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
     render(<App />);
     const user = userEvent.setup();
 
     await screen.findByText('Gaston Traverse');
-    await user.selectOptions(screen.getByRole('combobox', { name: /filter by grade/i }), 'V5');
-
-    expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
-    expect(screen.queryByText('Crimpy Corner')).not.toBeInTheDocument();
+    const sort = screen.getByRole('combobox', { name: /sort problems/i });
+    await user.selectOptions(sort, 'grade-asc');
+    expect(listedNames()).toEqual(['Crimpy Corner', 'Gaston Traverse', 'Tension Sucks']);
+    await user.selectOptions(sort, 'grade-desc');
+    expect(listedNames()).toEqual(['Tension Sucks', 'Gaston Traverse', 'Crimpy Corner']);
   });
 
-  it('shows all problems again when the filter is reset to All', async () => {
-    listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
-      { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [] },
-    ]);
+  it('shows only problems nobody has sent when Unsent is toggled on, and all again when off', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
     render(<App />);
     const user = userEvent.setup();
 
     await screen.findByText('Gaston Traverse');
-    const filter = screen.getByRole('combobox', { name: /filter by grade/i });
-    await user.selectOptions(filter, 'V5');
-    await user.selectOptions(filter, '');
-
-    expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
+    const unsent = screen.getByRole('button', { name: /unsent/i });
+    await user.click(unsent);
+    expect(unsent).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Gaston Traverse')).not.toBeInTheDocument();
     expect(screen.getByText('Crimpy Corner')).toBeInTheDocument();
+    expect(screen.getByText('Tension Sucks')).toBeInTheDocument();
+
+    await user.click(unsent);
+    expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
+  });
+
+  it('says so when every problem has been sent', async () => {
+    listProblems.mockResolvedValue([PROBLEMS[0]]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('Gaston Traverse');
+    await user.click(screen.getByRole('button', { name: /unsent/i }));
+    expect(screen.getByText(/nothing unsent/i)).toBeInTheDocument();
   });
 });
 

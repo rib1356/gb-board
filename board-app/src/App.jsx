@@ -6,6 +6,7 @@ import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
+import { SORTS, sortAndFilterProblems } from './lib/problemList';
 
 // Dynamically imported so the segmentation library (and its model weights)
 // only load once someone actually opens "New problem" -- most visits are
@@ -177,7 +178,8 @@ export default function App() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deletedProblem, setDeletedProblem] = useState(null);
-  const [gradeFilter, setGradeFilter] = useState('');
+  const [sort, setSort] = useState('newest');
+  const [unsentOnly, setUnsentOnly] = useState(false);
 
   const [ticks, setTicks] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
@@ -535,7 +537,7 @@ export default function App() {
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
   const selected = problems.find((p) => p.id === selectedId);
-  const visibleProblems = gradeFilter ? problems.filter((p) => p.grade === gradeFilter) : problems;
+  const visibleProblems = sortAndFilterProblems(problems, { sort, unsentOnly });
   const displayHolds = view === 'new' ? draftHolds : (selected ? selected.holds : []);
   const lockedProblem = view === 'detail' ? selected : null;
   const displayPhotoUrl = lockedProblem?.photo_url || activePhotoUrl;
@@ -690,12 +692,19 @@ export default function App() {
         {view === 'list' && (
           <div style={{ marginTop: 22 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {problems.length > 0 && (
-                  <select aria-label="Filter by grade" value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, marginBottom: 0, width: 'auto' }}>
-                    <option value="">All grades</option>
-                    {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
-                  </select>
+                  <>
+                    <select aria-label="Sort problems" value={sort} onChange={(e) => setSort(e.target.value)} style={{ ...inputStyle, marginTop: 0, marginBottom: 0, width: 'auto' }}>
+                      {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <button type="button" aria-pressed={unsentOnly} onClick={() => setUnsentOnly((prev) => !prev)} style={{
+                      background: unsentOnly ? '#D9552B' : 'transparent',
+                      border: `1px solid ${unsentOnly ? '#D9552B' : '#3a3b3e'}`,
+                      color: unsentOnly ? '#fff' : '#b8babd',
+                      borderRadius: 999, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    }}>Unsent</button>
+                  </>
                 )}
               </div>
               <ClimberPicker
@@ -718,7 +727,7 @@ export default function App() {
             )}
             {problems.length > 0 && visibleProblems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
-                <p style={{ fontSize: 14, margin: 0 }}>No problems at that grade.</p>
+                <p style={{ fontSize: 14, margin: 0 }}>Nothing unsent — go set something new.</p>
               </div>
             )}
             {visibleProblems.map((p) => (
