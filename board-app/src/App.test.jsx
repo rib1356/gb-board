@@ -20,6 +20,7 @@ vi.mock('./lib/board', () => ({
   saveWarmup: vi.fn(),
   listWarmupSessions: vi.fn(),
   createWarmupSession: vi.fn(),
+  deleteWarmupSession: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, listWarmupSessions, createWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import App from './App';
@@ -1404,5 +1405,39 @@ describe('App (list scroll position)', () => {
     await user.click(await screen.findByRole('button', { name: /board/i }));
     await screen.findByText('THE BOARD');
     expect(scrollTo).not.toHaveBeenCalledWith(0, 640);
+  });
+});
+
+describe('App (deleting a warm-up session)', () => {
+  const SESSIONS = [
+    { id: 's1', done_on: '2026-09-29', climbed_by: 'Rob', feel: 'strong', problem_ids: ['p1'], sent_ids: [] },
+    { id: 's2', done_on: '2026-09-27', climbed_by: 'Tom', feel: 'heavy', problem_ids: ['p1'], sent_ids: ['p1'] },
+  ];
+  const openWarmup = async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue([{ id: 'p1', name: 'Jug Haul', grade: 'V1', setter: '', notes: '', holds: [], send_count: 1 }]);
+    listWarmupSessions.mockResolvedValue(SESSIONS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await screen.findAllByRole('listitem');
+    return user;
+  };
+
+  it('removes a session from Last sessions with one tap', async () => {
+    deleteWarmupSession.mockResolvedValue();
+    const user = await openWarmup();
+    await user.click(screen.getByRole('button', { name: 'Delete session from 29 Sept by Rob' }));
+    expect(deleteWarmupSession).toHaveBeenCalledWith('s1');
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1));
+    expect(screen.getByRole('listitem').textContent).toMatch(/Tom/);
+  });
+
+  it('keeps the session and shows an error when the delete fails', async () => {
+    deleteWarmupSession.mockRejectedValue(new Error('offline'));
+    const user = await openWarmup();
+    await user.click(screen.getByRole('button', { name: 'Delete session from 29 Sept by Rob' }));
+    expect(await screen.findByText(/could not delete that warm-up/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
 });

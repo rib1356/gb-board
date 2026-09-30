@@ -23,6 +23,7 @@ import {
   saveWarmup,
   listWarmupSessions,
   createWarmupSession,
+  deleteWarmupSession,
 } from './board';
 
 function chain(result) {
@@ -442,5 +443,21 @@ describe('createWarmupSession', () => {
     expect(c.insert).toHaveBeenCalledWith({
       board_id: 'b1', done_on: '2026-09-29', climbed_by: 'Rob', feel: 'strong', problem_ids: ['a', 'b'], sent_ids: ['a'],
     });
+  });
+});
+
+describe('deleteWarmupSession', () => {
+  it('deletes a session by id', async () => {
+    const c = chain({ error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    await deleteWarmupSession('s1');
+    expect(mocks.supabase.from).toHaveBeenCalledWith('warmup_sessions');
+    expect(c.delete).toHaveBeenCalled();
+    expect(c.eq).toHaveBeenCalledWith('id', 's1');
+  });
+
+  it('throws when the delete fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ error: new Error('nope') }));
+    await expect(deleteWarmupSession('s1')).rejects.toThrow('nope');
   });
 });

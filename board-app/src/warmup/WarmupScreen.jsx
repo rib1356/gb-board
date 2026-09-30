@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Pencil, RefreshCw } from 'lucide-react';
+import { Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { FEELS } from '../lib/warmup';
 import { formatShortDate, gradeBadgeStyle, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
 
 const FEELS_BY_VALUE = Object.fromEntries(FEELS.map((f) => [f.value, f]));
 
-export default function WarmupScreen({ rungs, problems, sessions, climber, onFocus, onEdit, onStart }) {
+export default function WarmupScreen({ rungs, problems, sessions, climber, onFocus, onEdit, onStart, onDeleteSession }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const byId = new Map(problems.map((p) => [p.id, p]));
   const focusedId = rungs[selectedIndex]?.problemId;
@@ -56,10 +56,17 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
           {sessions.map((s) => {
             const feel = FEELS_BY_VALUE[s.feel];
             return (
-              <li key={s.id} style={{ fontSize: 13.5, color: '#c7c8cb', padding: '6px 0', borderBottom: '1px solid #2A2B2E' }}>
-                {[formatShortDate(s.done_on), s.climbed_by].filter(Boolean).join(' · ')}
-                {feel && <> · <span style={{ color: feel.color, fontWeight: 700 }}>{feel.label}</span></>}
-                {` · ${s.sent_ids.length}/${s.problem_ids.length}`}
+              <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#c7c8cb', padding: '2px 0', borderBottom: '1px solid #2A2B2E' }}>
+                <span>
+                  {[formatShortDate(s.done_on), s.climbed_by].filter(Boolean).join(' · ')}
+                  {feel && <> · <span style={{ color: feel.color, fontWeight: 700 }}>{feel.label}</span></>}
+                  {` · ${s.sent_ids.length}/${s.problem_ids.length}`}
+                </span>
+                <button
+                  aria-label={`Delete session from ${formatShortDate(s.done_on)}${s.climbed_by ? ` by ${s.climbed_by}` : ''}`}
+                  onClick={() => onDeleteSession(s.id)}
+                  style={{ background: 'none', border: 'none', color: '#8b8d91', cursor: 'pointer', padding: 10, display: 'flex' }}
+                ><Trash2 size={14} /></button>
               </li>
             );
           })}

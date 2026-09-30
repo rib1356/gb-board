@@ -226,3 +226,8 @@ export async function createWarmupSession(boardId, { doneOn, climbedBy, feel, pr
   if (error) throw error;
   return data;
 }
+
+export async function deleteWarmupSession(id) {
+  const { error } = await supabase.from('warmup_sessions').delete().eq('id', id);
+  if (error) throw error;
+}

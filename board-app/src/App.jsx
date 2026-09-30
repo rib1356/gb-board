@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, createWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
@@ -572,6 +572,17 @@ export default function App() {
     }
   };
 
+  const handleDeleteWarmupSession = async (id) => {
+    setError('');
+    try {
+      await deleteWarmupSession(id);
+      setWarmupSessions((prev) => prev.filter((s) => s.id !== id));
+    } catch (err) {
+      console.error(err);
+      setError('Could not delete that warm-up — check your connection and try again.');
+    }
+  };
+
   const handleDelete = async (id) => {
     try {
       const problem = problems.find((p) => p.id === id);
@@ -978,6 +989,7 @@ export default function App() {
             onFocus={setWarmupFocusId}
             onEdit={() => { setWarmupFocusId(null); setView('warmup-edit'); }}
             onStart={() => setView('warmup-run')}
+            onDeleteSession={handleDeleteWarmupSession}
           />
         )}
 
