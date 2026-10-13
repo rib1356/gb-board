@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, ChartBar, Zap } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, setTickFlash, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
@@ -569,19 +569,6 @@ export default function App() {
     setLoggingTick(false);
   };
 
-  const handleToggleFlash = async (tick) => {
-    setError('');
-    try {
-      const { flash } = await setTickFlash(tick.id, !tick.flash);
-      const apply = (t) => (t.id === tick.id ? { ...t, flash } : t);
-      setTicks((prev) => prev.map(apply));
-      setBoardTicks((prev) => prev.map(apply));
-    } catch (err) {
-      console.error(err);
-      setError('Could not update that send — check your connection and try again.');
-    }
-  };
-
   const handleDeleteTick = async (problemId, tickId) => {
     try {
       await deleteTick(tickId);
@@ -1082,8 +1069,9 @@ export default function App() {
                   // keeps the tag, so a same-day repeat can't bump the original logger.
                   return t.created_at < earliest.created_at ? t : earliest;
                 }, null)?.id;
-                // Each climber's own first send carries the flash toggle, so
-                // a flash can be marked after the fact.
+                // A flash only counts on the climber's own first send -- the
+                // same rule the pyramid uses -- so backdating an earlier send
+                // quietly drops it.
                 const flashableIds = firstSendIds(ticks);
                 return (
                   <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1101,13 +1089,12 @@ export default function App() {
                               fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
                               color: t.id === firstSendId ? '#5C8A66' : '#8b8d91',
                             }}>{t.id === firstSendId ? 'First send' : 'Repeat'}</span>
-                            {flashableIds.has(t.id) && (
-                              <button aria-label="Flash" aria-pressed={Boolean(t.flash)} onClick={() => handleToggleFlash(t)} style={{
-                                display: 'flex', alignItems: 'center', gap: 3, borderRadius: 999, padding: '2px 8px', cursor: 'pointer',
+                            {t.flash && flashableIds.has(t.id) && (
+                              <span style={{
+                                display: 'flex', alignItems: 'center', gap: 3, borderRadius: 999, padding: '2px 8px',
                                 fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
-                                background: t.flash ? '#C9A227' : 'none', border: `1px solid ${t.flash ? '#C9A227' : '#3a3b3e'}`,
-                                color: t.flash ? '#17181A' : '#8b8d91',
-                              }}><Zap size={11} /> Flash</button>
+                                background: '#C9A227', color: '#17181A',
+                              }}><Zap size={11} />Flash</span>
                             )}
                           </div>
                           {t.notes && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#c7c8cb', whiteSpace: 'pre-wrap' }}>{t.notes}</p>}

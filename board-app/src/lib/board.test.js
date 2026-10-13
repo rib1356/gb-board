@@ -18,7 +18,6 @@ import {
   listTicks,
   listBoardTicks,
   createTick,
-  setTickFlash,
   deleteTick,
   listClimbers,
   createClimber,
@@ -255,24 +254,6 @@ describe('createTick flash', () => {
     mocks.supabase.from.mockReturnValue(c);
     await createTick('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob', flash: true });
     expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob', flash: true });
-  });
-});
-
-describe('setTickFlash', () => {
-  it('flips the flash on one send and returns the updated row', async () => {
-    const updated = { id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob', flash: true };
-    const c = chain({ data: updated, error: null });
-    mocks.supabase.from.mockReturnValue(c);
-    const result = await setTickFlash('t1', true);
-    expect(result).toEqual(updated);
-    expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
-    expect(c.update).toHaveBeenCalledWith({ flash: true });
-    expect(c.eq).toHaveBeenCalledWith('id', 't1');
-  });
-
-  it('throws when the update fails', async () => {
-    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
-    await expect(setTickFlash('t1', true)).rejects.toThrow('nope');
   });
 });
 

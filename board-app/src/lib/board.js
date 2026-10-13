@@ -171,17 +171,6 @@ export async function createTick(problemId, { sentOn, notes, sentBy, flash = fal
   return data;
 }
 
-export async function setTickFlash(id, flash) {
-  const { data, error } = await supabase
-    .from('ticks')
-    .update({ flash })
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
 export async function deleteTick(id) {
   const { error } = await supabase.from('ticks').delete().eq('id', id);
   if (error) throw error;
