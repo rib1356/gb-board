@@ -3,18 +3,20 @@ import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pen
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
-import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
+import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { inputStyle, sectionHeading } from './ui';
 import { ChalkRing, FaceShape, HoldLabels, VolumeMarks } from './HoldOverlays';
-import { isPinned, faceListLines, setFace } from './lib/volumes';
+import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
 import WarmupRun from './warmup/WarmupRun';
 import VolumesScreen from './volumes/VolumesScreen';
+import FaceButtons from './volumes/FaceButtons';
+import HoldMenu from './volumes/HoldMenu';
 import { todayISO } from './lib/warmup';
 
 // Dynamically imported so the segmentation library (and its model weights)
@@ -30,7 +32,7 @@ const HOLD_COLORS = {
   finish: '#D9552B',
 };
 
-// Tap-to-remove hit radius (as a fraction of the photo's displayed size) for
+// Tap hit radius (as a fraction of the photo's displayed size) for
 // a hold that's still showing as a circle marker rather than a real mask.
 const HOLD_HIT_RADIUS_PX = 22;
 
@@ -139,6 +141,11 @@ export default function App() {
 
   const [draftHolds, setDraftHolds] = useState([]);
   const [placeType, setPlaceType] = useState('start');
+  // Which draft hold the hold menu is open for, by its draft-only _key -- a
+  // hold object is replaced when its mask lands or a tag changes, so neither
+  // identity nor index can track it.
+  const [menuKey, setMenuKey] = useState(null);
+  const nextKeyRef = useRef(0);
   const [name, setName] = useState('');
   const [grade, setGrade] = useState('');
   const [setter, setSetter] = useState('');
@@ -180,6 +187,7 @@ export default function App() {
   const [segmentUnavailable, setSegmentUnavailable] = useState(false);
   const segmenterRef = useRef(null);
   const embeddingRef = useRef(null);
+  const withKey = (hold) => ({ ...hold, _key: nextKeyRef.current++ });
 
   // Editing must target the problem's own saved photo, not the board's
   // current one -- the board photo may have been replaced since this
@@ -212,19 +220,19 @@ export default function App() {
         setSegmentModule(mod);
         setEmbeddingReady(true);
         // Editing seeds draftHolds from the saved problem, without masks --
-        // decode each one now so they become tap-removable/highlighted just
-        // like a freshly-placed hold. Matched by object identity (not index)
-        // so an in-flight decode can't land on the wrong hold if the user
-        // removes another one before it resolves.
+        // decode each one now so they become tappable/highlighted just like a
+        // freshly-placed hold. Matched by _key (not index or identity) so an
+        // in-flight decode can't land on the wrong hold if the user removes
+        // or tags one before it resolves. Faces are never segmented.
         const seg = segmenterRef.current;
         setDraftHolds((prev) => {
           prev.forEach((h) => {
-            if (h._mask) return;
+            if (h._mask || h.face) return;
             mod.maskAtPoint(seg, emb, h.x, h.y)
               .then((mask) => {
                 if (cancelled) return;
                 const maskUrl = mod.maskToDataUrl(mask, HOLD_COLORS[h.type]);
-                setDraftHolds((cur) => cur.map((hh) => (hh === h ? { ...hh, _mask: mask, _maskUrl: maskUrl } : hh)));
+                setDraftHolds((cur) => cur.map((hh) => (hh._key === h._key ? { ...hh, _mask: mask, _maskUrl: maskUrl } : hh)));
               })
               .catch((err) => console.error('Highlight decode failed for this hold:', err));
           });
@@ -384,6 +392,8 @@ export default function App() {
       return;
     }
     if (view !== 'new') return;
+    // With the menu open, a tap just closes it, so a mis-tap can't add a stray hold.
+    if (menuKey !== null) { setMenuKey(null); return; }
     // Wait for highlight mode to finish loading (or fail) before placing a
     // hold -- otherwise an early tap gets stuck as a plain circle forever,
     // since a hold's mask is only ever attempted at tap time.
@@ -395,11 +405,11 @@ export default function App() {
     const radiusYFrac = HOLD_HIT_RADIUS_PX / rect.height;
     const hitIndex = holdAtPoint(draftHolds, point.x, point.y, radiusXFrac, radiusYFrac);
     if (hitIndex !== -1) {
-      setDraftHolds((prev) => prev.filter((_, i) => i !== hitIndex));
+      setMenuKey(draftHolds[hitIndex]._key);
       return;
     }
 
-    const newHold = { ...point, type: placeType };
+    const newHold = withKey({ ...point, type: placeType });
     setDraftHolds((prev) => [...prev, newHold]);
 
     const segmenter = segmenterRef.current;
@@ -408,7 +418,7 @@ export default function App() {
       segmentModule.maskAtPoint(segmenter, embedding, point.x, point.y)
         .then((mask) => {
           const maskUrl = segmentModule.maskToDataUrl(mask, HOLD_COLORS[newHold.type]);
-          setDraftHolds((prev) => prev.map((h) => (h === newHold ? { ...h, _mask: mask, _maskUrl: maskUrl } : h)));
+          setDraftHolds((prev) => prev.map((h) => (h._key === newHold._key ? { ...h, _mask: mask, _maskUrl: maskUrl } : h)));
         })
         .catch((err) => {
           // This hold just keeps its circle marker.
@@ -417,8 +427,24 @@ export default function App() {
     }
   };
 
+  const handleFaceTap = (volume, face, placed) => {
+    if (placed) { setMenuKey(placed._key); return; }
+    const hold = withKey(faceHold(volume, face, placeType));
+    setDraftHolds((prev) => [...prev, hold]);
+  };
+
+  const updateMenuHold = (patch) => {
+    setDraftHolds((prev) => prev.map((h) => (h._key === menuKey ? { ...h, ...patch } : h)));
+  };
+
+  const removeMenuHold = () => {
+    setDraftHolds((prev) => prev.filter((h) => h._key !== menuKey));
+    setMenuKey(null);
+  };
+
   const startNewProblem = () => {
     setDraftHolds([]); setName(''); setGrade(''); setSetter(currentClimber?.name || ''); setNotes(''); setPlaceType('start');
+    setMenuKey(null);
     setEditingId(null);
     setError('');
     setView('new');
@@ -429,7 +455,8 @@ export default function App() {
   // form, which skips loading highlight mode and keeps the saved highlight.
   const startEditProblem = (problem, part) => {
     setEditingId(problem.id);
-    setDraftHolds(problem.holds);
+    setDraftHolds(problem.holds.map(withKey));
+    setMenuKey(null);
     setName(problem.name); setGrade(problem.grade || ''); setSetter(problem.setter || ''); setNotes(problem.notes || '');
     setError('');
     setView(part === 'holds' ? 'new' : 'edit-details');
@@ -441,15 +468,18 @@ export default function App() {
     setSaving(true);
     setError('');
     try {
-      const cleanHolds = draftHolds.map(({ x, y, type }) => ({ x, y, type }));
-      const allMasked = draftHolds.length > 0 && draftHolds.every((h) => h._mask);
+      const cleanHolds = draftHolds.map(cleanHold);
+      // Faces are drawn from their own outline and never segmented, so only the
+      // other holds decide whether there's a complete highlight image to save.
+      const segmented = draftHolds.filter((h) => !h.face);
+      const allMasked = segmented.length > 0 && segmented.every((h) => h._mask);
 
       if (editingId) {
         let updated = await updateProblem(editingId, { name, grade, setter, notes, holds: cleanHolds });
         if (allMasked) {
           try {
             const blob = await segmentModule.compositeMaskBlob(
-              draftHolds.map((h) => ({ mask: h._mask, color: HOLD_COLORS[h.type] })),
+              segmented.map((h) => ({ mask: h._mask, color: HOLD_COLORS[h.type] })),
               embeddingRef.current.width,
               embeddingRef.current.height
             );
@@ -466,7 +496,7 @@ export default function App() {
         if (allMasked) {
           try {
             const blob = await segmentModule.compositeMaskBlob(
-              draftHolds.map((h) => ({ mask: h._mask, color: HOLD_COLORS[h.type] })),
+              segmented.map((h) => ({ mask: h._mask, color: HOLD_COLORS[h.type] })),
               embeddingRef.current.width,
               embeddingRef.current.height
             );
@@ -672,6 +702,8 @@ export default function App() {
   const displayPhotoUrl = lockedProblem?.photo_url || activePhotoUrl;
   const lockedMaskUrl = lockedProblem?.mask_url;
   const detailPhotoStatus = lockedProblem ? photoStatus(lockedProblem, board) : null;
+  const faceRows = view === 'new' ? facesOnPhoto(volumes, activePhotoUrl) : [];
+  const menuHold = menuKey === null ? null : draftHolds.find((h) => h._key === menuKey) || null;
 
   if (loading) {
     return (
@@ -813,6 +845,15 @@ export default function App() {
           <div style={{ marginTop: 16 }}>
             {view === 'new' && (
               <>
+                {menuHold && (
+                  <HoldMenu
+                    hold={menuHold}
+                    color={HOLD_COLORS[menuHold.type]}
+                    onChange={updateMenuHold}
+                    onRemove={removeMenuHold}
+                    onDone={() => setMenuKey(null)}
+                  />
+                )}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   {['start', 'hold', 'foot', 'finish'].map((t) => (
                     <button key={t} onClick={() => setPlaceType(t)} style={{
@@ -823,8 +864,9 @@ export default function App() {
                     }}>{t}</button>
                   ))}
                 </div>
+                <FaceButtons rows={faceRows} holds={draftHolds} colors={HOLD_COLORS} onTap={handleFaceTap} />
                 <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>
-                  Pick a hold type, then tap the board photo above to place one — tap an existing hold to remove it.
+                  Pick a hold type, then tap the board photo above to place one — tap a placed hold to tag or remove it.
                 </p>
                 {segmentUnavailable && (
                   <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>

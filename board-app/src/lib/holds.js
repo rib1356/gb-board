@@ -11,8 +11,8 @@ export function validateDraft({ name, holds }) {
   return null;
 }
 
-// Finds the topmost placed hold under a tapped point, so a tap can remove it
-// instead of adding a new one nearby. A hold with a decoded mask is hit-tested
+// Finds the topmost placed hold under a tapped point, so a tap can open its
+// menu instead of adding a new one nearby. A hold with a decoded mask is hit-tested
 // against its actual mask pixels; one still showing as a circle (loading, or
 // highlight mode unavailable) is hit-tested against an elliptical radius
 // around its center instead.

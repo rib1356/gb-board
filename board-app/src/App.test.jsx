@@ -315,7 +315,7 @@ describe('App (hold highlighting)', () => {
     await waitFor(() => expect(uploadProblemMask).toHaveBeenCalledWith('p1', blob));
   });
 
-  it('removes a highlighted hold when tapping it again, instead of placing a new one', async () => {
+  it('opens the hold menu when tapping a highlighted hold, and Remove takes it off', async () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     loadSegmenter.mockResolvedValue({ device: 'webgpu' });
     computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
@@ -337,8 +337,13 @@ describe('App (hold highlighting)', () => {
 
     fireEvent.click(photo.parentElement, { clientX: 210, clientY: 110 });
 
+    expect(screen.getByRole('group', { name: 'Hold menu' })).toBeInTheDocument();
+    expect(screen.getByTestId('hold-highlight')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
     expect(screen.queryByTestId('hold-highlight')).not.toBeInTheDocument();
     expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Hold menu' })).not.toBeInTheDocument();
   });
 
   it('falls back to circle markers and skips the mask upload when segmentation is unavailable', async () => {
@@ -798,7 +803,7 @@ describe('App (edit flow)', () => {
     expect(screen.getAllByTestId('hold-marker')).toHaveLength(2);
   });
 
-  it('removes a hold when tapping directly on it while editing, instead of adding a new one', async () => {
+  it('removes a hold from the hold menu while editing, instead of adding a new one', async () => {
     listProblems.mockResolvedValue([
       {
         id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '',
@@ -819,6 +824,8 @@ describe('App (edit flow)', () => {
     expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
 
     fireEvent.click(photo.parentElement, { clientX: 40, clientY: 30 });
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
 
     expect(screen.queryByTestId('hold-marker')).not.toBeInTheDocument();
   });
@@ -1753,5 +1760,180 @@ describe('App (volumes setup)', () => {
     await user.click(screen.getByRole('button', { name: 'Delete Vol1' }));
     await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
     await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', []));
+  });
+});
+
+describe('App (faces and tags in the hold editor)', () => {
+  const PHOTO = 'https://cdn.example/b1.jpg';
+  const OLD = 'https://cdn.example/old.jpg';
+  const TOP = [{ x: 0.25, y: 0.125 }, { x: 0.75, y: 0.125 }, { x: 0.5, y: 0.5 }];
+  const VOLUMES = [{ id: 'v1', name: 'Vol1', faces: [
+    { id: 'f1', name: 'Top', points: TOP, photoUrl: PHOTO },
+    { id: 'f9', name: 'Left', points: [{ x: 0.1, y: 0.9 }], photoUrl: OLD },
+  ] }];
+  const TOP_FACE = { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: TOP };
+
+  beforeEach(() => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: PHOTO, volumes: VOLUMES });
+  });
+
+  function mockPhotoRect(photo, width = 200, height = 100) {
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width, height, right: width, bottom: height,
+    });
+  }
+
+  it('adds a face from its button and saves a faces-only problem without a highlight image', async () => {
+    createProblem.mockResolvedValue({ id: 'p1', name: 'Vol Line', grade: '', setter: '', notes: '', holds: [] });
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+
+    expect(screen.queryByRole('button', { name: 'Vol1 Left' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    expect(screen.getByRole('button', { name: 'Vol1 Top' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('face-shape')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('e.g. Gaston Traverse'), 'Vol Line');
+    await user.click(screen.getByText('Save problem'));
+
+    await waitFor(() => expect(createProblem).toHaveBeenCalledWith('b1', {
+      name: 'Vol Line', grade: '', setter: '', notes: '',
+      holds: [{ x: 0.5, y: 0.25, type: 'start', face: TOP_FACE }],
+      photoUrl: PHOTO,
+    }));
+    expect(uploadProblemMask).not.toHaveBeenCalled();
+  });
+
+  it('tags a placed face with hand and grip from the hold menu', async () => {
+    createProblem.mockResolvedValue({ id: 'p1', name: 'Vol Line', grade: '', setter: '', notes: '', holds: [] });
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    expect(screen.getByText('Vol1 Top · start')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Right hand' }));
+    await user.click(screen.getByRole('button', { name: 'Undercut' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(screen.queryByRole('group', { name: 'Hold menu' })).not.toBeInTheDocument();
+    expect(screen.getByText('R UC')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('e.g. Gaston Traverse'), 'Vol Line');
+    await user.click(screen.getByText('Save problem'));
+    await waitFor(() => expect(createProblem).toHaveBeenCalledWith('b1', expect.objectContaining({
+      holds: [{ x: 0.5, y: 0.25, type: 'start', hand: 'R', grip: 'undercut', face: TOP_FACE }],
+    })));
+  });
+
+  it('clears a tag by tapping it again', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    await user.click(screen.getByRole('button', { name: 'Left hand' }));
+    expect(screen.getByRole('button', { name: 'Left hand' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Left hand' }));
+    expect(screen.getByRole('button', { name: 'Left hand' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('tag-pill')).not.toBeInTheDocument();
+  });
+
+  it('closes the hold menu on a photo tap without placing a hold', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    mockPhotoRect(photo);
+
+    fireEvent.click(photo.parentElement, { clientX: 20, clientY: 90 });
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+    fireEvent.click(photo.parentElement, { clientX: 20, clientY: 90 });
+    expect(screen.getByRole('group', { name: 'Hold menu' })).toBeInTheDocument();
+
+    fireEvent.click(photo.parentElement, { clientX: 180, clientY: 10 });
+    expect(screen.queryByRole('group', { name: 'Hold menu' })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+  });
+
+  it('places a hold on a lit face instead of selecting the face', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    mockPhotoRect(photo);
+
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    // Centre of the Top face.
+    fireEvent.click(photo.parentElement, { clientX: 100, clientY: 25 });
+
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+    expect(screen.queryByRole('group', { name: 'Hold menu' })).not.toBeInTheDocument();
+  });
+
+  it("keeps a hold's highlight when it's tagged before the highlight finishes", async () => {
+    loadSegmenter.mockResolvedValue({ device: 'webgpu' });
+    computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
+    let resolveMask;
+    maskAtPoint.mockReturnValue(new Promise((resolve) => { resolveMask = resolve; }));
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    mockPhotoRect(photo, 400, 200);
+    await waitFor(() => expect(computeEmbedding).toHaveBeenCalled());
+
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 180 });
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 180 });
+    await user.click(screen.getByRole('button', { name: 'Left hand' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await act(async () => resolveMask({ width: 400, height: 200, data: new Uint8Array(400 * 200).fill(1) }));
+    expect(screen.getByTestId('hold-highlight')).toBeInTheDocument();
+    expect(screen.getByText('L')).toBeInTheDocument();
+  });
+
+  it('saves the highlight image from the segmented holds only when a face is in the problem', async () => {
+    loadSegmenter.mockResolvedValue({ device: 'webgpu' });
+    computeEmbedding.mockResolvedValue({ width: 400, height: 200 });
+    const mask = { width: 400, height: 200, data: new Uint8Array(400 * 200) };
+    maskAtPoint.mockResolvedValue(mask);
+    const blob = new Blob(['mask'], { type: 'image/png' });
+    compositeMaskBlob.mockResolvedValue(blob);
+    createProblem.mockResolvedValue({ id: 'p1', name: 'Vol Line', grade: '', setter: '', notes: '', holds: [] });
+    uploadProblemMask.mockResolvedValue({ id: 'p1', name: 'Vol Line', grade: '', setter: '', notes: '', holds: [], mask_url: 'https://cdn.example/m.png' });
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    mockPhotoRect(photo, 400, 200);
+
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    await waitFor(() => expect(computeEmbedding).toHaveBeenCalled());
+    fireEvent.click(photo.parentElement, { clientX: 200, clientY: 180 });
+    await waitFor(() => expect(screen.getByTestId('hold-highlight')).toBeInTheDocument());
+
+    await user.type(screen.getByPlaceholderText('e.g. Gaston Traverse'), 'Vol Line');
+    await user.click(screen.getByText('Save problem'));
+
+    await waitFor(() => expect(uploadProblemMask).toHaveBeenCalledWith('p1', blob));
+    expect(compositeMaskBlob).toHaveBeenCalledWith([{ mask, color: '#2E6B3E' }], 400, 200);
+  });
+
+  it('only offers faces marked on the photo of the problem being edited', async () => {
+    listProblems.mockResolvedValue([{
+      id: 'p1', name: 'Old Line', grade: 'V2', setter: 'Rob', notes: '', photo_url: OLD,
+      holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+    }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Old Line'));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
+
+    expect(screen.getByRole('button', { name: 'Vol1 Left' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Vol1 Top' })).not.toBeInTheDocument();
   });
 });
