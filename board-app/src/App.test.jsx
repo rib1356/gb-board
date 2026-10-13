@@ -1625,7 +1625,12 @@ describe('App (volume faces on a problem)', () => {
 
 describe('App (volumes setup)', () => {
   const PHOTO = 'https://cdn.example/b1.jpg';
+  const OLD = 'https://cdn.example/old.jpg';
   const boardWith = (volumes) => ({ id: 'b1', name: 'Home Board', photo_url: PHOTO, volumes });
+  const unmarked = (id, name) => ({ id, name, points: [], photoUrl: null });
+  // A volume saved before sides were listed: Top / Left / Right were implied.
+  const LEGACY_VOL1 = { id: 'v1', name: 'Vol1', faces: [] };
+  const upgraded = (id, name, faces) => ({ id, name, sidesListed: true, faces });
 
   beforeEach(() => {
     saveVolumes.mockImplementation(async (id, volumes) => boardWith(volumes));
@@ -1646,25 +1651,37 @@ describe('App (volumes setup)', () => {
     expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
   });
 
-  it('adds a volume to a board that has never had any', async () => {
+  it('adds a volume with Top, Left and Right sides to a board that has never had any', async () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: PHOTO });
     render(<App />);
     const user = userEvent.setup();
     await openVolumes(user);
 
     expect(screen.getByText(/No volumes yet/)).toBeInTheDocument();
+    expect(screen.getByText(/press Outline or Pin next to one of its sides/)).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText('e.g. Vol1'), 'Vol1');
     await user.click(screen.getByRole('button', { name: 'Add volume' }));
 
+    const sideId = expect.stringMatching(/^f-/);
     await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [
-      { id: expect.stringMatching(/^v-/), name: 'Vol1', faces: [] },
+      upgraded(expect.stringMatching(/^v-/), 'Vol1', [unmarked(sideId, 'Top'), unmarked(sideId, 'Left'), unmarked(sideId, 'Right')]),
     ]));
-    expect(await screen.findByText('Vol1')).toBeInTheDocument();
-    expect(screen.getAllByText('Not marked')).toHaveLength(4);
+    expect(await screen.findByRole('button', { name: 'Rename Vol1' })).toBeInTheDocument();
+    expect(screen.getAllByText('Not marked')).toHaveLength(3);
   });
 
-  it('outlines a face by tapping its corners, with undo', async () => {
-    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+  it("won't add a second volume with the same name", async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([LEGACY_VOL1]));
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    await user.type(screen.getByPlaceholderText('e.g. Vol1'), 'vol1');
+    expect(screen.getByRole('button', { name: 'Add volume' })).toBeDisabled();
+  });
+
+  it('outlines a side by tapping its corners, with undo', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([LEGACY_VOL1]));
     render(<App />);
     const user = userEvent.setup();
     const panel = await openVolumes(user);
@@ -1679,31 +1696,35 @@ describe('App (volumes setup)', () => {
     fireEvent.click(panel, { clientX: 40, clientY: 40 });
     await user.click(screen.getByRole('button', { name: 'Done' }));
 
-    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [{ id: 'v1', name: 'Vol1', faces: [
-      { id: expect.stringMatching(/^f-/), name: 'Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.4 }], photoUrl: PHOTO },
-    ] }]));
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [upgraded('v1', 'Vol1', [
+      { id: 'v1-top', name: 'Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.4 }], photoUrl: PHOTO },
+      unmarked('v1-left', 'Left'),
+      unmarked('v1-right', 'Right'),
+    ])]));
     expect(await screen.findByText('Outlined')).toBeInTheDocument();
     expect(screen.getByTestId('face-shape')).toBeInTheDocument();
   });
 
-  it('pins a face you cannot see with a single tap', async () => {
+  it('pins a side you cannot see with a single tap', async () => {
     getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v2', name: 'Vol2', faces: [] }]));
     render(<App />);
     const user = userEvent.setup();
     const panel = await openVolumes(user);
 
-    await user.click(screen.getByRole('button', { name: 'Pin Vol2 Under' }));
-    expect(screen.getByText('Tap where Vol2 Under is')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Pin Vol2 Left' }));
+    expect(screen.getByText('Tap where Vol2 Left is')).toBeInTheDocument();
     fireEvent.click(panel, { clientX: 100, clientY: 80 });
 
-    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [{ id: 'v2', name: 'Vol2', faces: [
-      { id: expect.stringMatching(/^f-/), name: 'Under', points: [{ x: 0.5, y: 0.8 }], photoUrl: PHOTO },
-    ] }]));
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [upgraded('v2', 'Vol2', [
+      unmarked('v2-top', 'Top'),
+      { id: 'v2-left', name: 'Left', points: [{ x: 0.5, y: 0.8 }], photoUrl: PHOTO },
+      unmarked('v2-right', 'Right'),
+    ])]));
     expect(await screen.findByText('Pinned')).toBeInTheDocument();
   });
 
   it('keeps the outline open to retry when saving fails', async () => {
-    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+    getOrCreateBoard.mockResolvedValue(boardWith([LEGACY_VOL1]));
     saveVolumes.mockRejectedValueOnce(new Error('offline'));
     render(<App />);
     const user = userEvent.setup();
@@ -1721,38 +1742,89 @@ describe('App (volumes setup)', () => {
     expect(await screen.findByText('Outlined')).toBeInTheDocument();
   });
 
-  it('flags a face marked on an older photo, and clears a face', async () => {
+  it('keeps sides marked before sides were listed, flags an old photo, and removes a side', async () => {
     getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [
-      { id: 'f1', name: 'Top', points: [{ x: 0.5, y: 0.5 }], photoUrl: 'https://cdn.example/old.jpg' },
+      { id: 'f1', name: 'Top', points: [{ x: 0.5, y: 0.5 }], photoUrl: OLD },
       { id: 'f2', name: 'Left', points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO },
+      { id: 'f3', name: 'Under', points: [{ x: 0.6, y: 0.9 }], photoUrl: PHOTO },
     ] }]));
     render(<App />);
     const user = userEvent.setup();
     await openVolumes(user);
 
     expect(screen.getByText('Old photo — re-mark')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Clear Vol1 Left' }));
-    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [{ id: 'v1', name: 'Vol1', faces: [
-      { id: 'f1', name: 'Top', points: [{ x: 0.5, y: 0.5 }], photoUrl: 'https://cdn.example/old.jpg' },
-    ] }]));
+    expect(screen.getByRole('button', { name: 'Rename Vol1 Under' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove Vol1 Left' }));
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [upgraded('v1', 'Vol1', [
+      { id: 'f1', name: 'Top', points: [{ x: 0.5, y: 0.5 }], photoUrl: OLD },
+      unmarked('v1-right', 'Right'),
+      { id: 'f3', name: 'Under', points: [{ x: 0.6, y: 0.9 }], photoUrl: PHOTO },
+    ])]));
   });
 
-  it('adds a custom face name that can then be marked', async () => {
-    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+  it('adds a side, but not one whose name the volume already has', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([LEGACY_VOL1]));
     render(<App />);
     const user = userEvent.setup();
     await openVolumes(user);
 
-    await user.click(screen.getByRole('button', { name: '+ Custom face' }));
-    await user.type(screen.getByPlaceholderText('Face name'), 'Front');
-    await user.click(screen.getByRole('button', { name: 'Add face' }));
+    await user.click(screen.getByRole('button', { name: '+ Add side' }));
+    await user.type(screen.getByPlaceholderText('Side name'), 'top');
+    expect(screen.getByRole('button', { name: 'Add side' })).toBeDisabled();
+    await user.clear(screen.getByPlaceholderText('Side name'));
+    await user.type(screen.getByPlaceholderText('Side name'), 'Under');
+    await user.click(screen.getByRole('button', { name: 'Add side' }));
 
-    expect(screen.getByRole('button', { name: 'Pin Vol1 Front' })).toBeInTheDocument();
-    expect(saveVolumes).not.toHaveBeenCalled();
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [upgraded('v1', 'Vol1', [
+      unmarked('v1-top', 'Top'), unmarked('v1-left', 'Left'), unmarked('v1-right', 'Right'),
+      unmarked(expect.stringMatching(/^f-/), 'Under'),
+    ])]));
+    expect(await screen.findByRole('button', { name: 'Pin Vol1 Under' })).toBeInTheDocument();
+  });
+
+  it('renames a side, keeping its marking', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([upgraded('v1', 'Vol1', [
+      { id: 'f1', name: 'Top', points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO },
+      unmarked('f2', 'Left'),
+    ])]));
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    await user.click(screen.getByRole('button', { name: 'Rename Vol1 Top' }));
+    const input = screen.getByRole('textbox', { name: 'New name' });
+    await user.clear(input);
+    await user.type(input, 'left');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await user.clear(input);
+    await user.type(input, 'Pinch side');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [upgraded('v1', 'Vol1', [
+      { id: 'f1', name: 'Pinch side', points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO },
+      unmarked('f2', 'Left'),
+    ])]));
+    expect(await screen.findByRole('button', { name: 'Outline Vol1 Pinch side' })).toBeInTheDocument();
+  });
+
+  it('renames a volume', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([upgraded('v1', 'Vol1', [unmarked('f1', 'Top')])]));
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    await user.click(screen.getByRole('button', { name: 'Rename Vol1' }));
+    const input = screen.getByRole('textbox', { name: 'New name' });
+    await user.clear(input);
+    await user.type(input, 'Green');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [upgraded('v1', 'Green', [unmarked('f1', 'Top')])]));
+    expect(await screen.findByRole('button', { name: 'Rename Green' })).toBeInTheDocument();
   });
 
   it('deletes a volume after confirming', async () => {
-    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+    getOrCreateBoard.mockResolvedValue(boardWith([LEGACY_VOL1]));
     render(<App />);
     const user = userEvent.setup();
     await openVolumes(user);

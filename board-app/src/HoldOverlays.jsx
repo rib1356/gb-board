@@ -117,8 +117,8 @@ export function VolumeMarks({ volumes, photoUrl, marking }) {
   return (
     <>
       {facesOnPhoto(volumes, photoUrl).flatMap(({ volume, faces }) => faces.map((face) => {
-        // The face being re-marked is shown by its new outline instead.
-        if (marking && marking.volumeId === volume.id && marking.name === face.name) return null;
+        // The side being re-marked is shown by its new outline instead.
+        if (marking && marking.faceId === face.id) return null;
         const center = faceCenter(face.points);
         return (
           <Fragment key={face.id}>

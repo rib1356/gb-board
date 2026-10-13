@@ -9,7 +9,7 @@ import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { inputStyle, sectionHeading } from './ui';
 import { ChalkRing, FaceShape, HoldLabels, VolumeMarks } from './HoldOverlays';
-import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold } from './lib/volumes';
+import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
@@ -195,7 +195,7 @@ export default function App() {
   // photo they were originally placed on.
   const editingProblem = editingId ? problems.find((p) => p.id === editingId) : null;
   const activePhotoUrl = editingProblem?.photo_url || board?.photo_url;
-  const volumes = board?.volumes || [];
+  const volumes = upgradeVolumes(board?.volumes);
 
   useEffect(() => {
     if (view !== 'new' || !activePhotoUrl) return;
@@ -620,7 +620,7 @@ export default function App() {
   // A failed save leaves marking open with its points, so Done (or another
   // tap, for a pin) retries without starting over.
   const finishMarking = async (points) => {
-    if (await handleSaveVolumes(setFace(volumes, marking.volumeId, marking.name, points, board.photo_url))) {
+    if (await handleSaveVolumes(setFace(volumes, marking.volumeId, marking.faceId, points, board.photo_url))) {
       setMarking(null);
     }
   };

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  FACE_PRESETS, GRIPS, isPinned, faceCenter, facesOnPhoto, faceHold, tagLabel, faceListLines,
-  faceNames, faceStatus, addVolume, removeVolume, setFace, clearFace,
+  DEFAULT_SIDES, GRIPS, isPinned, faceCenter, facesOnPhoto, faceHold, tagLabel, faceLabel, faceListLines,
+  faceStatus, nameTaken, upgradeVolumes, addVolume, renameVolume, removeVolume,
+  addSide, renameSide, removeSide, setFace,
 } from './volumes';
 
 const PHOTO = 'https://cdn.example/b1.jpg';
@@ -9,8 +10,8 @@ const OLD = 'https://cdn.example/old.jpg';
 const TRI = [{ x: 0.25, y: 0.125 }, { x: 0.75, y: 0.125 }, { x: 0.5, y: 0.5 }];
 
 describe('presets', () => {
-  it('offers the four standard faces and four grips', () => {
-    expect(FACE_PRESETS).toEqual(['Top', 'Left', 'Right', 'Under']);
+  it('starts a volume with three sides, and offers four grips', () => {
+    expect(DEFAULT_SIDES).toEqual(['Top', 'Left', 'Right']);
     expect(GRIPS.map((g) => g.value)).toEqual(['undercut', 'pinch', 'gaston', 'sidepull']);
   });
 });
@@ -37,11 +38,12 @@ describe('facesOnPhoto', () => {
     { id: 'v1', name: 'Vol1', faces: [
       { id: 'f1', name: 'Top', points: TRI, photoUrl: PHOTO },
       { id: 'f2', name: 'Left', points: TRI, photoUrl: OLD },
+      { id: 'f4', name: 'Right', points: [], photoUrl: null },
     ] },
     { id: 'v2', name: 'Vol2', faces: [{ id: 'f3', name: 'Top', points: TRI, photoUrl: OLD }] },
   ];
 
-  it('keeps only faces marked on that photo and drops volumes left with none', () => {
+  it('keeps only sides marked on that photo and drops volumes left with none', () => {
     expect(facesOnPhoto(volumes, PHOTO)).toEqual([{ volume: volumes[0], faces: [volumes[0].faces[0]] }]);
   });
 
@@ -97,21 +99,67 @@ describe('faceListLines', () => {
   it('is empty for a problem without faces', () => {
     expect(faceListLines([{ x: 0.1, y: 0.1, type: 'hold' }])).toEqual([]);
   });
+
+  it("uses a side's current name when it has been renamed", () => {
+    const volumes = [{ id: 'v1', name: 'Green', sidesListed: true, faces: [{ id: 'f1', name: 'Pinch side', points: TRI, photoUrl: PHOTO }] }];
+    const holds = [{ x: 0.5, y: 0.25, type: 'start', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: TRI } }];
+    expect(faceListLines(holds, volumes)).toEqual(['Green Pinch side — start']);
+  });
 });
 
-describe('faceNames', () => {
-  it('lists presets, then stored custom faces, then unsaved custom names, without repeats', () => {
-    const volume = { id: 'v1', name: 'Vol1', faces: [
-      { id: 'f1', name: 'Top', points: TRI, photoUrl: PHOTO },
-      { id: 'f2', name: 'Front', points: TRI, photoUrl: PHOTO },
-    ] };
-    expect(faceNames(volume, ['Back', 'Front'])).toEqual(['Top', 'Left', 'Right', 'Under', 'Front', 'Back']);
+describe('faceLabel', () => {
+  const hold = { x: 0.5, y: 0.25, type: 'start', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: TRI } };
+
+  it('is the current volume and side name', () => {
+    const volumes = [{ id: 'v1', name: 'Green', sidesListed: true, faces: [{ id: 'f1', name: 'Pinch side', points: TRI, photoUrl: PHOTO }] }];
+    expect(faceLabel(hold, volumes)).toBe('Green Pinch side');
+  });
+
+  it("falls back to the problem's own copy once the side is gone", () => {
+    expect(faceLabel(hold, [])).toBe('Vol1 Top');
+    expect(faceLabel(hold, undefined)).toBe('Vol1 Top');
+  });
+});
+
+describe('nameTaken', () => {
+  it('matches ignoring case and spacing', () => {
+    expect(nameTaken(['Top', 'Left'], ' top ')).toBe(true);
+    expect(nameTaken(['Top', 'Left'], 'Right')).toBe(false);
+  });
+});
+
+describe('upgradeVolumes', () => {
+  it('spells out the implied Top / Left / Right on a volume saved before sides were listed, keeping marked ones', () => {
+    const legacy = [{ id: 'v1', name: 'Vol1', faces: [
+      { id: 'f1', name: 'Left', points: TRI, photoUrl: PHOTO },
+      { id: 'f2', name: 'Under', points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO },
+    ] }];
+    expect(upgradeVolumes(legacy)).toEqual([{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [
+      { id: 'v1-top', name: 'Top', points: [], photoUrl: null },
+      { id: 'f1', name: 'Left', points: TRI, photoUrl: PHOTO },
+      { id: 'v1-right', name: 'Right', points: [], photoUrl: null },
+      { id: 'f2', name: 'Under', points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO },
+    ] }]);
+  });
+
+  it('gives the same ids every time, so a side can be marked before the upgrade is saved', () => {
+    const legacy = [{ id: 'v1', name: 'Vol1', faces: [] }];
+    expect(upgradeVolumes(legacy)).toEqual(upgradeVolumes(legacy));
+  });
+
+  it('leaves a volume that already lists its sides alone', () => {
+    const current = [{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [] }];
+    expect(upgradeVolumes(current)).toEqual(current);
+  });
+
+  it('treats a missing volumes value as no volumes', () => {
+    expect(upgradeVolumes(null)).toEqual([]);
   });
 });
 
 describe('faceStatus', () => {
   it('reports unmarked, old photo, pinned and outlined', () => {
-    expect(faceStatus(undefined, PHOTO)).toBe('unmarked');
+    expect(faceStatus({ points: [], photoUrl: null }, PHOTO)).toBe('unmarked');
     expect(faceStatus({ points: TRI, photoUrl: OLD }, PHOTO)).toBe('old-photo');
     expect(faceStatus({ points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO }, PHOTO)).toBe('pinned');
     expect(faceStatus({ points: TRI, photoUrl: PHOTO }, PHOTO)).toBe('outlined');
@@ -119,12 +167,24 @@ describe('faceStatus', () => {
 });
 
 describe('volume updaters', () => {
-  const start = [{ id: 'v1', name: 'Vol1', faces: [{ id: 'f1', name: 'Top', points: TRI, photoUrl: OLD }] }];
+  const start = [{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [
+    { id: 'f1', name: 'Top', points: TRI, photoUrl: OLD },
+    { id: 'f2', name: 'Left', points: [], photoUrl: null },
+  ] }];
   const snapshot = JSON.stringify(start);
 
-  it('addVolume appends a trimmed, empty volume with a new id', () => {
+  it('addVolume appends a trimmed volume with unmarked Top / Left / Right', () => {
     const next = addVolume(start, '  Vol2 ');
-    expect(next[1]).toEqual({ id: expect.stringMatching(/^v-/), name: 'Vol2', faces: [] });
+    expect(next[1]).toEqual({ id: expect.stringMatching(/^v-/), name: 'Vol2', sidesListed: true, faces: [
+      { id: expect.stringMatching(/^f-/), name: 'Top', points: [], photoUrl: null },
+      { id: expect.stringMatching(/^f-/), name: 'Left', points: [], photoUrl: null },
+      { id: expect.stringMatching(/^f-/), name: 'Right', points: [], photoUrl: null },
+    ] });
+    expect(JSON.stringify(start)).toBe(snapshot);
+  });
+
+  it('renameVolume trims the new name', () => {
+    expect(renameVolume(start, 'v1', ' Green ')[0].name).toBe('Green');
     expect(JSON.stringify(start)).toBe(snapshot);
   });
 
@@ -133,20 +193,25 @@ describe('volume updaters', () => {
     expect(JSON.stringify(start)).toBe(snapshot);
   });
 
-  it('setFace re-marks an existing face in place, keeping its id', () => {
-    const pin = [{ x: 0.4, y: 0.6 }];
-    const next = setFace(start, 'v1', 'Top', pin, PHOTO);
-    expect(next[0].faces).toEqual([{ id: 'f1', name: 'Top', points: pin, photoUrl: PHOTO }]);
+  it('addSide appends an unmarked side', () => {
+    const next = addSide(start, 'v1', ' Under ');
+    expect(next[0].faces[2]).toEqual({ id: expect.stringMatching(/^f-/), name: 'Under', points: [], photoUrl: null });
     expect(JSON.stringify(start)).toBe(snapshot);
   });
 
-  it('setFace adds a face that was never marked', () => {
-    const next = setFace(start, 'v1', 'Under', [{ x: 0.4, y: 0.6 }], PHOTO);
-    expect(next[0].faces[1]).toEqual({ id: expect.stringMatching(/^f-/), name: 'Under', points: [{ x: 0.4, y: 0.6 }], photoUrl: PHOTO });
+  it('renameSide keeps its id and marking', () => {
+    expect(renameSide(start, 'v1', 'f1', ' Pinch side ')[0].faces[0]).toEqual({ id: 'f1', name: 'Pinch side', points: TRI, photoUrl: OLD });
+    expect(JSON.stringify(start)).toBe(snapshot);
   });
 
-  it('clearFace removes it', () => {
-    expect(clearFace(start, 'v1', 'Top')[0].faces).toEqual([]);
+  it('removeSide drops it', () => {
+    expect(removeSide(start, 'v1', 'f1')[0].faces.map((f) => f.id)).toEqual(['f2']);
+    expect(JSON.stringify(start)).toBe(snapshot);
+  });
+
+  it('setFace marks a side by id, keeping its id and name', () => {
+    const pin = [{ x: 0.4, y: 0.6 }];
+    expect(setFace(start, 'v1', 'f2', pin, PHOTO)[0].faces[1]).toEqual({ id: 'f2', name: 'Left', points: pin, photoUrl: PHOTO });
     expect(JSON.stringify(start)).toBe(snapshot);
   });
 });
