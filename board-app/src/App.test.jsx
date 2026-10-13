@@ -15,6 +15,7 @@ vi.mock('./lib/board', () => ({
   listTicks: vi.fn(),
   listBoardTicks: vi.fn(),
   createTick: vi.fn(),
+  setTickFlash: vi.fn(),
   deleteTick: vi.fn(),
   listClimbers: vi.fn(),
   createClimber: vi.fn(),
@@ -35,7 +36,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, setTickFlash, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import App from './App';
@@ -982,7 +983,7 @@ describe('App (tick log flow)', () => {
     await user.click(screen.getByText('Save entry'));
 
     await waitFor(() =>
-      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: 'felt easy', sentBy: 'Rob' })
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: 'felt easy', sentBy: 'Rob', flash: false })
     );
     expect(await screen.findByText('Sent ×1')).toBeInTheDocument();
     expect(screen.getByText('Rob · 22 Aug 2026')).toBeInTheDocument();
@@ -1022,7 +1023,7 @@ describe('App (tick log flow)', () => {
     fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-22' } });
     await user.click(screen.getByText('Save entry'));
     await waitFor(() =>
-      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob' })
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob', flash: false })
     );
 
     await user.click(screen.getByText('Board'));
@@ -1033,7 +1034,7 @@ describe('App (tick log flow)', () => {
     fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-23' } });
     await user.click(screen.getByText('Save entry'));
     await waitFor(() =>
-      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-23', notes: '', sentBy: 'Alex' })
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-23', notes: '', sentBy: 'Alex', flash: false })
     );
 
     expect(screen.getByText('Rob · 22 Aug 2026')).toBeInTheDocument();
@@ -1196,6 +1197,118 @@ describe('App (climber picker)', () => {
     render(<App />);
 
     expect(await screen.findByText("Who's climbing?")).toBeInTheDocument();
+  });
+});
+
+describe('App (flash)', () => {
+  const GASTON = { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null };
+  const SHAWN_FIRST = { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-08-05', notes: '', created_at: '2026-08-05T10:00:00Z', flash: false };
+  const ROB_FIRST = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-08-01', notes: '', created_at: '2026-08-01T10:00:00Z', flash: false };
+  const ROB_REPEAT = { id: 't3', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-08-10', notes: '', created_at: '2026-08-10T10:00:00Z', flash: false };
+
+  const asRob = () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+  };
+  const entry = (text) => screen.getByText(text).closest('div');
+
+  it("offers Flashed it on your first go, even after someone else's send, and it shows in your pyramid", async () => {
+    asRob();
+    listProblems.mockResolvedValue([{ ...GASTON, send_count: 1 }]);
+    listBoardTicks.mockResolvedValue([SHAWN_FIRST]);
+    listTicks.mockResolvedValue([SHAWN_FIRST]);
+    createTick.mockImplementation(async (problemId, { sentOn, notes, sentBy, flash }) => ({
+      id: 't9', problem_id: problemId, sent_on: sentOn, notes, sent_by: sentBy, flash, created_at: '2026-10-13T10:00:00Z',
+    }));
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Log a send'));
+    fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-22' } });
+    await user.click(screen.getByLabelText('Flashed it'));
+    await user.click(screen.getByText('Save entry'));
+
+    await waitFor(() =>
+      expect(createTick).toHaveBeenCalledWith('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob', flash: true })
+    );
+    const robEntry = entry('Rob · 22 Aug 2026');
+    expect(within(robEntry).getByRole('button', { name: 'Flash' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    await user.click(await screen.findByRole('button', { name: 'Pyramid' }));
+    expect(screen.getByRole('img', { name: 'Gaston Traverse, flashed' })).toBeInTheDocument();
+    expect(screen.getByText('1 sent · 1 flashed · top grade V5')).toBeInTheDocument();
+  });
+
+  it("doesn't offer Flashed it once you've already sent the problem", async () => {
+    asRob();
+    listProblems.mockResolvedValue([{ ...GASTON, send_count: 1 }]);
+    listTicks.mockResolvedValue([ROB_FIRST]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Log a send'));
+    expect(screen.getByLabelText('Send date')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Flashed it')).not.toBeInTheDocument();
+  });
+
+  it("marks a send as a flash after the fact, on each climber's first send only, and it shows in the pyramid", async () => {
+    asRob();
+    listProblems.mockResolvedValue([{ ...GASTON, send_count: 3 }]);
+    listBoardTicks.mockResolvedValue([ROB_REPEAT, SHAWN_FIRST, ROB_FIRST]);
+    listTicks.mockResolvedValue([ROB_REPEAT, SHAWN_FIRST, ROB_FIRST]);
+    setTickFlash.mockImplementation(async (id, flash) => ({ ...ROB_FIRST, id, flash }));
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await screen.findByText('Rob · 1 Aug 2026');
+    expect(screen.getAllByRole('button', { name: 'Flash' })).toHaveLength(2);
+    expect(within(entry('Rob · 10 Aug 2026')).queryByRole('button', { name: 'Flash' })).not.toBeInTheDocument();
+    expect(within(entry('Shawn · 5 Aug 2026')).getByRole('button', { name: 'Flash' })).toBeInTheDocument();
+
+    const robFlash = within(entry('Rob · 1 Aug 2026')).getByRole('button', { name: 'Flash' });
+    expect(robFlash).toHaveAttribute('aria-pressed', 'false');
+    await user.click(robFlash);
+    expect(setTickFlash).toHaveBeenCalledWith('t1', true);
+    await waitFor(() => expect(robFlash).toHaveAttribute('aria-pressed', 'true'));
+
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    await user.click(await screen.findByRole('button', { name: 'Pyramid' }));
+    expect(screen.getByRole('img', { name: 'Gaston Traverse, flashed' })).toBeInTheDocument();
+  });
+
+  it('takes a flash back off when tapped again', async () => {
+    asRob();
+    listProblems.mockResolvedValue([{ ...GASTON, send_count: 1 }]);
+    listTicks.mockResolvedValue([{ ...ROB_FIRST, flash: true }]);
+    setTickFlash.mockImplementation(async (id, flash) => ({ ...ROB_FIRST, id, flash }));
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    const robFlash = await screen.findByRole('button', { name: 'Flash' });
+    expect(robFlash).toHaveAttribute('aria-pressed', 'true');
+    await user.click(robFlash);
+    expect(setTickFlash).toHaveBeenCalledWith('t1', false);
+    await waitFor(() => expect(robFlash).toHaveAttribute('aria-pressed', 'false'));
+  });
+
+  it("leaves the send as it was and says so when the flash can't be saved", async () => {
+    asRob();
+    listProblems.mockResolvedValue([{ ...GASTON, send_count: 1 }]);
+    listTicks.mockResolvedValue([ROB_FIRST]);
+    setTickFlash.mockRejectedValue(new Error('offline'));
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Flash' }));
+
+    expect(await screen.findByText('Could not update that send — check your connection and try again.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Flash' })).toHaveAttribute('aria-pressed', 'false');
   });
 });
 

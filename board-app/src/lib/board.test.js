@@ -18,6 +18,7 @@ import {
   listTicks,
   listBoardTicks,
   createTick,
+  setTickFlash,
   deleteTick,
   listClimbers,
   createClimber,
@@ -217,7 +218,7 @@ describe('listBoardTicks', () => {
     const result = await listBoardTicks('b1');
     expect(result).toEqual(rows);
     expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
-    expect(c.select).toHaveBeenCalledWith('id, problem_id, sent_by, sent_on, created_at, problems!inner(board_id)');
+    expect(c.select).toHaveBeenCalledWith('id, problem_id, sent_by, sent_on, created_at, flash, problems!inner(board_id)');
     expect(c.eq).toHaveBeenCalledWith('problems.board_id', 'b1');
   });
 
@@ -234,7 +235,7 @@ describe('createTick', () => {
     mocks.supabase.from.mockReturnValue(c);
     const result = await createTick('p1', { sentOn: '2026-08-22', notes: ' felt easy ' });
     expect(result).toEqual(created);
-    expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy' });
+    expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: 'felt easy', flash: false });
   });
 
   it('stores the climber name that logged the send', async () => {
@@ -243,7 +244,35 @@ describe('createTick', () => {
     mocks.supabase.from.mockReturnValue(c);
     const result = await createTick('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob' });
     expect(result).toEqual(created);
-    expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob' });
+    expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob', flash: false });
+  });
+});
+
+describe('createTick flash', () => {
+  it('records a send as a flash', async () => {
+    const created = { id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob', flash: true };
+    const c = chain({ data: created, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    await createTick('p1', { sentOn: '2026-08-22', notes: '', sentBy: 'Rob', flash: true });
+    expect(c.insert).toHaveBeenCalledWith({ problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob', flash: true });
+  });
+});
+
+describe('setTickFlash', () => {
+  it('flips the flash on one send and returns the updated row', async () => {
+    const updated = { id: 't1', problem_id: 'p1', sent_on: '2026-08-22', notes: '', sent_by: 'Rob', flash: true };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await setTickFlash('t1', true);
+    expect(result).toEqual(updated);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
+    expect(c.update).toHaveBeenCalledWith({ flash: true });
+    expect(c.eq).toHaveBeenCalledWith('id', 't1');
+  });
+
+  it('throws when the update fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
+    await expect(setTickFlash('t1', true)).rejects.toThrow('nope');
   });
 });
 

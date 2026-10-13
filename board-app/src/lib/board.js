@@ -155,16 +155,27 @@ export async function listTicks(problemId) {
 export async function listBoardTicks(boardId) {
   const { data, error } = await supabase
     .from('ticks')
-    .select('id, problem_id, sent_by, sent_on, created_at, problems!inner(board_id)')
+    .select('id, problem_id, sent_by, sent_on, created_at, flash, problems!inner(board_id)')
     .eq('problems.board_id', boardId);
   if (error) throw error;
   return data;
 }
 
-export async function createTick(problemId, { sentOn, notes, sentBy }) {
+export async function createTick(problemId, { sentOn, notes, sentBy, flash = false }) {
   const { data, error } = await supabase
     .from('ticks')
-    .insert({ problem_id: problemId, sent_on: sentOn, notes: notes.trim(), sent_by: sentBy })
+    .insert({ problem_id: problemId, sent_on: sentOn, notes: notes.trim(), sent_by: sentBy, flash })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function setTickFlash(id, flash) {
+  const { data, error } = await supabase
+    .from('ticks')
+    .update({ flash })
+    .eq('id', id)
     .select()
     .single();
   if (error) throw error;

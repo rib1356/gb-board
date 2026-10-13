@@ -1,13 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, ChartBar } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, ChartBar, Zap } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, setTickFlash, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
-import { sentProblemIds } from './lib/sends';
+import { sentProblemIds, firstSendIds } from './lib/sends';
 import { inputStyle, sectionHeading } from './ui';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
 import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
@@ -168,6 +168,7 @@ export default function App() {
   const [showLogForm, setShowLogForm] = useState(false);
   const [tickDate, setTickDate] = useState('');
   const [tickNotes, setTickNotes] = useState('');
+  const [tickIsFlash, setTickIsFlash] = useState(false);
   const [loggingTick, setLoggingTick] = useState(false);
 
   const [climbers, setClimbers] = useState([]);
@@ -547,6 +548,7 @@ export default function App() {
   const startLogTick = () => {
     setTickDate(new Date().toISOString().slice(0, 10));
     setTickNotes('');
+    setTickIsFlash(false);
     setShowLogForm(true);
   };
 
@@ -555,7 +557,7 @@ export default function App() {
     setLoggingTick(true);
     setError('');
     try {
-      const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes, sentBy: currentClimber?.name });
+      const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes, sentBy: currentClimber?.name, flash: tickIsFlash });
       setTicks((prev) => [created, ...prev]);
       setBoardTicks((prev) => [...prev, created]);
       setProblems((prev) => applySend(prev, problemId, created.sent_on));
@@ -565,6 +567,19 @@ export default function App() {
       setError('Could not log that send — check your connection and try again.');
     }
     setLoggingTick(false);
+  };
+
+  const handleToggleFlash = async (tick) => {
+    setError('');
+    try {
+      const { flash } = await setTickFlash(tick.id, !tick.flash);
+      const apply = (t) => (t.id === tick.id ? { ...t, flash } : t);
+      setTicks((prev) => prev.map(apply));
+      setBoardTicks((prev) => prev.map(apply));
+    } catch (err) {
+      console.error(err);
+      setError('Could not update that send — check your connection and try again.');
+    }
   };
 
   const handleDeleteTick = async (problemId, tickId) => {
@@ -1037,6 +1052,13 @@ export default function App() {
                   <Field label="Notes">
                     <textarea aria-label="Send notes" value={tickNotes} onChange={(e) => setTickNotes(e.target.value)} placeholder="Anything worth remembering" rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
                   </Field>
+                  {/* Only a first send can be a flash. */}
+                  {!ticks.some((t) => t.sent_by === currentClimber.name) && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#c7c8cb', marginBottom: 12, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
+                      <Zap size={14} color="#C9A227" /> Flashed it
+                    </label>
+                  )}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => handleAddTick(selected.id)} disabled={loggingTick || !tickDate} style={{
                       display: 'flex', alignItems: 'center', gap: 6, background: '#5C8A66', border: 'none',
@@ -1060,6 +1082,9 @@ export default function App() {
                   // keeps the tag, so a same-day repeat can't bump the original logger.
                   return t.created_at < earliest.created_at ? t : earliest;
                 }, null)?.id;
+                // Each climber's own first send carries the flash toggle, so
+                // a flash can be marked after the fact.
+                const flashableIds = firstSendIds(ticks);
                 return (
                   <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {ticks.map((t) => (
@@ -1076,6 +1101,14 @@ export default function App() {
                               fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
                               color: t.id === firstSendId ? '#5C8A66' : '#8b8d91',
                             }}>{t.id === firstSendId ? 'First send' : 'Repeat'}</span>
+                            {flashableIds.has(t.id) && (
+                              <button aria-label="Flash" aria-pressed={Boolean(t.flash)} onClick={() => handleToggleFlash(t)} style={{
+                                display: 'flex', alignItems: 'center', gap: 3, borderRadius: 999, padding: '2px 8px', cursor: 'pointer',
+                                fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
+                                background: t.flash ? '#C9A227' : 'none', border: `1px solid ${t.flash ? '#C9A227' : '#3a3b3e'}`,
+                                color: t.flash ? '#17181A' : '#8b8d91',
+                              }}><Zap size={11} /> Flash</button>
+                            )}
                           </div>
                           {t.notes && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#c7c8cb', whiteSpace: 'pre-wrap' }}>{t.notes}</p>}
                         </div>
