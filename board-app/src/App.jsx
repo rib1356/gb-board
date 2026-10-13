@@ -877,7 +877,7 @@ export default function App() {
                 {selected.send_count > 0 ? `Sent ×${selected.send_count}` : 'Not sent yet'}
               </span>
             </div>
-            {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5 }}>{selected.notes}</p>}
+            {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{selected.notes}</p>}
 
             <div style={{ marginTop: 16 }}>
               {!currentClimber ? (
@@ -941,7 +941,7 @@ export default function App() {
                               color: t.id === firstSendId ? '#5C8A66' : '#8b8d91',
                             }}>{t.id === firstSendId ? 'First send' : 'Repeat'}</span>
                           </div>
-                          {t.notes && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#c7c8cb' }}>{t.notes}</p>}
+                          {t.notes && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#c7c8cb', whiteSpace: 'pre-wrap' }}>{t.notes}</p>}
                         </div>
                         <button aria-label="Delete entry" onClick={() => handleDeleteTick(selected.id, t.id)} style={{
                           background: 'none', border: 'none', color: '#8b8d91', cursor: 'pointer', padding: 2,

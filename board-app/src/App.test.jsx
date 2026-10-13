@@ -88,6 +88,24 @@ describe('App (read paths)', () => {
     expect(await screen.findByText('Match on the sloper')).toBeInTheDocument();
   });
 
+  it("keeps the line breaks in a problem's notes and its sends' notes", async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'Match the sloper\nbump left\nflag right', holds: [] },
+    ]);
+    listTicks.mockResolvedValue([{ id: 't1', problem_id: 'p1', sent_on: '2026-08-01', notes: 'Flashed it\nfoot cut on the bump' }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Gaston Traverse'));
+
+    const notes = await screen.findByText(/Match the sloper/);
+    expect(notes.textContent).toBe('Match the sloper\nbump left\nflag right');
+    expect(notes).toHaveStyle({ whiteSpace: 'pre-wrap' });
+
+    const sendNotes = await screen.findByText(/Flashed it/);
+    expect(sendNotes.textContent).toBe('Flashed it\nfoot cut on the bump');
+    expect(sendNotes).toHaveStyle({ whiteSpace: 'pre-wrap' });
+  });
+
   it('clears the stale hold overlay after navigating back from detail view', async () => {
     getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     listProblems.mockResolvedValue([
