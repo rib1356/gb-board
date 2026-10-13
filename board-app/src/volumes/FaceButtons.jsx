@@ -23,11 +23,11 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wra
 const rowLabel = { width: 52, fontSize: 12.5, fontWeight: 700, color: '#8b8d91' };
 
 // One row per volume with faces on the photo being edited. A placed face's
-// button fills in its hold type's colour; tapping it again opens its menu.
+// button fills in its hold type's colour; tapping it again takes it off.
 export default function FaceButtons({ rows, holds, volumes, colors, onTap }) {
   // Faces in this problem that no longer have a button (cleared, their volume
   // deleted, or marked again on a newer photo) -- photo taps skip faces, so
-  // without these they could never be tagged or removed.
+  // without these they could never be removed.
   const orphans = holds.filter((h) => h.face && !rows.some(({ volume, faces }) => faces.some((f) => matchesButton(h, volume, f, volumes))));
   if (rows.length === 0 && orphans.length === 0) return null;
   return (

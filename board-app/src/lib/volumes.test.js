@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DEFAULT_SIDES, GRIPS, isPinned, faceCenter, facesOnPhoto, faceHold, tagLabel, faceLabel, faceListLines,
+  DEFAULT_SIDES, isPinned, faceCenter, facesOnPhoto, faceHold, faceLabel, faceListLines,
   faceStatus, nameTaken, upgradeVolumes, addVolume, renameVolume, removeVolume,
   addSide, renameSide, removeSide, setFace,
 } from './volumes';
@@ -10,9 +10,8 @@ const OLD = 'https://cdn.example/old.jpg';
 const TRI = [{ x: 0.25, y: 0.125 }, { x: 0.75, y: 0.125 }, { x: 0.5, y: 0.5 }];
 
 describe('presets', () => {
-  it('starts a volume with three sides, and offers four grips', () => {
+  it('starts a volume with three sides', () => {
     expect(DEFAULT_SIDES).toEqual(['Top', 'Left', 'Right']);
-    expect(GRIPS.map((g) => g.value)).toEqual(['undercut', 'pinch', 'gaston', 'sidepull']);
   });
 });
 
@@ -64,36 +63,15 @@ describe('faceHold', () => {
   });
 });
 
-describe('tagLabel', () => {
-  it('joins hand then the short grip', () => {
-    expect(tagLabel({ hand: 'R', grip: 'undercut' })).toBe('R UC');
-    expect(tagLabel({ hand: 'L', grip: 'pinch' })).toBe('L Pinch');
-  });
-
-  it('shows whichever half is set', () => {
-    expect(tagLabel({ hand: 'L' })).toBe('L');
-    expect(tagLabel({ grip: 'gaston' })).toBe('Gaston');
-  });
-
-  it('is empty for an untagged hold', () => {
-    expect(tagLabel({ x: 0.1, y: 0.1, type: 'hold' })).toBe('');
-  });
-});
-
 describe('faceListLines', () => {
-  it('lists faces only, in placement order, with hand and grip spelled out', () => {
+  it('lists faces only, in placement order, with their hold type', () => {
     const face = (label) => ({ volumeId: 'v', faceId: label, label, points: TRI });
     const holds = [
       { x: 0.5, y: 0.25, type: 'start', face: face('Vol1 Top') },
-      { x: 0.1, y: 0.1, type: 'hold', hand: 'L', grip: 'pinch' },
-      { x: 0.5, y: 0.25, type: 'hold', hand: 'L', face: face('Vol2 Right') },
-      { x: 0.5, y: 0.25, type: 'hold', hand: 'R', grip: 'undercut', face: face('Vol2 Top') },
+      { x: 0.1, y: 0.1, type: 'hold' },
+      { x: 0.5, y: 0.25, type: 'finish', face: face('Vol2 Right') },
     ];
-    expect(faceListLines(holds)).toEqual([
-      'Vol1 Top — start',
-      'Vol2 Right — hold · left hand',
-      'Vol2 Top — hold · right hand · undercut',
-    ]);
+    expect(faceListLines(holds)).toEqual(['Vol1 Top — start', 'Vol2 Right — finish']);
   });
 
   it('is empty for a problem without faces', () => {

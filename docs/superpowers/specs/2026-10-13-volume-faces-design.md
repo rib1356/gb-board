@@ -276,3 +276,15 @@ Pinch-zoom while marking, renaming volumes or faces, changing a hold's type
 from the menu, more grip types (crimp, sloper, jug…), filtering or sorting
 by volume, volume-wide default rules ("undercuts only" set once per volume),
 migrating existing notes, baking faces into the saved highlight image.
+
+## Changes after trying it (2026-10-13)
+
+- **Hand / grip tags removed.** Problems shouldn't prescribe beta — working
+  out how to use a hold is part of climbing it. The hold menu went with them:
+  tapping a placed hold removes it again, and tapping a placed face's button
+  takes the face off. Tags saved while it existed are dropped on the next save.
+- **Sides are listed per volume and can be renamed.** A new volume starts with
+  Top / Left / Right (Under is no longer a default); any side can be renamed,
+  added or removed, and volumes can be renamed. Volumes saved earlier gain the
+  implied sides on load. Problems show a side's current name, falling back to
+  their own copy once the side is removed.

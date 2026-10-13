@@ -82,15 +82,14 @@ describe('cleanHold', () => {
       .toEqual({ x: 0.1, y: 0.2, type: 'hold' });
   });
 
-  it('keeps hand, grip and face when set', () => {
+  it('keeps the face when set', () => {
     const face = { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: [{ x: 0.5, y: 0.5 }] };
-    expect(cleanHold({ x: 0.5, y: 0.5, type: 'start', hand: 'L', grip: 'pinch', face, _key: 1 }))
-      .toEqual({ x: 0.5, y: 0.5, type: 'start', hand: 'L', grip: 'pinch', face });
+    expect(cleanHold({ x: 0.5, y: 0.5, type: 'start', face, _key: 1 }))
+      .toEqual({ x: 0.5, y: 0.5, type: 'start', face });
   });
 
-  it('leaves out tags that were cleared', () => {
-    const cleaned = cleanHold({ x: 0.5, y: 0.5, type: 'hold', hand: undefined, grip: undefined });
-    expect(cleaned).toEqual({ x: 0.5, y: 0.5, type: 'hold' });
+  it('drops hand and grip tags saved before tagging was removed', () => {
+    const cleaned = cleanHold({ x: 0.5, y: 0.5, type: 'hold', hand: 'L', grip: 'pinch' });
     expect(Object.keys(cleaned)).toEqual(['x', 'y', 'type']);
   });
 });

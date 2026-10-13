@@ -7,16 +7,6 @@
 
 export const DEFAULT_SIDES = ['Top', 'Left', 'Right'];
 
-export const GRIPS = [
-  { value: 'undercut', label: 'Undercut', short: 'UC' },
-  { value: 'pinch', label: 'Pinch', short: 'Pinch' },
-  { value: 'gaston', label: 'Gaston', short: 'Gaston' },
-  { value: 'sidepull', label: 'Sidepull', short: 'Sidepull' },
-];
-
-const GRIPS_BY_VALUE = Object.fromEntries(GRIPS.map((g) => [g.value, g]));
-const HAND_WORDS = { L: 'left hand', R: 'right hand' };
-
 // randomUUID needs a secure context, so it's absent when the dev server is
 // opened over a plain-http LAN address on a phone -- fall back there.
 function newId(prefix) {
@@ -68,10 +58,6 @@ export function faceHold(volume, face, type) {
   };
 }
 
-export function tagLabel(hold) {
-  return [hold.hand, GRIPS_BY_VALUE[hold.grip]?.short].filter(Boolean).join(' ');
-}
-
 // A side's current name, so renaming it shows on problems already set with
 // it; the problem's own copy of the label covers a side since removed.
 export function faceLabel(hold, volumes) {
@@ -80,12 +66,8 @@ export function faceLabel(hold, volumes) {
   return face ? `${volume.name} ${face.name}` : hold.face.label;
 }
 
-// Normal holds aren't listed: "hold · right hand" couldn't say which hold.
 export function faceListLines(holds, volumes) {
-  return (holds || []).filter((h) => h.face).map((h) => {
-    const parts = [h.type, HAND_WORDS[h.hand], GRIPS_BY_VALUE[h.grip]?.label.toLowerCase()].filter(Boolean);
-    return `${faceLabel(h, volumes)} — ${parts.join(' · ')}`;
-  });
+  return (holds || []).filter((h) => h.face).map((h) => `${faceLabel(h, volumes)} — ${h.type}`);
 }
 
 // Compared ignoring case and spacing, so "top" can't sit beside "Top".

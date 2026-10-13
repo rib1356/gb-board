@@ -11,15 +11,15 @@ export function validateDraft({ name, holds }) {
   return null;
 }
 
-// Finds the topmost placed hold under a tapped point, so a tap can open its
-// menu instead of adding a new one nearby. A hold with a decoded mask is hit-tested
+// Finds the topmost placed hold under a tapped point, so a tap can remove it
+// instead of adding a new one nearby. A hold with a decoded mask is hit-tested
 // against its actual mask pixels; one still showing as a circle (loading, or
 // highlight mode unavailable) is hit-tested against an elliptical radius
 // around its center instead.
 export function holdAtPoint(holds, xFrac, yFrac, radiusXFrac, radiusYFrac) {
   for (let i = holds.length - 1; i >= 0; i--) {
     const h = holds[i];
-    // Faces are added and edited from their own buttons; the photo is for
+    // Faces are added and removed from their own buttons; the photo is for
     // holds, so a bolt-on sitting on a lit face stays tappable.
     if (h.face) continue;
     if (h._mask) {
@@ -37,7 +37,7 @@ export function holdAtPoint(holds, xFrac, yFrac, radiusXFrac, radiusYFrac) {
 }
 
 // What gets saved for a draft hold -- drops the draft-only `_` fields (masks,
-// the hold menu's key) and any tag that isn't set.
-export function cleanHold({ x, y, type, hand, grip, face }) {
-  return { x, y, type, ...(hand && { hand }), ...(grip && { grip }), ...(face && { face }) };
+// the draft key), and any hand/grip tags left from when holds could be tagged.
+export function cleanHold({ x, y, type, face }) {
+  return { x, y, type, ...(face && { face }) };
 }

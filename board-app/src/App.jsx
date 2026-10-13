@@ -8,15 +8,14 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { inputStyle, sectionHeading } from './ui';
-import { ChalkRing, FaceShape, HoldLabels, VolumeMarks } from './HoldOverlays';
-import { isPinned, faceLabel, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
+import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
+import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
 import WarmupRun from './warmup/WarmupRun';
 import VolumesScreen from './volumes/VolumesScreen';
 import FaceButtons from './volumes/FaceButtons';
-import HoldMenu from './volumes/HoldMenu';
 import { todayISO } from './lib/warmup';
 
 // Dynamically imported so the segmentation library (and its model weights)
@@ -141,10 +140,8 @@ export default function App() {
 
   const [draftHolds, setDraftHolds] = useState([]);
   const [placeType, setPlaceType] = useState('start');
-  // Which draft hold the hold menu is open for, by its draft-only _key -- a
-  // hold object is replaced when its mask lands or a tag changes, so neither
-  // identity nor index can track it.
-  const [menuKey, setMenuKey] = useState(null);
+  // Draft holds carry a draft-only _key, so an in-flight mask decode lands on
+  // the right hold even after others are added or removed.
   const nextKeyRef = useRef(0);
   const [name, setName] = useState('');
   const [grade, setGrade] = useState('');
@@ -221,9 +218,9 @@ export default function App() {
         setEmbeddingReady(true);
         // Editing seeds draftHolds from the saved problem, without masks --
         // decode each one now so they become tappable/highlighted just like a
-        // freshly-placed hold. Matched by _key (not index or identity) so an
-        // in-flight decode can't land on the wrong hold if the user removes
-        // or tags one before it resolves. Faces are never segmented.
+        // freshly-placed hold. Matched by _key (not index) so an in-flight
+        // decode can't land on the wrong hold if the user removes another one
+        // before it resolves. Faces are never segmented.
         const seg = segmenterRef.current;
         setDraftHolds((prev) => {
           prev.forEach((h) => {
@@ -392,8 +389,6 @@ export default function App() {
       return;
     }
     if (view !== 'new') return;
-    // With the menu open, a tap just closes it, so a mis-tap can't add a stray hold.
-    if (menuKey !== null) { setMenuKey(null); return; }
     // Wait for highlight mode to finish loading (or fail) before placing a
     // hold -- otherwise an early tap gets stuck as a plain circle forever,
     // since a hold's mask is only ever attempted at tap time.
@@ -405,7 +400,8 @@ export default function App() {
     const radiusYFrac = HOLD_HIT_RADIUS_PX / rect.height;
     const hitIndex = holdAtPoint(draftHolds, point.x, point.y, radiusXFrac, radiusYFrac);
     if (hitIndex !== -1) {
-      setMenuKey(draftHolds[hitIndex]._key);
+      const hitKey = draftHolds[hitIndex]._key;
+      setDraftHolds((prev) => prev.filter((h) => h._key !== hitKey));
       return;
     }
 
@@ -428,23 +424,16 @@ export default function App() {
   };
 
   const handleFaceTap = (volume, face, placed) => {
-    if (placed) { setMenuKey(placed._key); return; }
+    if (placed) {
+      setDraftHolds((prev) => prev.filter((h) => h._key !== placed._key));
+      return;
+    }
     const hold = withKey(faceHold(volume, face, placeType));
     setDraftHolds((prev) => [...prev, hold]);
   };
 
-  const updateMenuHold = (patch) => {
-    setDraftHolds((prev) => prev.map((h) => (h._key === menuKey ? { ...h, ...patch } : h)));
-  };
-
-  const removeMenuHold = () => {
-    setDraftHolds((prev) => prev.filter((h) => h._key !== menuKey));
-    setMenuKey(null);
-  };
-
   const startNewProblem = () => {
     setDraftHolds([]); setName(''); setGrade(''); setSetter(currentClimber?.name || ''); setNotes(''); setPlaceType('start');
-    setMenuKey(null);
     setEditingId(null);
     setError('');
     setView('new');
@@ -456,7 +445,6 @@ export default function App() {
   const startEditProblem = (problem, part) => {
     setEditingId(problem.id);
     setDraftHolds(problem.holds.map(withKey));
-    setMenuKey(null);
     setName(problem.name); setGrade(problem.grade || ''); setSetter(problem.setter || ''); setNotes(problem.notes || '');
     setError('');
     setView(part === 'holds' ? 'new' : 'edit-details');
@@ -703,7 +691,6 @@ export default function App() {
   const lockedMaskUrl = lockedProblem?.mask_url;
   const detailPhotoStatus = lockedProblem ? photoStatus(lockedProblem, board) : null;
   const faceRows = view === 'new' ? facesOnPhoto(volumes, activePhotoUrl) : [];
-  const menuHold = menuKey === null ? null : draftHolds.find((h) => h._key === menuKey) || null;
 
   if (loading) {
     return (
@@ -791,7 +778,7 @@ export default function App() {
               )
             ))
           )}
-          {displayHolds.map((h, i) => <HoldLabels key={`label-${i}`} hold={h} color={HOLD_COLORS[h.type]} volumes={volumes} />)}
+          {displayHolds.map((h, i) => <PinnedFace key={`pin-${i}`} hold={h} color={HOLD_COLORS[h.type]} volumes={volumes} />)}
           {view === 'volumes' && <VolumeMarks volumes={volumes} photoUrl={board?.photo_url} marking={marking} />}
           {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
@@ -845,16 +832,6 @@ export default function App() {
           <div style={{ marginTop: 16 }}>
             {view === 'new' && (
               <>
-                {menuHold && (
-                  <HoldMenu
-                    hold={menuHold}
-                    label={menuHold.face ? faceLabel(menuHold, volumes) : null}
-                    color={HOLD_COLORS[menuHold.type]}
-                    onChange={updateMenuHold}
-                    onRemove={removeMenuHold}
-                    onDone={() => setMenuKey(null)}
-                  />
-                )}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   {['start', 'hold', 'foot', 'finish'].map((t) => (
                     <button key={t} onClick={() => setPlaceType(t)} style={{
@@ -867,7 +844,7 @@ export default function App() {
                 </div>
                 <FaceButtons rows={faceRows} holds={draftHolds} volumes={volumes} colors={HOLD_COLORS} onTap={handleFaceTap} />
                 <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>
-                  Pick a hold type, then tap the board photo above to place one — tap a placed hold to tag or remove it.
+                  Pick a hold type, then tap the board photo above to place one — tap a placed hold to remove it.
                 </p>
                 {segmentUnavailable && (
                   <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>

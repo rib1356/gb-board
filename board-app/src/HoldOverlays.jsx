@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { isPinned, tagLabel, faceLabel, facesOnPhoto, faceCenter } from './lib/volumes';
+import { isPinned, faceLabel, facesOnPhoto, faceCenter } from './lib/volumes';
 
 export function ChalkRing({ x, y, color, label, size = 34 }) {
   return (
@@ -83,21 +83,16 @@ export function TagPill({ x, y, text, color }) {
   );
 }
 
-// Drawn on top of whatever shows the hold itself (saved highlight, live mask
-// or chalk ring). A pinned face has nothing else showing it, so it gets its
-// own ring and always carries its name.
-export function HoldLabels({ hold, color, volumes }) {
-  const tag = tagLabel(hold);
-  if (hold.face && isPinned(hold.face)) {
-    const label = faceLabel(hold, volumes);
-    return (
-      <>
-        <ChalkRing x={hold.x} y={hold.y} color={color} />
-        <TagPill x={hold.x} y={hold.y} color={color} text={tag ? `${label} · ${tag}` : label} />
-      </>
-    );
-  }
-  return tag ? <TagPill x={hold.x} y={hold.y} color={color} text={tag} /> : null;
+// A pinned face has nothing else showing it -- no outline, no highlight -- so
+// it gets its own ring, labelled with its name.
+export function PinnedFace({ hold, color, volumes }) {
+  if (!hold.face || !isPinned(hold.face)) return null;
+  return (
+    <>
+      <ChalkRing x={hold.x} y={hold.y} color={color} />
+      <TagPill x={hold.x} y={hold.y} color={color} text={faceLabel(hold, volumes)} />
+    </>
+  );
 }
 
 export function MarkingDots({ points }) {
