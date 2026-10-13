@@ -21,6 +21,7 @@ import {
   listClimbers,
   createClimber,
   saveWarmup,
+  saveVolumes,
   listWarmupSessions,
   createWarmupSession,
   deleteWarmupSession,
@@ -414,6 +415,24 @@ describe('saveWarmup', () => {
   it('throws when the update fails', async () => {
     mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
     await expect(saveWarmup('b1', [])).rejects.toThrow('nope');
+  });
+});
+
+describe('saveVolumes', () => {
+  it('writes every volume to the board and returns the updated board', async () => {
+    const volumes = [{ id: 'v1', name: 'Vol1', faces: [] }];
+    const updated = { id: 'b1', volumes };
+    const c = chain({ data: updated, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    expect(await saveVolumes('b1', volumes)).toEqual(updated);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('boards');
+    expect(c.update).toHaveBeenCalledWith({ volumes });
+    expect(c.eq).toHaveBeenCalledWith('id', 'b1');
+  });
+
+  it('throws when the update fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
+    await expect(saveVolumes('b1', [])).rejects.toThrow('nope');
   });
 });
 

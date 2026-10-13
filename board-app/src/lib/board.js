@@ -206,6 +206,17 @@ export async function saveWarmup(boardId, rungs) {
   return data;
 }
 
+export async function saveVolumes(boardId, volumes) {
+  const { data, error } = await supabase
+    .from('boards')
+    .update({ volumes })
+    .eq('id', boardId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function listWarmupSessions(boardId) {
   const { data, error } = await supabase
     .from('warmup_sessions')

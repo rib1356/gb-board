@@ -19,6 +19,9 @@ export function validateDraft({ name, holds }) {
 export function holdAtPoint(holds, xFrac, yFrac, radiusXFrac, radiusYFrac) {
   for (let i = holds.length - 1; i >= 0; i--) {
     const h = holds[i];
+    // Faces are added and edited from their own buttons; the photo is for
+    // holds, so a bolt-on sitting on a lit face stays tappable.
+    if (h.face) continue;
     if (h._mask) {
       const { width, height, data } = h._mask;
       const px = Math.min(width - 1, Math.max(0, Math.round(xFrac * width)));
@@ -31,4 +34,10 @@ export function holdAtPoint(holds, xFrac, yFrac, radiusXFrac, radiusYFrac) {
     }
   }
   return -1;
+}
+
+// What gets saved for a draft hold -- drops the draft-only `_` fields (masks,
+// the hold menu's key) and any tag that isn't set.
+export function cleanHold({ x, y, type, hand, grip, face }) {
+  return { x, y, type, ...(hand && { hand }), ...(grip && { grip }), ...(face && { face }) };
 }

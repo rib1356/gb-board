@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pointFromClientCoords, validateDraft, holdAtPoint } from './holds';
+import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './holds';
 
 describe('pointFromClientCoords', () => {
   it('converts a click at the center of the image to {0.5, 0.5}', () => {
@@ -34,6 +34,12 @@ describe('validateDraft', () => {
 });
 
 describe('holdAtPoint', () => {
+  it('skips volume faces, so a bolt-on sitting on a face can still be tapped', () => {
+    const face = { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: [{ x: 0.4, y: 0.4 }, { x: 0.6, y: 0.4 }, { x: 0.5, y: 0.6 }] };
+    const holds = [{ x: 0.5, y: 0.5, type: 'start', face }];
+    expect(holdAtPoint(holds, 0.5, 0.5, 0.05, 0.05)).toBe(-1);
+  });
+
   it('returns -1 when no hold is near the tapped point', () => {
     const holds = [{ x: 0.1, y: 0.1, type: 'hold' }];
     expect(holdAtPoint(holds, 0.9, 0.9, 0.05, 0.05)).toBe(-1);
@@ -66,5 +72,25 @@ describe('holdAtPoint', () => {
       { x: 0.5, y: 0.5, type: 'hold' },
     ];
     expect(holdAtPoint(holds, 0.5, 0.5, 0.05, 0.05)).toBe(1);
+  });
+});
+
+describe('cleanHold', () => {
+  it('keeps position and type, and drops draft-only fields', () => {
+    const mask = { width: 1, height: 1, data: new Uint8Array(1) };
+    expect(cleanHold({ x: 0.1, y: 0.2, type: 'hold', _mask: mask, _maskUrl: 'data:', _key: 3 }))
+      .toEqual({ x: 0.1, y: 0.2, type: 'hold' });
+  });
+
+  it('keeps hand, grip and face when set', () => {
+    const face = { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: [{ x: 0.5, y: 0.5 }] };
+    expect(cleanHold({ x: 0.5, y: 0.5, type: 'start', hand: 'L', grip: 'pinch', face, _key: 1 }))
+      .toEqual({ x: 0.5, y: 0.5, type: 'start', hand: 'L', grip: 'pinch', face });
+  });
+
+  it('leaves out tags that were cleared', () => {
+    const cleaned = cleanHold({ x: 0.5, y: 0.5, type: 'hold', hand: undefined, grip: undefined });
+    expect(cleaned).toEqual({ x: 0.5, y: 0.5, type: 'hold' });
+    expect(Object.keys(cleaned)).toEqual(['x', 'y', 'type']);
   });
 });
