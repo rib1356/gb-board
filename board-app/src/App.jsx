@@ -7,7 +7,9 @@ import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
-import { inputStyle } from './ui';
+import { inputStyle, sectionHeading } from './ui';
+import { ChalkRing, FaceShape, HoldLabels } from './HoldOverlays';
+import { isPinned, faceListLines } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
@@ -30,41 +32,6 @@ const HOLD_COLORS = {
 // Tap-to-remove hit radius (as a fraction of the photo's displayed size) for
 // a hold that's still showing as a circle marker rather than a real mask.
 const HOLD_HIT_RADIUS_PX = 22;
-
-function ChalkRing({ x, y, color, label, size = 34 }) {
-  return (
-    <div
-      data-testid="hold-marker"
-      style={{
-        position: 'absolute',
-        left: `${x * 100}%`,
-        top: `${y * 100}%`,
-        transform: 'translate(-50%, -50%)',
-        width: size,
-        height: size,
-        pointerEvents: 'none',
-      }}
-    >
-      <svg width={size} height={size} viewBox="0 0 40 40">
-        <circle
-          cx="20" cy="20" r="15"
-          fill="none"
-          stroke={color}
-          strokeWidth="2.5"
-          strokeDasharray="4 3"
-          strokeLinecap="round"
-          transform="rotate(-12 20 20)"
-        />
-      </svg>
-      {label ? (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color,
-        }}>{label}</div>
-      ) : null}
-    </div>
-  );
-}
 
 function HoldHighlight({ src }) {
   return (
@@ -741,17 +708,22 @@ export default function App() {
               <span style={{ fontSize: 13.5 }}>No board photo yet</span>
             </div>
           )}
+          {/* Faces go underneath, so a bolt-on highlighted on top of a face stays visible. */}
+          {displayHolds.map((h, i) => (
+            h.face && !isPinned(h.face) ? <FaceShape key={`face-${i}`} points={h.face.points} color={HOLD_COLORS[h.type]} /> : null
+          ))}
           {lockedMaskUrl ? (
             <HoldHighlight src={lockedMaskUrl} />
           ) : (
             displayHolds.map((h, i) => (
-              h._maskUrl ? (
+              h.face ? null : h._maskUrl ? (
                 <HoldHighlight key={i} src={h._maskUrl} />
               ) : (
                 <ChalkRing key={i} x={h.x} y={h.y} color={HOLD_COLORS[h.type]} label={h.type === 'hold' ? String(i + 1) : ''} />
               )
             ))
           )}
+          {displayHolds.map((h, i) => <HoldLabels key={`label-${i}`} hold={h} color={HOLD_COLORS[h.type]} />)}
           {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
@@ -944,6 +916,14 @@ export default function App() {
                 {selected.send_count > 0 ? `Sent ×${selected.send_count}` : 'Not sent yet'}
               </span>
             </div>
+            {faceListLines(selected.holds).length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <h3 style={sectionHeading}>Volumes</h3>
+                {faceListLines(selected.holds).map((line) => (
+                  <div key={line} style={{ fontSize: 14, color: '#c7c8cb', lineHeight: 1.6 }}>{line}</div>
+                ))}
+              </div>
+            )}
             {selected.notes && <p style={{ marginTop: 12, fontSize: 14, color: '#c7c8cb', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{selected.notes}</p>}
 
             <div style={{ marginTop: 16 }}>

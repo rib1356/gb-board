@@ -1576,3 +1576,41 @@ describe('App (refreshing the list)', () => {
     expect(listProblems).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('App (volume faces on a problem)', () => {
+  it("draws a problem's faces, pins and tags from its own copy, and lists its faces", async () => {
+    // The board has no volumes at all -- the problem's snapshot is enough.
+    listProblems.mockResolvedValue([{
+      id: 'p1', name: 'Volume Line', grade: 'V3', setter: 'Rob', notes: '',
+      holds: [
+        { x: 0.5, y: 0.25, type: 'start', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: [{ x: 0.25, y: 0.125 }, { x: 0.75, y: 0.125 }, { x: 0.5, y: 0.5 }] } },
+        { x: 0.6, y: 0.7, type: 'hold', hand: 'R', grip: 'undercut', face: { volumeId: 'v2', faceId: 'f2', label: 'Vol2 Under', points: [{ x: 0.6, y: 0.7 }] } },
+        { x: 0.2, y: 0.8, type: 'hold', hand: 'L', grip: 'pinch' },
+      ],
+    }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Volume Line'));
+
+    expect(await screen.findAllByTestId('face-shape')).toHaveLength(1);
+    // One ring for the plain hold, one for the pinned face -- the outlined face gets none.
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(2);
+    expect(screen.getByText('Vol2 Under · R UC')).toBeInTheDocument();
+    expect(screen.getByText('L Pinch')).toBeInTheDocument();
+    expect(screen.getByText('Vol1 Top — start')).toBeInTheDocument();
+    expect(screen.getByText('Vol2 Under — hold · right hand · undercut')).toBeInTheDocument();
+  });
+
+  it('shows no Volumes section for a problem without faces', async () => {
+    listProblems.mockResolvedValue([{
+      id: 'p1', name: 'Plain Line', grade: 'V3', setter: 'Rob', notes: '', holds: [{ x: 0.2, y: 0.8, type: 'hold' }],
+    }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Plain Line'));
+
+    expect(await screen.findByText('Not sent yet')).toBeInTheDocument();
+    expect(screen.queryByText('Volumes')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tag-pill')).not.toBeInTheDocument();
+  });
+});
