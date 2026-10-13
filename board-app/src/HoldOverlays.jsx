@@ -1,4 +1,5 @@
-import { isPinned, tagLabel } from './lib/volumes';
+import { Fragment } from 'react';
+import { isPinned, tagLabel, facesOnPhoto, faceCenter } from './lib/volumes';
 
 export function ChalkRing({ x, y, color, label, size = 34 }) {
   return (
@@ -96,4 +97,40 @@ export function HoldLabels({ hold, color }) {
     );
   }
   return tag ? <TagPill x={hold.x} y={hold.y} color={color} text={tag} /> : null;
+}
+
+export function MarkingDots({ points }) {
+  return points.map((p, i) => (
+    <div key={i} style={{
+      position: 'absolute', left: `${p.x * 100}%`, top: `${p.y * 100}%`, transform: 'translate(-50%, -50%)',
+      width: 9, height: 9, borderRadius: '50%', background: '#D9552B', border: '2px solid #17181A',
+      pointerEvents: 'none',
+    }} />
+  ));
+}
+
+const MARK_COLOR = '#C08552';
+
+// Setup view: every face marked on this photo in one neutral colour, plus the
+// outline being drawn right now.
+export function VolumeMarks({ volumes, photoUrl, marking }) {
+  return (
+    <>
+      {facesOnPhoto(volumes, photoUrl).flatMap(({ volume, faces }) => faces.map((face) => {
+        // The face being re-marked is shown by its new outline instead.
+        if (marking && marking.volumeId === volume.id && marking.name === face.name) return null;
+        const center = faceCenter(face.points);
+        return (
+          <Fragment key={face.id}>
+            {isPinned(face)
+              ? <ChalkRing x={center.x} y={center.y} color={MARK_COLOR} />
+              : <FaceShape points={face.points} color={MARK_COLOR} fillOpacity={0.35} />}
+            <TagPill x={center.x} y={center.y} color={MARK_COLOR} text={`${volume.name} ${face.name}`} />
+          </Fragment>
+        );
+      }))}
+      {marking && marking.points.length >= 3 && <FaceShape points={marking.points} color="#D9552B" fillOpacity={0.35} />}
+      {marking && <MarkingDots points={marking.points} />}
+    </>
+  );
 }

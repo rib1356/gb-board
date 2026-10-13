@@ -18,6 +18,7 @@ vi.mock('./lib/board', () => ({
   listClimbers: vi.fn(),
   createClimber: vi.fn(),
   saveWarmup: vi.fn(),
+  saveVolumes: vi.fn(),
   listWarmupSessions: vi.fn(),
   createWarmupSession: vi.fn(),
   deleteWarmupSession: vi.fn(),
@@ -33,7 +34,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import App from './App';
@@ -1612,5 +1613,145 @@ describe('App (volume faces on a problem)', () => {
     expect(await screen.findByText('Not sent yet')).toBeInTheDocument();
     expect(screen.queryByText('Volumes')).not.toBeInTheDocument();
     expect(screen.queryByTestId('tag-pill')).not.toBeInTheDocument();
+  });
+});
+
+describe('App (volumes setup)', () => {
+  const PHOTO = 'https://cdn.example/b1.jpg';
+  const boardWith = (volumes) => ({ id: 'b1', name: 'Home Board', photo_url: PHOTO, volumes });
+
+  beforeEach(() => {
+    saveVolumes.mockImplementation(async (id, volumes) => boardWith(volumes));
+  });
+
+  async function openVolumes(user) {
+    await user.click(await screen.findByRole('button', { name: 'Volumes' }));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
+    return photo.parentElement;
+  }
+
+  it('has no Volumes button until the board has a photo', async () => {
+    render(<App />);
+    await screen.findByText('THE BOARD');
+    expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
+  });
+
+  it('adds a volume to a board that has never had any', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: PHOTO });
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    expect(screen.getByText(/No volumes yet/)).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('e.g. Vol1'), 'Vol1');
+    await user.click(screen.getByRole('button', { name: 'Add volume' }));
+
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [
+      { id: expect.stringMatching(/^v-/), name: 'Vol1', faces: [] },
+    ]));
+    expect(await screen.findByText('Vol1')).toBeInTheDocument();
+    expect(screen.getAllByText('Not marked')).toHaveLength(4);
+  });
+
+  it('outlines a face by tapping its corners, with undo', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+    render(<App />);
+    const user = userEvent.setup();
+    const panel = await openVolumes(user);
+
+    await user.click(screen.getByRole('button', { name: 'Outline Vol1 Top' }));
+    expect(screen.getByText('Tap the corners of Vol1 Top')).toBeInTheDocument();
+    fireEvent.click(panel, { clientX: 20, clientY: 10 });
+    fireEvent.click(panel, { clientX: 60, clientY: 10 });
+    fireEvent.click(panel, { clientX: 190, clientY: 90 });
+    await user.click(screen.getByRole('button', { name: 'Undo point' }));
+    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
+    fireEvent.click(panel, { clientX: 40, clientY: 40 });
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [{ id: 'v1', name: 'Vol1', faces: [
+      { id: expect.stringMatching(/^f-/), name: 'Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.4 }], photoUrl: PHOTO },
+    ] }]));
+    expect(await screen.findByText('Outlined')).toBeInTheDocument();
+    expect(screen.getByTestId('face-shape')).toBeInTheDocument();
+  });
+
+  it('pins a face you cannot see with a single tap', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v2', name: 'Vol2', faces: [] }]));
+    render(<App />);
+    const user = userEvent.setup();
+    const panel = await openVolumes(user);
+
+    await user.click(screen.getByRole('button', { name: 'Pin Vol2 Under' }));
+    expect(screen.getByText('Tap where Vol2 Under is')).toBeInTheDocument();
+    fireEvent.click(panel, { clientX: 100, clientY: 80 });
+
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [{ id: 'v2', name: 'Vol2', faces: [
+      { id: expect.stringMatching(/^f-/), name: 'Under', points: [{ x: 0.5, y: 0.8 }], photoUrl: PHOTO },
+    ] }]));
+    expect(await screen.findByText('Pinned')).toBeInTheDocument();
+  });
+
+  it('keeps the outline open to retry when saving fails', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+    saveVolumes.mockRejectedValueOnce(new Error('offline'));
+    render(<App />);
+    const user = userEvent.setup();
+    const panel = await openVolumes(user);
+
+    await user.click(screen.getByRole('button', { name: 'Outline Vol1 Top' }));
+    fireEvent.click(panel, { clientX: 20, clientY: 10 });
+    fireEvent.click(panel, { clientX: 60, clientY: 10 });
+    fireEvent.click(panel, { clientX: 40, clientY: 40 });
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(await screen.findByText('Could not save the volumes — check your connection and try again.')).toBeInTheDocument();
+    expect(screen.getByText('Tap the corners of Vol1 Top')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(await screen.findByText('Outlined')).toBeInTheDocument();
+  });
+
+  it('flags a face marked on an older photo, and clears a face', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [
+      { id: 'f1', name: 'Top', points: [{ x: 0.5, y: 0.5 }], photoUrl: 'https://cdn.example/old.jpg' },
+      { id: 'f2', name: 'Left', points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO },
+    ] }]));
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    expect(screen.getByText('Old photo — re-mark')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear Vol1 Left' }));
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', [{ id: 'v1', name: 'Vol1', faces: [
+      { id: 'f1', name: 'Top', points: [{ x: 0.5, y: 0.5 }], photoUrl: 'https://cdn.example/old.jpg' },
+    ] }]));
+  });
+
+  it('adds a custom face name that can then be marked', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    await user.click(screen.getByRole('button', { name: '+ Custom face' }));
+    await user.type(screen.getByPlaceholderText('Face name'), 'Front');
+    await user.click(screen.getByRole('button', { name: 'Add face' }));
+
+    expect(screen.getByRole('button', { name: 'Pin Vol1 Front' })).toBeInTheDocument();
+    expect(saveVolumes).not.toHaveBeenCalled();
+  });
+
+  it('deletes a volume after confirming', async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v1', name: 'Vol1', faces: [] }]));
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    await user.click(screen.getByRole('button', { name: 'Delete Vol1' }));
+    await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
+    await waitFor(() => expect(saveVolumes).toHaveBeenCalledWith('b1', []));
   });
 });

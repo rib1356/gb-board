@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint } from './lib/holds';
@@ -8,12 +8,13 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { inputStyle, sectionHeading } from './ui';
-import { ChalkRing, FaceShape, HoldLabels } from './HoldOverlays';
-import { isPinned, faceListLines } from './lib/volumes';
+import { ChalkRing, FaceShape, HoldLabels, VolumeMarks } from './HoldOverlays';
+import { isPinned, faceListLines, setFace } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
 import WarmupRun from './warmup/WarmupRun';
+import VolumesScreen from './volumes/VolumesScreen';
 import { todayISO } from './lib/warmup';
 
 // Dynamically imported so the segmentation library (and its model weights)
@@ -151,6 +152,9 @@ export default function App() {
   const [warmupFocusId, setWarmupFocusId] = useState(null);
   const [warmupSessions, setWarmupSessions] = useState([]);
   const [savingWarmup, setSavingWarmup] = useState(false);
+  // While marking a volume face in setup, photo taps add its corners (or its pin).
+  const [marking, setMarking] = useState(null);
+  const [savingVolumes, setSavingVolumes] = useState(false);
 
   const [ticks, setTicks] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
@@ -183,6 +187,7 @@ export default function App() {
   // photo they were originally placed on.
   const editingProblem = editingId ? problems.find((p) => p.id === editingId) : null;
   const activePhotoUrl = editingProblem?.photo_url || board?.photo_url;
+  const volumes = board?.volumes || [];
 
   useEffect(() => {
     if (view !== 'new' || !activePhotoUrl) return;
@@ -370,6 +375,14 @@ export default function App() {
   };
 
   const handleImageClick = (e) => {
+    if (view === 'volumes') {
+      if (!marking || savingVolumes) return;
+      const rect = imgWrapRef.current.getBoundingClientRect();
+      const point = pointFromClientCoords(rect, e.clientX, e.clientY);
+      if (marking.mode === 'pin') finishMarking([point]);
+      else setMarking((m) => ({ ...m, points: [...m.points, point] }));
+      return;
+    }
     if (view !== 'new') return;
     // Wait for highlight mode to finish loading (or fail) before placing a
     // hold -- otherwise an early tap gets stuck as a plain circle forever,
@@ -559,6 +572,29 @@ export default function App() {
     setSavingWarmup(false);
   };
 
+  const handleSaveVolumes = async (next) => {
+    setSavingVolumes(true);
+    setError('');
+    let saved = false;
+    try {
+      setBoard(await saveVolumes(board.id, next));
+      saved = true;
+    } catch (err) {
+      console.error(err);
+      setError('Could not save the volumes — check your connection and try again.');
+    }
+    setSavingVolumes(false);
+    return saved;
+  };
+
+  // A failed save leaves marking open with its points, so Done (or another
+  // tap, for a pin) retries without starting over.
+  const finishMarking = async (points) => {
+    if (await handleSaveVolumes(setFace(volumes, marking.volumeId, marking.name, points, board.photo_url))) {
+      setMarking(null);
+    }
+  };
+
   const handleWarmupSend = async (problemId) => {
     setError('');
     try {
@@ -697,7 +733,7 @@ export default function App() {
           style={{
             position: 'relative', width: '100%', borderRadius: 14, overflow: 'hidden',
             background: '#232427', border: '1px solid #2A2B2E',
-            cursor: view === 'new' ? 'crosshair' : 'default', minHeight: displayPhotoUrl ? undefined : 220,
+            cursor: view === 'new' || (view === 'volumes' && marking) ? 'crosshair' : 'default', minHeight: displayPhotoUrl ? undefined : 220,
           }}
         >
           {displayPhotoUrl ? (
@@ -724,6 +760,7 @@ export default function App() {
             ))
           )}
           {displayHolds.map((h, i) => <HoldLabels key={`label-${i}`} hold={h} color={HOLD_COLORS[h.type]} />)}
+          {view === 'volumes' && <VolumeMarks volumes={volumes} photoUrl={board?.photo_url} marking={marking} />}
           {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
@@ -737,9 +774,9 @@ export default function App() {
         </div>
 
         {view === 'list' && (
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
             <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               border: '1px dashed #3a3b3e', borderRadius: 10, padding: '10px 14px', fontSize: 13.5,
               color: '#a9abaf', cursor: 'pointer',
             }}>
@@ -747,6 +784,14 @@ export default function App() {
               {board?.photo_url ? 'Replace board photo' : 'Upload a photo of your board'}
               <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
             </label>
+            {board?.photo_url && (
+              <button onClick={() => { setMarking(null); setView('volumes'); }} style={{
+                display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed #3a3b3e',
+                borderRadius: 10, padding: '10px 14px', fontSize: 13.5, color: '#a9abaf', cursor: 'pointer',
+              }}>
+                <Triangle size={15} /> Volumes
+              </button>
+            )}
           </div>
         )}
 
@@ -1063,6 +1108,20 @@ export default function App() {
             onSend={handleWarmupSend}
             onFinish={handleFinishWarmup}
             onDiscard={() => setView('warmup')}
+          />
+        )}
+
+        {view === 'volumes' && (
+          <VolumesScreen
+            volumes={volumes}
+            photoUrl={board?.photo_url}
+            marking={marking}
+            saving={savingVolumes}
+            onSave={handleSaveVolumes}
+            onStartMarking={(m) => { window.scrollTo(0, 0); setMarking({ ...m, points: [] }); }}
+            onUndoPoint={() => setMarking((m) => ({ ...m, points: m.points.slice(0, -1) }))}
+            onFinishOutline={() => finishMarking(marking.points)}
+            onCancelMarking={() => setMarking(null)}
           />
         )}
       </div>
