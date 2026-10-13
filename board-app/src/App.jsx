@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame } from 'lucide-react';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
@@ -8,6 +8,7 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { inputStyle } from './ui';
+import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
 import WarmupRun from './warmup/WarmupRun';
@@ -333,6 +334,33 @@ export default function App() {
       }
     })();
   }, [view, board]);
+
+  // Added to the home screen, the app sits suspended in memory between visits,
+  // so the list never sees problems someone else has set unless it re-reads.
+  const refreshList = async ({ quiet = false } = {}) => {
+    try {
+      const b = await getOrCreateBoard();
+      const [p, c] = await Promise.all([listProblems(b.id), listClimbers()]);
+      setBoard(b);
+      setProblems(p);
+      setClimbers(c);
+    } catch (err) {
+      console.error(err);
+      if (!quiet) setError('Could not refresh the board — check your connection and try again.');
+    }
+  };
+
+  useEffect(() => {
+    if (view !== 'list') return undefined;
+    const onVisibilityChange = () => {
+      // Quiet, since the network is often still waking up with the phone.
+      if (document.visibilityState === 'visible') refreshList({ quiet: true });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [view]);
+
+  const { pull, refreshing } = usePullToRefresh(view === 'list' && !loading, refreshList);
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -684,6 +712,16 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {(pull > 0 || refreshing) && (
+        <div aria-hidden="true" style={{ height: refreshing ? 44 : pull, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          {refreshing ? (
+            <Loader2 size={18} className="animate-spin" color="#8b8d91" />
+          ) : (
+            <RefreshCw size={18} color={pull >= PULL_THRESHOLD ? '#C08552' : '#8b8d91'} style={{ transform: `rotate(${pull * 4}deg)` }} />
+          )}
+        </div>
+      )}
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
         <div

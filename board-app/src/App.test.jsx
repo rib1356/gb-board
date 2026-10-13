@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('./lib/board', () => ({
@@ -1496,5 +1496,83 @@ describe('App (deleting a warm-up session)', () => {
     await user.click(screen.getByRole('button', { name: 'Delete session from 29 Sept by Rob' }));
     expect(await screen.findByText(/could not delete that warm-up/i)).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+});
+
+describe('App (refreshing the list)', () => {
+  const GASTON = { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] };
+  const CRIMPY = { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [] };
+
+  const touch = (type, clientY) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : [{ clientY }] });
+    window.dispatchEvent(event);
+    return event;
+  };
+
+  afterEach(() => {
+    delete document.visibilityState;
+  });
+
+  it('picks up newly added problems when the app comes back into view', async () => {
+    listProblems.mockResolvedValueOnce([GASTON]).mockResolvedValue([CRIMPY, GASTON]);
+    render(<App />);
+    expect(await screen.findByText('Gaston Traverse')).toBeInTheDocument();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(await screen.findByText('Crimpy Corner')).toBeInTheDocument();
+  });
+
+  it('does not refresh while the app is hidden', async () => {
+    listProblems.mockResolvedValue([GASTON]);
+    render(<App />);
+    await screen.findByText('Gaston Traverse');
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(listProblems).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes the list when pulled down from the top', async () => {
+    listProblems.mockResolvedValueOnce([GASTON]).mockResolvedValue([CRIMPY, GASTON]);
+    render(<App />);
+    await screen.findByText('Gaston Traverse');
+
+    act(() => { touch('touchstart', 100); });
+    let move;
+    act(() => { move = touch('touchmove', 300); });
+    expect(move.defaultPrevented).toBe(true);
+    act(() => { touch('touchend'); });
+
+    expect(await screen.findByText('Crimpy Corner')).toBeInTheDocument();
+  });
+
+  it('does not refresh on a short pull', async () => {
+    listProblems.mockResolvedValue([GASTON]);
+    render(<App />);
+    await screen.findByText('Gaston Traverse');
+
+    act(() => { touch('touchstart', 100); });
+    act(() => { touch('touchmove', 130); });
+    act(() => { touch('touchend'); });
+
+    expect(listProblems).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves an upward scroll alone', async () => {
+    listProblems.mockResolvedValue([GASTON]);
+    render(<App />);
+    await screen.findByText('Gaston Traverse');
+
+    act(() => { touch('touchstart', 300); });
+    let move;
+    act(() => { move = touch('touchmove', 100); });
+    act(() => { touch('touchend'); });
+
+    expect(move.defaultPrevented).toBe(false);
+    expect(listProblems).toHaveBeenCalledTimes(1);
   });
 });
