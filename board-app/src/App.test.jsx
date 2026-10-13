@@ -1923,6 +1923,51 @@ describe('App (faces and tags in the hold editor)', () => {
     expect(compositeMaskBlob).toHaveBeenCalledWith([{ mask, color: '#2E6B3E' }], 400, 200);
   });
 
+  it("lets a face that's no longer marked on the board still be removed from a problem", async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: PHOTO, volumes: [] });
+    listProblems.mockResolvedValue([{
+      id: 'p1', name: 'Vol Line', grade: 'V2', setter: 'Rob', notes: '', photo_url: PHOTO,
+      holds: [{ x: 0.2, y: 0.3, type: 'start' }, { x: 0.5, y: 0.25, type: 'hold', face: TOP_FACE }],
+    }]);
+    updateProblem.mockResolvedValue({ id: 'p1', name: 'Vol Line', grade: 'V2', setter: 'Rob', notes: '', photo_url: PHOTO, holds: [] });
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Vol Line'));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
+
+    const chip = screen.getByRole('button', { name: 'Vol1 Top' });
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    await user.click(chip);
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await user.click(screen.getByText('Save changes'));
+
+    await waitFor(() => expect(updateProblem).toHaveBeenCalledWith('p1', expect.objectContaining({
+      holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+    })));
+  });
+
+  it('treats a face that was deleted and marked again as the same face, so it is never added twice', async () => {
+    listProblems.mockResolvedValue([{
+      id: 'p1', name: 'Vol Line', grade: 'V2', setter: 'Rob', notes: '', photo_url: PHOTO,
+      holds: [{ x: 0.5, y: 0.25, type: 'hold', face: { ...TOP_FACE, volumeId: 'v-old', faceId: 'f-old' } }],
+    }]);
+    updateProblem.mockResolvedValue({ id: 'p1', name: 'Vol Line', grade: 'V2', setter: 'Rob', notes: '', photo_url: PHOTO, holds: [] });
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Vol Line'));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
+
+    expect(screen.getAllByRole('button', { name: 'Vol1 Top' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Vol1 Top' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Vol1 Top' }));
+    expect(screen.getByRole('group', { name: 'Hold menu' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByText('Save changes'));
+
+    await waitFor(() => expect(updateProblem).toHaveBeenCalled());
+    expect(updateProblem.mock.calls[0][1].holds).toHaveLength(1);
+  });
+
   it('only offers faces marked on the photo of the problem being edited', async () => {
     listProblems.mockResolvedValue([{
       id: 'p1', name: 'Old Line', grade: 'V2', setter: 'Rob', notes: '', photo_url: OLD,
