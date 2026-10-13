@@ -469,7 +469,7 @@ describe('App (hold highlighting)', () => {
     // A later session (editing) needs its own embedding for its own photo --
     // the banner shouldn't skip itself just because the model is cached.
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
 
     expect(await screen.findByText(/Preparing highlight/i)).toBeInTheDocument();
 
@@ -591,7 +591,7 @@ describe('App (photo snapshot)', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
 
     expect(await screen.findByAltText('Climbing board')).toHaveAttribute('src', 'https://cdn.example/old-board.jpg');
   });
@@ -701,13 +701,14 @@ describe('App (list sort and unsent filter)', () => {
 });
 
 describe('App (edit flow)', () => {
-  it("edits a problem's fields and saves them, leaving holds untouched", async () => {
+  it("edits a problem's details without touching its holds or loading highlight mode", async () => {
     listProblems.mockResolvedValue([
       {
         id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'crimpy',
         holds: [{ x: 0.2, y: 0.3, type: 'start' }],
       },
     ]);
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
     updateProblem.mockResolvedValue({
       id: 'p1', name: 'Gaston Traverse v2', grade: 'V6', setter: 'Rob', notes: 'crimpy',
       holds: [{ x: 0.2, y: 0.3, type: 'start' }],
@@ -716,8 +717,9 @@ describe('App (edit flow)', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }));
 
+    expect(screen.queryByRole('button', { name: 'start' })).not.toBeInTheDocument();
     const nameInput = await screen.findByDisplayValue('Gaston Traverse');
     await user.clear(nameInput);
     await user.type(nameInput, 'Gaston Traverse v2');
@@ -727,10 +729,47 @@ describe('App (edit flow)', () => {
     await waitFor(() =>
       expect(updateProblem).toHaveBeenCalledWith('p1', {
         name: 'Gaston Traverse v2', grade: 'V6', setter: 'Rob', notes: 'crimpy',
-        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
       })
     );
+    expect(loadSegmenter).not.toHaveBeenCalled();
+    expect(uploadProblemMask).not.toHaveBeenCalled();
     expect(await screen.findByText('Gaston Traverse v2')).toBeInTheDocument();
+  });
+
+  it("edits a problem's holds without showing its details form, keeping the details as they were", async () => {
+    listProblems.mockResolvedValue([
+      {
+        id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'crimpy',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }],
+      },
+    ]);
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    updateProblem.mockResolvedValue({
+      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'crimpy',
+      holds: [{ x: 0.2, y: 0.3, type: 'start' }, { x: 0.75, y: 0.8, type: 'start' }],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
+
+    expect(screen.queryByPlaceholderText('e.g. Gaston Traverse')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /grade/i })).not.toBeInTheDocument();
+
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
+    fireEvent.click(photo.parentElement, { clientX: 150, clientY: 80 });
+    await user.click(screen.getByText('Save changes'));
+
+    await waitFor(() =>
+      expect(updateProblem).toHaveBeenCalledWith('p1', {
+        name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: 'crimpy',
+        holds: [{ x: 0.2, y: 0.3, type: 'start' }, { x: 0.75, y: 0.8, type: 'start' }],
+      })
+    );
   });
 
   it('adds a hold when tapping empty space on the photo while editing', async () => {
@@ -745,7 +784,7 @@ describe('App (edit flow)', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
 
     const photo = await screen.findByAltText('Climbing board');
     vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
@@ -770,7 +809,7 @@ describe('App (edit flow)', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
 
     const photo = await screen.findByAltText('Climbing board');
     vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
@@ -799,7 +838,7 @@ describe('App (edit flow)', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Edit problem' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
     await user.click(screen.getByText('Save changes'));
 
     expect(await screen.findByText('THE BOARD')).toBeInTheDocument();

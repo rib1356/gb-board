@@ -163,7 +163,7 @@ export default function App() {
   const [board, setBoard] = useState(null);
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('list'); // list | new | detail
+  const [view, setView] = useState('list'); // list | new | edit-details | detail
   const [selectedId, setSelectedId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -416,12 +416,15 @@ export default function App() {
     setView('new');
   };
 
-  const startEditProblem = (problem) => {
+  // Holds and details are edited separately -- 'new' with an editingId is the
+  // hold editor (details carried through unchanged), 'edit-details' is just the
+  // form, which skips loading highlight mode and keeps the saved highlight.
+  const startEditProblem = (problem, part) => {
     setEditingId(problem.id);
     setDraftHolds(problem.holds);
     setName(problem.name); setGrade(problem.grade || ''); setSetter(problem.setter || ''); setNotes(problem.notes || '');
     setError('');
-    setView('new');
+    setView(part === 'holds' ? 'new' : 'edit-details');
   };
 
   const saveProblem = async () => {
@@ -477,6 +480,24 @@ export default function App() {
     } catch (err) {
       console.error(err);
       setError(`Could not ${editingId ? 'update' : 'save'} that problem — check your connection and try again.`);
+    }
+    setSaving(false);
+  };
+
+  const saveDetails = async () => {
+    if (!name.trim()) { setError('Give the problem a name first.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      // No holds passed, so updateProblem leaves the holds and mask_url alone.
+      const updated = await updateProblem(editingId, { name, grade, setter, notes });
+      setProblems((prev) => prev.map((p) => (p.id === editingId ? updated : p)));
+      setSelectedId(null);
+      setEditingId(null);
+      setView('list');
+    } catch (err) {
+      console.error(err);
+      setError('Could not update that problem — check your connection and try again.');
     }
     setSaving(false);
   };
@@ -615,7 +636,7 @@ export default function App() {
   const isWarmupView = view.startsWith('warmup');
   const warmupRungs = board?.warmup || [];
   const warmupFocus = isWarmupView && warmupFocusId ? problems.find((p) => p.id === warmupFocusId) || null : null;
-  const lockedProblem = view === 'detail' ? selected : warmupFocus;
+  const lockedProblem = view === 'detail' || view === 'edit-details' ? selected : warmupFocus;
   const displayHolds = view === 'new' ? draftHolds : (lockedProblem ? lockedProblem.holds : []);
   const displayPhotoUrl = lockedProblem?.photo_url || activePhotoUrl;
   const lockedMaskUrl = lockedProblem?.mask_url;
@@ -733,40 +754,48 @@ export default function App() {
 
         {error && <p style={{ color: '#D9552B', fontSize: 13, marginTop: 10 }}>{error}</p>}
 
-        {view === 'new' && (
+        {(view === 'new' || view === 'edit-details') && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              {['start', 'hold', 'foot', 'finish'].map((t) => (
-                <button key={t} onClick={() => setPlaceType(t)} style={{
-                  flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
-                  letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,
-                  background: placeType === t ? HOLD_COLORS[t] : 'transparent',
-                  color: placeType === t ? '#17181A' : HOLD_COLORS[t], cursor: 'pointer',
-                }}>{t}</button>
-              ))}
-            </div>
-            <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>
-              Pick a hold type, then tap the board photo above to place one — tap an existing hold to remove it.
-            </p>
-            {segmentUnavailable && (
-              <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
-                Highlight mode unavailable on this device — holds will show as markers instead.
-              </p>
+            {view === 'new' && (
+              <>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                  {['start', 'hold', 'foot', 'finish'].map((t) => (
+                    <button key={t} onClick={() => setPlaceType(t)} style={{
+                      flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: 0.5, border: `1.5px solid ${HOLD_COLORS[t]}`,
+                      background: placeType === t ? HOLD_COLORS[t] : 'transparent',
+                      color: placeType === t ? '#17181A' : HOLD_COLORS[t], cursor: 'pointer',
+                    }}>{t}</button>
+                  ))}
+                </div>
+                <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>
+                  Pick a hold type, then tap the board photo above to place one — tap an existing hold to remove it.
+                </p>
+                {segmentUnavailable && (
+                  <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -10, marginBottom: 16 }}>
+                    Highlight mode unavailable on this device — holds will show as markers instead.
+                  </p>
+                )}
+              </>
             )}
 
-            <Field label="Problem name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gaston Traverse" style={inputStyle} /></Field>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ flex: 1 }}><Field label="Grade">
-                <select aria-label="Grade" value={grade} onChange={(e) => setGrade(e.target.value)} style={inputStyle}>
-                  <option value="">No grade</option>
-                  {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </Field></div>
-              <div style={{ flex: 1 }}><Field label="Set by"><input value={setter} onChange={(e) => setSetter(e.target.value)} placeholder="Your name" style={inputStyle} /></Field></div>
-            </div>
-            <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Beta, sequence, anything worth knowing" rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></Field>
+            {!(view === 'new' && editingId) && (
+              <>
+                <Field label="Problem name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gaston Traverse" style={inputStyle} /></Field>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ flex: 1 }}><Field label="Grade">
+                    <select aria-label="Grade" value={grade} onChange={(e) => setGrade(e.target.value)} style={inputStyle}>
+                      <option value="">No grade</option>
+                      {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </Field></div>
+                  <div style={{ flex: 1 }}><Field label="Set by"><input value={setter} onChange={(e) => setSetter(e.target.value)} placeholder="Your name" style={inputStyle} /></Field></div>
+                </div>
+                <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Beta, sequence, anything worth knowing" rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></Field>
+              </>
+            )}
 
-            <button onClick={saveProblem} disabled={saving} style={{
+            <button onClick={view === 'edit-details' ? saveDetails : saveProblem} disabled={saving} style={{
               width: '100%', marginTop: 14, background: '#5C8A66', color: '#17181A', border: 'none',
               borderRadius: 10, padding: '13px 0', fontWeight: 700, fontSize: 15, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -952,7 +981,7 @@ export default function App() {
                 );
               })()}
             </div>
-            <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
+            <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {confirmingDelete ? (
                 <>
                   <button onClick={() => handleDelete(selected.id)} style={{
@@ -966,10 +995,14 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <button onClick={() => startEditProblem(selected)} style={{
+                  <button onClick={() => startEditProblem(selected, 'holds')} style={{
                     display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
                     color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                  }}><Pencil size={14} /> Edit problem</button>
+                  }}><CircleDot size={14} /> Edit holds</button>
+                  <button onClick={() => startEditProblem(selected, 'details')} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                    color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                  }}><Pencil size={14} /> Edit details</button>
                   <button onClick={() => setConfirmingDelete(true)} style={{
                     display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
                     color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
