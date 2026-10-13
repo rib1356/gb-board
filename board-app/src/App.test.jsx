@@ -1609,6 +1609,28 @@ describe('App (volume faces on a problem)', () => {
     expect(screen.getByText('Vol2 Under — hold · right hand · undercut')).toBeInTheDocument();
   });
 
+  it("shows a side's current name after it's been renamed", async () => {
+    const TRI = [{ x: 0.25, y: 0.125 }, { x: 0.75, y: 0.125 }, { x: 0.5, y: 0.5 }];
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: null, volumes: [
+      { id: 'v1', name: 'Green', sidesListed: true, faces: [{ id: 'f1', name: 'Pinch side', points: TRI, photoUrl: 'https://cdn.example/b1.jpg' }] },
+      { id: 'v2', name: 'Vol2', sidesListed: true, faces: [{ id: 'f2', name: 'Belly', points: [{ x: 0.6, y: 0.7 }], photoUrl: 'https://cdn.example/b1.jpg' }] },
+    ] });
+    listProblems.mockResolvedValue([{
+      id: 'p1', name: 'Volume Line', grade: 'V3', setter: 'Rob', notes: '',
+      holds: [
+        { x: 0.5, y: 0.25, type: 'start', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: TRI } },
+        { x: 0.6, y: 0.7, type: 'hold', hand: 'R', grip: 'undercut', face: { volumeId: 'v2', faceId: 'f2', label: 'Vol2 Under', points: [{ x: 0.6, y: 0.7 }] } },
+      ],
+    }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Volume Line'));
+
+    expect(await screen.findByText('Green Pinch side — start')).toBeInTheDocument();
+    expect(screen.getByText('Vol2 Belly — hold · right hand · undercut')).toBeInTheDocument();
+    expect(screen.getByText('Vol2 Belly · R UC')).toBeInTheDocument();
+  });
+
   it('shows no Volumes section for a problem without faces', async () => {
     listProblems.mockResolvedValue([{
       id: 'p1', name: 'Plain Line', grade: 'V3', setter: 'Rob', notes: '', holds: [{ x: 0.2, y: 0.8, type: 'hold' }],
@@ -2038,6 +2060,28 @@ describe('App (faces and tags in the hold editor)', () => {
 
     await waitFor(() => expect(updateProblem).toHaveBeenCalled());
     expect(updateProblem.mock.calls[0][1].holds).toHaveLength(1);
+  });
+
+  it("names a renamed side by its new name, and doesn't mistake a new side with its old name for it", async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: PHOTO, volumes: [
+      { id: 'v1', name: 'Vol1', sidesListed: true, faces: [
+        { id: 'f1', name: 'Upper', points: TOP, photoUrl: PHOTO },
+        { id: 'f9', name: 'Top', points: [{ x: 0.1, y: 0.9 }], photoUrl: PHOTO },
+      ] },
+    ] });
+    listProblems.mockResolvedValue([{
+      id: 'p1', name: 'Vol Line', grade: 'V2', setter: 'Rob', notes: '', photo_url: PHOTO,
+      holds: [{ x: 0.5, y: 0.25, type: 'start', face: TOP_FACE }],
+    }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Vol Line'));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
+
+    expect(screen.getByRole('button', { name: 'Vol1 Upper' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Vol1 Top' })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('button', { name: 'Vol1 Upper' }));
+    expect(screen.getByText('Vol1 Upper · start')).toBeInTheDocument();
   });
 
   it('only offers faces marked on the photo of the problem being edited', async () => {

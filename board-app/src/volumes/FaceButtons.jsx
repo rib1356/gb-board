@@ -1,8 +1,14 @@
-// A face in a problem matches its button by id -- or by name, when the face
-// was deleted and marked again (a new id for the same face on the wall), so it
-// can never be added to a problem twice.
-function matchesButton(hold, volume, face) {
-  return Boolean(hold.face) && (hold.face.faceId === face.id || hold.face.label === `${volume.name} ${face.name}`);
+import { faceLabel } from '../lib/volumes';
+
+// A face in a problem matches its button by id -- or, once its side is gone
+// from the board, by name: a side deleted and marked again is the same side on
+// the wall under a new id, so it can never be added to a problem twice. Only
+// then, so a renamed side's old name can't claim a different side.
+function matchesButton(hold, volume, face, volumes) {
+  if (!hold.face) return false;
+  if (hold.face.faceId === face.id) return true;
+  const sideStillThere = volumes.some((v) => v.faces.some((f) => f.id === hold.face.faceId));
+  return !sideStillThere && hold.face.label === `${volume.name} ${face.name}`;
 }
 
 function chipStyle(color) {
@@ -18,11 +24,11 @@ const rowLabel = { width: 52, fontSize: 12.5, fontWeight: 700, color: '#8b8d91' 
 
 // One row per volume with faces on the photo being edited. A placed face's
 // button fills in its hold type's colour; tapping it again opens its menu.
-export default function FaceButtons({ rows, holds, colors, onTap }) {
+export default function FaceButtons({ rows, holds, volumes, colors, onTap }) {
   // Faces in this problem that no longer have a button (cleared, their volume
   // deleted, or marked again on a newer photo) -- photo taps skip faces, so
   // without these they could never be tagged or removed.
-  const orphans = holds.filter((h) => h.face && !rows.some(({ volume, faces }) => faces.some((f) => matchesButton(h, volume, f))));
+  const orphans = holds.filter((h) => h.face && !rows.some(({ volume, faces }) => faces.some((f) => matchesButton(h, volume, f, volumes))));
   if (rows.length === 0 && orphans.length === 0) return null;
   return (
     <div style={{ marginBottom: 14 }}>
@@ -30,7 +36,7 @@ export default function FaceButtons({ rows, holds, colors, onTap }) {
         <div key={volume.id} style={rowStyle}>
           <span style={rowLabel}>{volume.name}</span>
           {faces.map((face) => {
-            const placed = holds.find((h) => matchesButton(h, volume, face));
+            const placed = holds.find((h) => matchesButton(h, volume, face, volumes));
             return (
               <button
                 key={face.id}
@@ -49,11 +55,11 @@ export default function FaceButtons({ rows, holds, colors, onTap }) {
           {orphans.map((hold) => (
             <button
               key={hold._key}
-              aria-label={hold.face.label}
+              aria-label={faceLabel(hold, volumes)}
               aria-pressed
               onClick={() => onTap(null, null, hold)}
               style={chipStyle(colors[hold.type])}
-            >{hold.face.label}</button>
+            >{faceLabel(hold, volumes)}</button>
           ))}
         </div>
       )}

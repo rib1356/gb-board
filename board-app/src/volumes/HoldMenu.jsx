@@ -14,8 +14,8 @@ function Row({ label, children }) {
   );
 }
 
-export default function HoldMenu({ hold, color, onChange, onRemove, onDone }) {
-  const title = hold.face ? `${hold.face.label} · ${hold.type}` : TYPE_NAMES[hold.type];
+export default function HoldMenu({ hold, label, color, onChange, onRemove, onDone }) {
+  const title = hold.face ? `${label} · ${hold.type}` : TYPE_NAMES[hold.type];
   // One hand and one grip at most; tapping the selected one clears it.
   const toggle = (field, value) => onChange({ [field]: hold[field] === value ? undefined : value });
   const chip = (selected) => ({

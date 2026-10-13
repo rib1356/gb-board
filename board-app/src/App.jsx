@@ -9,7 +9,7 @@ import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { inputStyle, sectionHeading } from './ui';
 import { ChalkRing, FaceShape, HoldLabels, VolumeMarks } from './HoldOverlays';
-import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
+import { isPinned, faceLabel, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
 import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
@@ -791,7 +791,7 @@ export default function App() {
               )
             ))
           )}
-          {displayHolds.map((h, i) => <HoldLabels key={`label-${i}`} hold={h} color={HOLD_COLORS[h.type]} />)}
+          {displayHolds.map((h, i) => <HoldLabels key={`label-${i}`} hold={h} color={HOLD_COLORS[h.type]} volumes={volumes} />)}
           {view === 'volumes' && <VolumeMarks volumes={volumes} photoUrl={board?.photo_url} marking={marking} />}
           {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
@@ -848,6 +848,7 @@ export default function App() {
                 {menuHold && (
                   <HoldMenu
                     hold={menuHold}
+                    label={menuHold.face ? faceLabel(menuHold, volumes) : null}
                     color={HOLD_COLORS[menuHold.type]}
                     onChange={updateMenuHold}
                     onRemove={removeMenuHold}
@@ -864,7 +865,7 @@ export default function App() {
                     }}>{t}</button>
                   ))}
                 </div>
-                <FaceButtons rows={faceRows} holds={draftHolds} colors={HOLD_COLORS} onTap={handleFaceTap} />
+                <FaceButtons rows={faceRows} holds={draftHolds} volumes={volumes} colors={HOLD_COLORS} onTap={handleFaceTap} />
                 <p style={{ fontSize: 12.5, color: '#8b8d91', marginTop: -6, marginBottom: 16 }}>
                   Pick a hold type, then tap the board photo above to place one — tap a placed hold to tag or remove it.
                 </p>
@@ -1003,10 +1004,10 @@ export default function App() {
                 {selected.send_count > 0 ? `Sent ×${selected.send_count}` : 'Not sent yet'}
               </span>
             </div>
-            {faceListLines(selected.holds).length > 0 && (
+            {faceListLines(selected.holds, volumes).length > 0 && (
               <div style={{ marginTop: 14 }}>
                 <h3 style={sectionHeading}>Volumes</h3>
-                {faceListLines(selected.holds).map((line) => (
+                {faceListLines(selected.holds, volumes).map((line) => (
                   <div key={line} style={{ fontSize: 14, color: '#c7c8cb', lineHeight: 1.6 }}>{line}</div>
                 ))}
               </div>

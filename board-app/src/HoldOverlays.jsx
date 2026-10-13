@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { isPinned, tagLabel, facesOnPhoto, faceCenter } from './lib/volumes';
+import { isPinned, tagLabel, faceLabel, facesOnPhoto, faceCenter } from './lib/volumes';
 
 export function ChalkRing({ x, y, color, label, size = 34 }) {
   return (
@@ -86,13 +86,14 @@ export function TagPill({ x, y, text, color }) {
 // Drawn on top of whatever shows the hold itself (saved highlight, live mask
 // or chalk ring). A pinned face has nothing else showing it, so it gets its
 // own ring and always carries its name.
-export function HoldLabels({ hold, color }) {
+export function HoldLabels({ hold, color, volumes }) {
   const tag = tagLabel(hold);
   if (hold.face && isPinned(hold.face)) {
+    const label = faceLabel(hold, volumes);
     return (
       <>
         <ChalkRing x={hold.x} y={hold.y} color={color} />
-        <TagPill x={hold.x} y={hold.y} color={color} text={tag ? `${hold.face.label} · ${tag}` : hold.face.label} />
+        <TagPill x={hold.x} y={hold.y} color={color} text={tag ? `${label} · ${tag}` : label} />
       </>
     );
   }
