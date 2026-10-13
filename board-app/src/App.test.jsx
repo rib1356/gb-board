@@ -13,6 +13,7 @@ vi.mock('./lib/board', () => ({
   updateProblem: vi.fn(),
   restoreProblem: vi.fn(),
   listTicks: vi.fn(),
+  listBoardTicks: vi.fn(),
   createTick: vi.fn(),
   deleteTick: vi.fn(),
   listClimbers: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import App from './App';
@@ -47,6 +48,7 @@ beforeEach(() => {
   getOrCreateBoard.mockResolvedValue(BOARD);
   listProblems.mockResolvedValue([]);
   listTicks.mockResolvedValue([]);
+  listBoardTicks.mockResolvedValue([]);
   listClimbers.mockResolvedValue([]);
   listWarmupSessions.mockResolvedValue([]);
   loadSegmenter.mockRejectedValue(new Error('segmentation unavailable in tests'));
@@ -701,6 +703,93 @@ describe('App (list sort and unsent filter)', () => {
   });
 });
 
+describe('App (unsent by the current climber)', () => {
+  const GASTON = { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-01' };
+  const CRIMPY = { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-02' };
+  const TENSION = { id: 'p3', name: 'Tension Sucks', grade: 'V7', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null };
+  const ROB_ON_GASTON = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z' };
+  const SHAWN_ON_CRIMPY = { id: 't2', problem_id: 'p2', sent_by: 'Shawn', sent_on: '2026-09-02', created_at: '2026-09-02T10:00:00Z' };
+
+  const asRob = () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+  };
+
+  it("hides only what you've sent, keeping problems only someone else has sent", async () => {
+    asRob();
+    listProblems.mockResolvedValue([GASTON, CRIMPY, TENSION]);
+    listBoardTicks.mockResolvedValue([ROB_ON_GASTON, SHAWN_ON_CRIMPY]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: /unsent/i }));
+
+    expect(listBoardTicks).toHaveBeenCalledWith('b1');
+    expect(screen.queryByText('Gaston Traverse')).not.toBeInTheDocument();
+    expect(screen.getByText('Crimpy Corner')).toBeInTheDocument();
+    expect(screen.getByText('Tension Sucks')).toBeInTheDocument();
+  });
+
+  it('drops a problem from Unsent as soon as you log a send on it', async () => {
+    asRob();
+    listProblems.mockResolvedValue([CRIMPY, TENSION]);
+    listBoardTicks.mockResolvedValue([SHAWN_ON_CRIMPY]);
+    listTicks.mockResolvedValue([SHAWN_ON_CRIMPY]);
+    createTick.mockResolvedValue({ id: 't3', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-10-13', notes: '', created_at: '2026-10-13T10:00:00Z' });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: /unsent/i }));
+    await user.click(screen.getByText('Crimpy Corner'));
+    await user.click(await screen.findByText('Log a send'));
+    await user.click(screen.getByText('Save entry'));
+    await screen.findByText('Rob · 13 Oct 2026');
+    await user.click(screen.getByRole('button', { name: /board/i }));
+
+    expect(await screen.findByText('Tension Sucks')).toBeInTheDocument();
+    expect(screen.queryByText('Crimpy Corner')).not.toBeInTheDocument();
+  });
+
+  it("puts a problem back in Unsent when you delete your only send, even though someone else's still stands", async () => {
+    asRob();
+    const shawnOnGaston = { id: 't9', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-09-03', created_at: '2026-09-03T10:00:00Z' };
+    listProblems.mockResolvedValue([{ ...GASTON, send_count: 2 }, TENSION]);
+    listBoardTicks.mockResolvedValue([ROB_ON_GASTON, shawnOnGaston]);
+    listTicks.mockResolvedValue([shawnOnGaston, ROB_ON_GASTON]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await screen.findByText(/Rob · 1 Sept? 2026/);
+    await user.click(screen.getAllByLabelText('Delete entry')[1]);
+    await waitFor(() => expect(deleteTick).toHaveBeenCalledWith('t1'));
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    await user.click(await screen.findByRole('button', { name: /unsent/i }));
+
+    expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
+  });
+
+  it('picks up sends logged on another phone when the list refreshes', async () => {
+    asRob();
+    listProblems.mockResolvedValue([GASTON, TENSION]);
+    listBoardTicks.mockResolvedValueOnce([]).mockResolvedValue([ROB_ON_GASTON]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: /unsent/i }));
+    expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await waitFor(() => expect(screen.queryByText('Gaston Traverse')).not.toBeInTheDocument());
+    delete document.visibilityState;
+  });
+});
+
 describe('App (edit flow)', () => {
   it("edits a problem's details without touching its holds or loading highlight mode", async () => {
     listProblems.mockResolvedValue([
@@ -1320,6 +1409,18 @@ describe('App (warm-up session)', () => {
     })));
     const rows = await screen.findAllByRole('listitem');
     expect(rows.map((r) => r.textContent)).toContainEqual(expect.stringMatching(/Rob · Good · 1\/1/));
+  });
+
+  it('counts a warm-up send towards Unsent, so the problem drops off your list', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    createTick.mockImplementation(async (problemId, { sentOn, sentBy }) => ({ id: `t-${problemId}`, problem_id: problemId, sent_on: sentOn, sent_by: sentBy }));
+    await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
+    await user.click(await screen.findByRole('button', { name: 'Good' }));
+    await user.click(await screen.findByRole('button', { name: /board/i }));
+    await user.click(await screen.findByRole('button', { name: /unsent/i }));
+
+    expect(screen.queryByText('Jug Haul')).not.toBeInTheDocument();
+    expect(screen.getByText('Pinch Party')).toBeInTheDocument();
   });
 
   it('ending part-way still asks for a feel and saves partial progress', async () => {

@@ -12,8 +12,11 @@ function gradeNumber(grade) {
 
 // Input is expected newest-first (as listProblems returns it); Array.prototype.sort
 // is stable, so problems at the same grade stay newest-first.
-export function sortAndFilterProblems(problems, { sort = 'newest', unsentOnly = false } = {}) {
-  const list = unsentOnly ? problems.filter((p) => !p.send_count) : [...problems];
+// sentIds, when given, is one climber's sent problems -- unsentOnly then means
+// unsent by them, not by anyone on the board.
+export function sortAndFilterProblems(problems, { sort = 'newest', unsentOnly = false, sentIds = null } = {}) {
+  const isSent = sentIds ? (p) => sentIds.has(p.id) : (p) => p.send_count > 0;
+  const list = unsentOnly ? problems.filter((p) => !isSent(p)) : [...problems];
   if (sort === 'newest') return list;
   const direction = sort === 'grade-desc' ? -1 : 1;
   return list.sort((a, b) => {

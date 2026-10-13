@@ -1,12 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
+import { sentProblemIds } from './lib/sends';
 import { inputStyle, sectionHeading } from './ui';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
 import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
@@ -161,6 +162,8 @@ export default function App() {
   const [savingVolumes, setSavingVolumes] = useState(false);
 
   const [ticks, setTicks] = useState([]);
+  // Every send on the board, so the list knows who has sent what.
+  const [boardTicks, setBoardTicks] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
   const [tickDate, setTickDate] = useState('');
   const [tickNotes, setTickNotes] = useState('');
@@ -259,8 +262,9 @@ export default function App() {
       try {
         const b = await getOrCreateBoard();
         setBoard(b);
-        const p = await listProblems(b.id);
+        const [p, bt] = await Promise.all([listProblems(b.id), listBoardTicks(b.id)]);
         setProblems(p);
+        setBoardTicks(bt);
         const c = await listClimbers();
         setClimbers(c);
         const storedId = getStoredClimberId();
@@ -317,9 +321,10 @@ export default function App() {
   const refreshList = async ({ quiet = false } = {}) => {
     try {
       const b = await getOrCreateBoard();
-      const [p, c] = await Promise.all([listProblems(b.id), listClimbers()]);
+      const [p, bt, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listClimbers()]);
       setBoard(b);
       setProblems(p);
+      setBoardTicks(bt);
       setClimbers(c);
     } catch (err) {
       console.error(err);
@@ -551,6 +556,7 @@ export default function App() {
     try {
       const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes, sentBy: currentClimber?.name });
       setTicks((prev) => [created, ...prev]);
+      setBoardTicks((prev) => [...prev, created]);
       setProblems((prev) => applySend(prev, problemId, created.sent_on));
       setShowLogForm(false);
     } catch (err) {
@@ -565,6 +571,7 @@ export default function App() {
       await deleteTick(tickId);
       const remaining = ticks.filter((t) => t.id !== tickId);
       setTicks(remaining);
+      setBoardTicks((prev) => prev.filter((t) => t.id !== tickId));
       setProblems((prev) => prev.map((p) => (p.id === problemId ? {
         ...p,
         send_count: remaining.length,
@@ -617,6 +624,7 @@ export default function App() {
     setError('');
     try {
       const created = await createTick(problemId, { sentOn: todayISO(), notes: '', sentBy: currentClimber?.name });
+      setBoardTicks((prev) => [...prev, created]);
       setProblems((prev) => applySend(prev, problemId, created.sent_on));
       return true;
     } catch (err) {
@@ -681,7 +689,10 @@ export default function App() {
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
   const selected = problems.find((p) => p.id === selectedId);
-  const visibleProblems = sortAndFilterProblems(problems, { sort, unsentOnly });
+  // With nobody picked, Unsent falls back to unsent by anyone.
+  const visibleProblems = sortAndFilterProblems(problems, {
+    sort, unsentOnly, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
+  });
   const isWarmupView = view.startsWith('warmup');
   const warmupRungs = board?.warmup || [];
   const warmupFocus = isWarmupView && warmupFocusId ? problems.find((p) => p.id === warmupFocusId) || null : null;

@@ -16,6 +16,7 @@ import {
   updateProblem,
   restoreProblem,
   listTicks,
+  listBoardTicks,
   createTick,
   deleteTick,
   listClimbers,
@@ -205,6 +206,24 @@ describe('listTicks', () => {
     expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
     expect(c.eq).toHaveBeenCalledWith('problem_id', 'p1');
     expect(c.order).toHaveBeenCalledWith('sent_on', { ascending: false });
+  });
+});
+
+describe('listBoardTicks', () => {
+  it("lists every send on the board's problems, through the problem each one is on", async () => {
+    const rows = [{ id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z' }];
+    const c = chain({ data: rows, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    const result = await listBoardTicks('b1');
+    expect(result).toEqual(rows);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
+    expect(c.select).toHaveBeenCalledWith('id, problem_id, sent_by, sent_on, created_at, problems!inner(board_id)');
+    expect(c.eq).toHaveBeenCalledWith('problems.board_id', 'b1');
+  });
+
+  it('throws when the query fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
+    await expect(listBoardTicks('b1')).rejects.toThrow('nope');
   });
 });
 

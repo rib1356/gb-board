@@ -150,6 +150,17 @@ export async function listTicks(problemId) {
   return data;
 }
 
+// Just enough of every send on the board to know who has sent what, without
+// fetching each problem's log.
+export async function listBoardTicks(boardId) {
+  const { data, error } = await supabase
+    .from('ticks')
+    .select('id, problem_id, sent_by, sent_on, created_at, problems!inner(board_id)')
+    .eq('problems.board_id', boardId);
+  if (error) throw error;
+  return data;
+}
+
 export async function createTick(problemId, { sentOn, notes, sentBy }) {
   const { data, error } = await supabase
     .from('ticks')

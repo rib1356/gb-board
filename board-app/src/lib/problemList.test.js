@@ -35,6 +35,11 @@ describe('sortAndFilterProblems', () => {
     expect(ids(sortAndFilterProblems(PROBLEMS, { sort: 'grade-asc', unsentOnly: true }))).toEqual(['e', 'b', 'c', 'f']);
   });
 
+  it("hides only the given climber's sent problems, whatever the board-wide count says", () => {
+    const sentIds = new Set(['b', 'e']);
+    expect(ids(sortAndFilterProblems(PROBLEMS, { unsentOnly: true, sentIds }))).toEqual(['a', 'c', 'd', 'f']);
+  });
+
   it('does not mutate the input list', () => {
     const copy = [...PROBLEMS];
     sortAndFilterProblems(PROBLEMS, { sort: 'grade-desc' });
