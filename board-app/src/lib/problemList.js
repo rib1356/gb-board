@@ -5,7 +5,7 @@ export const SORTS = [
 ];
 
 // 'V10' -> 10; anything ungraded or unparseable -> null.
-function gradeNumber(grade) {
+export function gradeNumber(grade) {
   const match = /^V(\d+)$/.exec(grade || '');
   return match ? Number(match[1]) : null;
 }

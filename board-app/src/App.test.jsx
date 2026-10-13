@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('./lib/board', () => ({
@@ -1196,6 +1196,80 @@ describe('App (climber picker)', () => {
     render(<App />);
 
     expect(await screen.findByText("Who's climbing?")).toBeInTheDocument();
+  });
+});
+
+describe('App (pyramid)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-02' },
+    { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-01' },
+    { id: 'p3', name: 'Jug Haul', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null },
+    { id: 'p4', name: 'Mystery', grade: '', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null },
+  ];
+  const TICKS = [
+    { id: 't1', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z' },
+    { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-09-02', created_at: '2026-09-02T10:00:00Z' },
+  ];
+
+  it('opens from the header and fills in your sends, hardest grade first', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue(PROBLEMS);
+    listBoardTicks.mockResolvedValue(TICKS);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: 'Pyramid' }));
+
+    expect(screen.getByText("Rob's pyramid")).toBeInTheDocument();
+    expect(screen.getByText('1 sent · top grade V3')).toBeInTheDocument();
+    const rows = screen.getAllByRole('listitem');
+    expect(rows.map((row) => within(row).getByText(/^V\d+$/).textContent)).toEqual(['V5', 'V3']);
+    expect(within(rows[0]).getByRole('img', { name: 'Gaston Traverse, not sent' })).toBeInTheDocument();
+    expect(within(rows[1]).getByRole('img', { name: 'Crimpy Corner, sent' })).toBeInTheDocument();
+    expect(within(rows[1]).getByRole('img', { name: 'Jug Haul, not sent' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /Mystery/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('No board photo yet')).not.toBeInTheDocument();
+  });
+
+  it('asks who you are first, and takes you to the climber picker', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Pyramid' }));
+    expect(screen.getByText('Select who you are to see your pyramid')).toBeInTheDocument();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: 'Pick a climber' }));
+    expect(await screen.findByLabelText('New climber name')).toBeInTheDocument();
+  });
+
+  it("says so when you haven't sent anything yet", async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Tom' }]);
+    listProblems.mockResolvedValue(PROBLEMS);
+    listBoardTicks.mockResolvedValue(TICKS);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('You: Tom');
+    await user.click(screen.getByRole('button', { name: 'Pyramid' }));
+    expect(screen.getByText('Nothing sent yet')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('says so when no problem on the board has a grade', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue([PROBLEMS[3]]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: 'Pyramid' }));
+    expect(screen.getByText('No graded problems on the board yet')).toBeInTheDocument();
   });
 });
 

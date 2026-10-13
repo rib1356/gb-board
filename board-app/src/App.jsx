@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle } from 'lucide-react';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, ChartBar } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
@@ -16,6 +16,7 @@ import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
 import WarmupRun from './warmup/WarmupRun';
 import VolumesScreen from './volumes/VolumesScreen';
+import PyramidScreen from './pyramid/PyramidScreen';
 import FaceButtons from './volumes/FaceButtons';
 import { todayISO } from './lib/warmup';
 
@@ -757,6 +758,7 @@ export default function App() {
       )}
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
+        {view !== 'pyramid' && (
         <div
           ref={imgWrapRef}
           onClick={handleImageClick}
@@ -802,6 +804,7 @@ export default function App() {
             </div>
           )}
         </div>
+        )}
 
         {view === 'list' && (
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
@@ -909,6 +912,15 @@ export default function App() {
                   </>
                 )}
               </div>
+              {/* Beside the climber, not in the header -- a third header button
+                  wraps the title on phones narrower than ~390px. */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <button onClick={() => setView('pyramid')} aria-label="Pyramid" title="Pyramid" style={{
+                display: 'flex', alignItems: 'center', background: 'none', border: '1px solid #3a3b3e',
+                color: '#c7c8cb', borderRadius: 20, padding: '5px 10px', cursor: 'pointer',
+              }}>
+                <ChartBar size={14} />
+              </button>
               <ClimberPicker
                 climbers={climbers}
                 currentClimber={currentClimber}
@@ -920,6 +932,7 @@ export default function App() {
                 onSelect={handleSelectClimber}
                 adding={addingClimber}
               />
+              </div>
             </div>
             {problems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
@@ -1105,6 +1118,15 @@ export default function App() {
               )}
             </div>
           </div>
+        )}
+
+        {view === 'pyramid' && (
+          <PyramidScreen
+            problems={problems}
+            ticks={boardTicks}
+            climber={currentClimber}
+            onPickClimber={() => { listScrollRef.current = 0; setView('list'); setShowClimberPanel(true); }}
+          />
         )}
 
         {view === 'warmup' && (
