@@ -1061,7 +1061,12 @@ export default function App() {
               ) : (
                 <div style={{ background: '#232427', border: '1px solid #2A2B2E', borderRadius: 10, padding: 12 }}>
                   <Field label="Date">
-                    <input aria-label="Send date" type="date" value={tickDate} onChange={(e) => setTickDate(e.target.value)} style={{ ...inputStyle, minWidth: 0 }} />
+                    {/* iOS draws a date input natively unless appearance is none, and
+                        native forces box-sizing: content-box -- so width: 100% plus the
+                        padding and border ran past the card. Without the native look an
+                        empty date (Reset in the picker) has no text to hold the field
+                        open, so minHeight keeps it the height it is with a date in. */}
+                    <input aria-label="Send date" type="date" value={tickDate} onChange={(e) => setTickDate(e.target.value)} style={{ ...inputStyle, WebkitAppearance: 'none', appearance: 'none', minHeight: 41 }} />
                   </Field>
                   <Field label="Notes">
                     <textarea aria-label="Send notes" value={tickNotes} onChange={(e) => setTickNotes(e.target.value)} placeholder="Anything worth remembering" rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
