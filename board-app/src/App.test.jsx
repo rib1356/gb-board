@@ -1211,7 +1211,7 @@ describe('App (flash)', () => {
   };
   const entry = (text) => screen.getByText(text).closest('div');
 
-  it("offers Flashed it on your first go, even after someone else's send, and it shows in your pyramid", async () => {
+  it("offers Flashed it on your first go, even after someone else's send, and it shows in your logbook", async () => {
     asRob();
     listProblems.mockResolvedValue([{ ...GASTON, send_count: 1 }]);
     listBoardTicks.mockResolvedValue([SHAWN_FIRST]);
@@ -1234,9 +1234,9 @@ describe('App (flash)', () => {
     expect(within(entry('Rob · 22 Aug 2026')).getByText('Flash')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /board/i }));
-    await user.click(await screen.findByRole('button', { name: 'Pyramid' }));
-    expect(screen.getByRole('img', { name: 'Gaston Traverse, flashed' })).toBeInTheDocument();
-    expect(screen.getByText('1 sent · 1 flashed · top grade V5')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Logbook' }));
+    await user.click(screen.getByRole('button', { name: /Sat 22 Aug 2026.*1 problem · 1 new · 1 flash/ }));
+    expect(within(screen.getByRole('listitem')).getByText('Flash')).toBeInTheDocument();
   });
 
   it("doesn't offer Flashed it once you've already sent the problem", async () => {
@@ -1279,38 +1279,100 @@ describe('App (flash)', () => {
   });
 });
 
-describe('App (pyramid)', () => {
+describe('App (logbook)', () => {
   const PROBLEMS = [
-    { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-02' },
-    { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-01' },
-    { id: 'p3', name: 'Jug Haul', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null },
-    { id: 'p4', name: 'Mystery', grade: '', setter: 'Rob', notes: '', holds: [], send_count: 0, last_sent_on: null },
+    { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-01' },
+    { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 2, last_sent_on: '2026-09-08' },
+    { id: 'p3', name: 'Jug Haul', grade: 'V2', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-09-08' },
   ];
   const TICKS = [
-    { id: 't1', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z' },
-    { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-09-02', created_at: '2026-09-02T10:00:00Z' },
+    { id: 't1', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z', flash: true },
+    { id: 't2', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:30:00Z', flash: false },
+    { id: 't3', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-08', created_at: '2026-09-08T10:00:00Z', flash: false },
+    { id: 't4', problem_id: 'p3', sent_by: 'Shawn', sent_on: '2026-09-08', created_at: '2026-09-08T11:00:00Z', flash: false },
   ];
 
-  it('opens from the header and fills in your sends, hardest grade first', async () => {
+  const openAs = async (name) => {
     localStorage.setItem('board-app:currentClimberId', 'c1');
-    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listClimbers.mockResolvedValue([{ id: 'c1', name }]);
     listProblems.mockResolvedValue(PROBLEMS);
     listBoardTicks.mockResolvedValue(TICKS);
     render(<App />);
     const user = userEvent.setup();
+    await screen.findByText(`You: ${name}`);
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    return user;
+  };
+  const day = (label) => screen.getByRole('button', { name: new RegExp(label) });
 
-    await screen.findByText('You: Rob');
-    await user.click(screen.getByRole('button', { name: 'Pyramid' }));
+  it('opens from beside the climber pill with every day collapsed, newest first', async () => {
+    await openAs('Rob');
 
-    expect(screen.getByText("Rob's pyramid")).toBeInTheDocument();
-    expect(screen.getByText('1 sent · top grade V3')).toBeInTheDocument();
-    const rows = screen.getAllByRole('listitem');
-    expect(rows.map((row) => within(row).getByText(/^V\d+$/).textContent)).toEqual(['V5', 'V3']);
-    expect(within(rows[0]).getByRole('img', { name: 'Gaston Traverse, not sent' })).toBeInTheDocument();
-    expect(within(rows[1]).getByRole('img', { name: 'Crimpy Corner, sent' })).toBeInTheDocument();
-    expect(within(rows[1]).getByRole('img', { name: 'Jug Haul, not sent' })).toBeInTheDocument();
-    expect(screen.queryByRole('img', { name: /Mystery/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Rob's logbook")).toBeInTheDocument();
+    expect(screen.getByText('2 sessions · 3 sends')).toBeInTheDocument();
+    const days = screen.getAllByRole('button', { name: /Sept 2026/ });
+    expect(days.map((d) => d.textContent)).toEqual([
+      'Tue 8 Sept 20261 problem',
+      'Tue 1 Sept 20262 problems · 2 new · 1 flash',
+    ]);
+    days.forEach((d) => expect(d).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.queryByText('Gaston Traverse')).not.toBeInTheDocument();
     expect(screen.queryByText('No board photo yet')).not.toBeInTheDocument();
+  });
+
+  it('opens a day to show what you logged that session, marking first sends and flashes', async () => {
+    const user = await openAs('Rob');
+
+    await user.click(day('Tue 1 Sept 2026'));
+    expect(day('Tue 1 Sept 2026')).toHaveAttribute('aria-expanded', 'true');
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText('Crimpy Corner')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('V3')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('New')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('Flash')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('Gaston Traverse')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('New')).toBeInTheDocument();
+    expect(within(rows[1]).queryByText('Flash')).not.toBeInTheDocument();
+    expect(day('Tue 8 Sept 2026')).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(day('Tue 1 Sept 2026'));
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it("doesn't mark a repeat as new", async () => {
+    const user = await openAs('Rob');
+
+    await user.click(day('Tue 8 Sept 2026'));
+    const row = screen.getByRole('listitem');
+    expect(within(row).getByText('Crimpy Corner')).toBeInTheDocument();
+    expect(within(row).queryByText('New')).not.toBeInTheDocument();
+  });
+
+  it('opens a problem from a day, and comes back to the logbook with the same days open', async () => {
+    listTicks.mockResolvedValue([TICKS[1]]);
+    const user = await openAs('Rob');
+
+    await user.click(day('Tue 8 Sept 2026'));
+    await user.click(day('Tue 1 Sept 2026'));
+    await user.click(screen.getByRole('button', { name: /Gaston Traverse/ }));
+    expect(await screen.findByText('Log a send')).toBeInTheDocument();
+    expect(listTicks).toHaveBeenCalledWith('p1');
+
+    await user.click(screen.getByRole('button', { name: /logbook/i }));
+    expect(screen.getByText("Rob's logbook")).toBeInTheDocument();
+    expect(day('Tue 8 Sept 2026')).toHaveAttribute('aria-expanded', 'true');
+    expect(day('Tue 1 Sept 2026')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('goes back to the board from a problem opened in the list, even after visiting the logbook', async () => {
+    const user = await openAs('Rob');
+
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    await user.click(await screen.findByText('Jug Haul'));
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
   });
 
   it('asks who you are first, and takes you to the climber picker', async () => {
@@ -1318,38 +1380,17 @@ describe('App (pyramid)', () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Pyramid' }));
-    expect(screen.getByText('Select who you are to see your pyramid')).toBeInTheDocument();
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    await user.click(await screen.findByRole('button', { name: 'Logbook' }));
+    expect(screen.getByText('Select who you are to see your logbook')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Pick a climber' }));
     expect(await screen.findByLabelText('New climber name')).toBeInTheDocument();
   });
 
-  it("says so when you haven't sent anything yet", async () => {
-    localStorage.setItem('board-app:currentClimberId', 'c1');
-    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Tom' }]);
-    listProblems.mockResolvedValue(PROBLEMS);
-    listBoardTicks.mockResolvedValue(TICKS);
-    render(<App />);
-    const user = userEvent.setup();
-
-    await screen.findByText('You: Tom');
-    await user.click(screen.getByRole('button', { name: 'Pyramid' }));
-    expect(screen.getByText('Nothing sent yet')).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(2);
-  });
-
-  it('says so when no problem on the board has a grade', async () => {
-    localStorage.setItem('board-app:currentClimberId', 'c1');
-    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
-    listProblems.mockResolvedValue([PROBLEMS[3]]);
-    render(<App />);
-    const user = userEvent.setup();
-
-    await screen.findByText('You: Rob');
-    await user.click(screen.getByRole('button', { name: 'Pyramid' }));
-    expect(screen.getByText('No graded problems on the board yet')).toBeInTheDocument();
+  it("says so when you haven't logged anything yet", async () => {
+    await openAs('Tom');
+    expect(screen.getByText('Nothing logged yet')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: /Sept 2026/ })).toHaveLength(0);
   });
 });
 
@@ -1698,6 +1739,49 @@ describe('App (list scroll position)', () => {
     await user.click(await screen.findByRole('button', { name: /board/i }));
     await screen.findByText('THE BOARD');
     expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+  });
+
+  it('puts you back where you were in the logbook when you go back', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue(PROBLEMS);
+    listBoardTicks.mockResolvedValue([
+      { id: 't1', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z', flash: false },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    await user.click(screen.getByRole('button', { name: /Tue 1 Sept 2026/ }));
+    await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+    window.scrollY = 0;
+    await user.click(await screen.findByRole('button', { name: /logbook/i }));
+    await screen.findByText("Rob's logbook");
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+  });
+
+  it("doesn't carry the logbook's scroll spot over once you've left a problem some other way", async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue(PROBLEMS);
+    listBoardTicks.mockResolvedValue([
+      { id: 't1', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z', flash: false },
+    ]);
+    updateProblem.mockResolvedValue({ ...PROBLEMS[1], name: 'Crimpy Corner v2' });
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    await user.click(screen.getByRole('button', { name: /Tue 1 Sept 2026/ }));
+    await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }));
+    await user.click(screen.getByText('Save changes'));
+    await screen.findByText('THE BOARD');
+
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    await screen.findByText("Rob's logbook");
+    expect(scrollTo).not.toHaveBeenCalledWith(0, 640);
   });
 
   it('keeps the climber picker in view when a problem sends you to pick who you are', async () => {

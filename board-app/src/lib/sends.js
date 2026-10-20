@@ -1,5 +1,3 @@
-import { gradeNumber } from './problemList';
-
 // Sends logged before climber profiles carry no sent_by, so they belong to
 // nobody -- a missing name never matches.
 export function sentProblemIds(ticks, climberName) {
@@ -24,21 +22,27 @@ export function firstSendIds(ticks) {
   return new Set([...firsts.values()].map((t) => t.id));
 }
 
-// One row per grade on the board, hardest first, with the climber's sent
-// problems leading each row so it fills in from one side. Ungraded problems
-// have nowhere to sit, so they're left out.
-export function buildPyramid(problems, ticks, climberName) {
-  const sent = sentProblemIds(ticks, climberName);
+// The climber's sends grouped by the day they were sent, newest day first,
+// each day in the order its sends were logged. A problem logged twice in a day
+// shows once -- the earlier entry, which is the one that can be a first send.
+// Sends on problems no longer on the board have nothing to show, so they're
+// left out.
+export function buildLogbook(problems, ticks, climberName) {
+  const byId = new Map(problems.map((p) => [p.id, p]));
   const firsts = firstSendIds(ticks);
-  const flashed = new Set(ticks.filter((t) => t.flash && t.sent_by === climberName && firsts.has(t.id)).map((t) => t.problem_id));
-  const rows = new Map();
-  for (const p of problems) {
-    const n = gradeNumber(p.grade);
-    if (n === null) continue;
-    if (!rows.has(n)) rows.set(n, []);
-    rows.get(n).push({ id: p.id, name: p.name, sent: sent.has(p.id), flashed: flashed.has(p.id) });
+  const days = new Map();
+  const mine = ticks
+    .filter((t) => t.sent_by === climberName && byId.has(t.problem_id))
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  for (const t of mine) {
+    if (!days.has(t.sent_on)) days.set(t.sent_on, new Map());
+    const day = days.get(t.sent_on);
+    if (day.has(t.problem_id)) continue;
+    const { id, name, grade } = byId.get(t.problem_id);
+    const firstSend = firsts.has(t.id);
+    day.set(t.problem_id, { id, name, grade, firstSend, flashed: firstSend && Boolean(t.flash) });
   }
-  return [...rows.entries()]
-    .sort(([a], [b]) => b - a)
-    .map(([n, list]) => ({ grade: `V${n}`, problems: [...list.filter((p) => p.sent), ...list.filter((p) => !p.sent)] }));
+  return [...days.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .map(([date, day]) => ({ date, problems: [...day.values()] }));
 }

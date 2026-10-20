@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, ChartBar, Zap } from 'lucide-react';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, CalendarDays, Zap } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
@@ -16,7 +16,7 @@ import WarmupScreen from './warmup/WarmupScreen';
 import WarmupEditor from './warmup/WarmupEditor';
 import WarmupRun from './warmup/WarmupRun';
 import VolumesScreen from './volumes/VolumesScreen';
-import PyramidScreen from './pyramid/PyramidScreen';
+import LogbookScreen from './logbook/LogbookScreen';
 import FaceButtons from './volumes/FaceButtons';
 import { todayISO } from './lib/warmup';
 
@@ -136,6 +136,10 @@ export default function App() {
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('list'); // list | new | edit-details | detail
+  // Where Back on a problem goes -- the list, or the logbook it was opened from.
+  const [backTo, setBackTo] = useState('list');
+  // Logbook days stay open while you look at one of their problems and come back.
+  const [openLogbookDays, setOpenLogbookDays] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -178,9 +182,10 @@ export default function App() {
   const [addingClimber, setAddingClimber] = useState(false);
 
   const imgWrapRef = useRef(null);
-  // Where the list was scrolled to when a problem was opened, so going back
-  // lands you on the same spot instead of wherever the detail view left off.
-  const listScrollRef = useRef(null);
+  // Where the list (or logbook) was scrolled to when a problem was opened, so
+  // going back lands you on the same spot instead of wherever the detail view
+  // left off.
+  const returnScrollRef = useRef(null);
   const [segmentModule, setSegmentModule] = useState(null);
   // Whether THIS session's embedding (not just the session-wide model) is
   // ready -- the model only needs loading once per page session, but each
@@ -301,9 +306,12 @@ export default function App() {
   }, [view, selectedId]);
 
   useLayoutEffect(() => {
-    if (view !== 'list' || listScrollRef.current === null) return;
-    window.scrollTo(0, listScrollRef.current);
-    listScrollRef.current = null;
+    if (view !== 'list' && view !== 'logbook') return;
+    // Landing on either one uses up the spot, so one left behind by leaving a
+    // problem some other way (saving an edit, say) can't jump the page later.
+    const saved = returnScrollRef.current;
+    returnScrollRef.current = null;
+    if (saved?.view === view) window.scrollTo(0, saved.y);
   }, [view]);
 
   useEffect(() => {
@@ -437,6 +445,22 @@ export default function App() {
     }
     const hold = withKey(faceHold(volume, face, placeType));
     setDraftHolds((prev) => [...prev, hold]);
+  };
+
+  const openProblem = (problemId, from) => {
+    returnScrollRef.current = { view: from, y: window.scrollY };
+    window.scrollTo(0, 0);
+    setSelectedId(problemId); setConfirmingDelete(false); setShowLogForm(false); setTicks([]);
+    setBackTo(from);
+    setView('detail');
+  };
+
+  const toggleLogbookDay = (date) => {
+    setOpenLogbookDays((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(date)) next.add(date);
+      return next;
+    });
   };
 
   const startNewProblem = () => {
@@ -726,8 +750,8 @@ export default function App() {
           ) : view === 'warmup-run' ? (
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>WARM-UP</h1>
           ) : (
-            <button onClick={() => { setSelectedId(null); setEditingId(null); setView('list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
-              <ChevronLeft size={18} /> Board
+            <button onClick={() => { setSelectedId(null); setEditingId(null); setView(view === 'detail' ? backTo : 'list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
+              <ChevronLeft size={18} /> {view === 'detail' && backTo === 'logbook' ? 'Logbook' : 'Board'}
             </button>
           )}
           {view === 'list' && (
@@ -760,7 +784,7 @@ export default function App() {
       )}
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
-        {view !== 'pyramid' && (
+        {view !== 'logbook' && (
         <div
           ref={imgWrapRef}
           onClick={handleImageClick}
@@ -917,11 +941,11 @@ export default function App() {
               {/* Beside the climber, not in the header -- a third header button
                   wraps the title on phones narrower than ~390px. */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <button onClick={() => setView('pyramid')} aria-label="Pyramid" title="Pyramid" style={{
+              <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={{
                 display: 'flex', alignItems: 'center', background: 'none', border: '1px solid #3a3b3e',
                 color: '#c7c8cb', borderRadius: 20, padding: '5px 10px', cursor: 'pointer',
               }}>
-                <ChartBar size={14} />
+                <CalendarDays size={14} />
               </button>
               <ClimberPicker
                 climbers={climbers}
@@ -948,7 +972,7 @@ export default function App() {
               </div>
             )}
             {visibleProblems.map((p) => (
-              <button key={p.id} onClick={() => { listScrollRef.current = window.scrollY; window.scrollTo(0, 0); setSelectedId(p.id); setConfirmingDelete(false); setShowLogForm(false); setTicks([]); setView('detail'); }} style={{
+              <button key={p.id} onClick={() => openProblem(p.id, 'list')} style={{
                 width: '100%', textAlign: 'left', background: '#232427', border: '1px solid #2A2B2E',
                 borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', color: '#EDEAE3',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1021,7 +1045,7 @@ export default function App() {
               {!currentClimber ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: '#8b8d91' }}>Select who you are to log a send</span>
-                  <button onClick={() => { listScrollRef.current = 0; setView('list'); setShowClimberPanel(true); }} style={{
+                  <button onClick={() => { returnScrollRef.current = { view: 'list', y: 0 }; setView('list'); setShowClimberPanel(true); }} style={{
                     display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
                     color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
                   }}>Pick a climber</button>
@@ -1070,7 +1094,7 @@ export default function App() {
                   return t.created_at < earliest.created_at ? t : earliest;
                 }, null)?.id;
                 // A flash only counts on the climber's own first send -- the
-                // same rule the pyramid uses -- so backdating an earlier send
+                // same rule the logbook uses -- so backdating an earlier send
                 // quietly drops it.
                 const flashableIds = firstSendIds(ticks);
                 return (
@@ -1140,12 +1164,15 @@ export default function App() {
           </div>
         )}
 
-        {view === 'pyramid' && (
-          <PyramidScreen
+        {view === 'logbook' && (
+          <LogbookScreen
             problems={problems}
             ticks={boardTicks}
             climber={currentClimber}
-            onPickClimber={() => { listScrollRef.current = 0; setView('list'); setShowClimberPanel(true); }}
+            openDays={openLogbookDays}
+            onToggleDay={toggleLogbookDay}
+            onOpenProblem={(problemId) => openProblem(problemId, 'logbook')}
+            onPickClimber={() => { returnScrollRef.current = { view: 'list', y: 0 }; setView('list'); setShowClimberPanel(true); }}
           />
         )}
 

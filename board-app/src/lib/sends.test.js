@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sentProblemIds, firstSendIds, buildPyramid } from './sends';
+import { sentProblemIds, firstSendIds, buildLogbook } from './sends';
 
 describe('sentProblemIds', () => {
   const TICKS = [
@@ -44,56 +44,92 @@ describe('firstSendIds', () => {
   });
 });
 
-describe('buildPyramid', () => {
-  // Newest first, as listProblems returns them.
+describe('buildLogbook', () => {
   const PROBLEMS = [
     { id: 'p1', name: 'Gaston Traverse', grade: 'V5' },
     { id: 'p2', name: 'Crimpy Corner', grade: 'V3' },
-    { id: 'p3', name: 'Tension Sucks', grade: 'V10' },
-    { id: 'p4', name: 'Jug Haul', grade: 'V3' },
-    { id: 'p5', name: 'Mystery', grade: '' },
-    { id: 'p6', name: 'Slab Dance', grade: 'V3' },
+    { id: 'p3', name: 'Jug Haul', grade: 'V2' },
   ];
-
-  const shape = (rows) => rows.map((r) => [r.grade, r.problems.map((p) => `${p.name}${p.sent ? ' ✓' : ''}`)]);
-
-  it('rows up only the grades on the board, hardest first, leaving ungraded problems out', () => {
-    expect(buildPyramid(PROBLEMS, [], 'Rob').map((r) => r.grade)).toEqual(['V10', 'V5', 'V3']);
+  const tick = (id, problemId, sentBy, sentOn, createdAt, flash = false) => ({
+    id, problem_id: problemId, sent_by: sentBy, sent_on: sentOn, created_at: createdAt, flash,
   });
 
-  it("marks the climber's sent problems, putting them first in their row", () => {
+  const names = (days) => days.map((d) => [d.date, d.problems.map((p) => p.name)]);
+  const firstSends = (days) => days.map((d) => [d.date, d.problems.map((p) => [p.name, p.firstSend])]);
+  const flashes = (days) => days.map((d) => [d.date, d.problems.map((p) => [p.name, p.flashed])]);
+
+  it("groups the climber's sends by day, newest first, each day in the order they were logged", () => {
     const ticks = [
-      { id: 't1', problem_id: 'p6', sent_by: 'Rob', sent_on: '2026-09-01' },
-      { id: 't2', problem_id: 'p6', sent_by: 'Rob', sent_on: '2026-09-04' },
-      { id: 't3', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-02' },
+      tick('t2', 'p1', 'Rob', '2026-09-01', '2026-09-01T18:30:00Z'),
+      tick('t1', 'p2', 'Rob', '2026-09-01', '2026-09-01T18:00:00Z'),
+      tick('t3', 'p3', 'Rob', '2026-09-08', '2026-09-08T19:00:00Z'),
+      tick('t4', 'p3', 'Shawn', '2026-09-05', '2026-09-05T19:00:00Z'),
+      tick('t5', 'p1', null, '2026-09-03', '2026-09-03T19:00:00Z'),
     ];
-    expect(shape(buildPyramid(PROBLEMS, ticks, 'Rob'))).toEqual([
-      ['V10', ['Tension Sucks']],
-      ['V5', ['Gaston Traverse ✓']],
-      ['V3', ['Slab Dance ✓', 'Crimpy Corner', 'Jug Haul']],
+    expect(names(buildLogbook(PROBLEMS, ticks, 'Rob'))).toEqual([
+      ['2026-09-08', ['Jug Haul']],
+      ['2026-09-01', ['Crimpy Corner', 'Gaston Traverse']],
     ]);
   });
 
-  it("ignores other climbers' sends and sends with no name", () => {
-    const ticks = [
-      { id: 't1', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-09-01' },
-      { id: 't2', problem_id: 'p2', sent_by: null, sent_on: '2026-08-31' },
-    ];
-    expect(buildPyramid(PROBLEMS, ticks, 'Rob').flatMap((r) => r.problems).filter((p) => p.sent)).toEqual([]);
+  it("carries each problem's grade", () => {
+    const ticks = [tick('t1', 'p1', 'Rob', '2026-09-01', '2026-09-01T18:00:00Z')];
+    expect(buildLogbook(PROBLEMS, ticks, 'Rob')[0].problems[0].grade).toBe('V5');
   });
 
-  it("marks a problem flashed when the climber's first send on it was a flash, and only then", () => {
+  it("marks the climber's own first send of a problem, even when someone else sent it first", () => {
     const ticks = [
-      { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z', flash: true },
-      { id: 't2', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-08', created_at: '2026-09-08T10:00:00Z', flash: false },
-      { id: 't3', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z', flash: false },
-      { id: 't4', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-09', created_at: '2026-09-09T10:00:00Z', flash: true },
-      { id: 't5', problem_id: 'p4', sent_by: 'Shawn', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z', flash: true },
-      { id: 't6', problem_id: 'p4', sent_by: 'Rob', sent_on: '2026-09-02', created_at: '2026-09-02T10:00:00Z', flash: false },
+      tick('t1', 'p1', 'Rob', '2026-09-01', '2026-09-01T10:00:00Z'),
+      tick('t2', 'p1', 'Rob', '2026-09-08', '2026-09-08T10:00:00Z'),
+      tick('t3', 'p2', 'Shawn', '2026-09-02', '2026-09-02T10:00:00Z'),
+      tick('t4', 'p2', 'Rob', '2026-09-08', '2026-09-08T11:00:00Z'),
     ];
-    const byName = Object.fromEntries(buildPyramid(PROBLEMS, ticks, 'Rob').flatMap((r) => r.problems).map((p) => [p.name, p.flashed]));
-    expect(byName).toEqual({
-      'Tension Sucks': false, 'Gaston Traverse': true, 'Crimpy Corner': false, 'Jug Haul': false, 'Slab Dance': false,
-    });
+    expect(firstSends(buildLogbook(PROBLEMS, ticks, 'Rob'))).toEqual([
+      ['2026-09-08', [['Gaston Traverse', false], ['Crimpy Corner', true]]],
+      ['2026-09-01', [['Gaston Traverse', true]]],
+    ]);
+  });
+
+  it('moves the first send to an earlier day when a send is backdated', () => {
+    const ticks = [
+      tick('t1', 'p1', 'Rob', '2026-09-08', '2026-09-08T10:00:00Z'),
+      tick('t2', 'p1', 'Rob', '2026-09-01', '2026-09-10T10:00:00Z'),
+    ];
+    expect(firstSends(buildLogbook(PROBLEMS, ticks, 'Rob'))).toEqual([
+      ['2026-09-08', [['Gaston Traverse', false]]],
+      ['2026-09-01', [['Gaston Traverse', true]]],
+    ]);
+  });
+
+  it('marks a problem flashed only on a first send that was logged as a flash', () => {
+    const ticks = [
+      tick('t1', 'p1', 'Rob', '2026-09-01', '2026-09-01T10:00:00Z', true),
+      tick('t2', 'p1', 'Rob', '2026-09-08', '2026-09-08T10:00:00Z'),
+      tick('t3', 'p2', 'Rob', '2026-09-01', '2026-09-01T11:00:00Z'),
+      tick('t4', 'p2', 'Rob', '2026-09-08', '2026-09-08T11:00:00Z', true),
+    ];
+    expect(flashes(buildLogbook(PROBLEMS, ticks, 'Rob'))).toEqual([
+      ['2026-09-08', [['Gaston Traverse', false], ['Crimpy Corner', false]]],
+      ['2026-09-01', [['Gaston Traverse', true], ['Crimpy Corner', false]]],
+    ]);
+  });
+
+  it('shows a problem logged twice in one day once, still marked as the first send', () => {
+    const ticks = [
+      tick('t2', 'p1', 'Rob', '2026-09-01', '2026-09-01T11:00:00Z'),
+      tick('t1', 'p1', 'Rob', '2026-09-01', '2026-09-01T10:00:00Z'),
+      tick('t3', 'p2', 'Rob', '2026-09-01', '2026-09-01T10:30:00Z'),
+    ];
+    expect(firstSends(buildLogbook(PROBLEMS, ticks, 'Rob'))).toEqual([
+      ['2026-09-01', [['Gaston Traverse', true], ['Crimpy Corner', true]]],
+    ]);
+  });
+
+  it('leaves out sends on problems no longer on the board, dropping a day with nothing else', () => {
+    const ticks = [
+      tick('t1', 'p9', 'Rob', '2026-09-05', '2026-09-05T10:00:00Z'),
+      tick('t2', 'p1', 'Rob', '2026-09-01', '2026-09-01T10:00:00Z'),
+    ];
+    expect(names(buildLogbook(PROBLEMS, ticks, 'Rob'))).toEqual([['2026-09-01', ['Gaston Traverse']]]);
   });
 });
