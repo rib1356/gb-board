@@ -1976,6 +1976,47 @@ describe('App (volume faces on a problem)', () => {
   });
 });
 
+describe('App (board setup is just for Rob)', () => {
+  const WITH_PHOTO = { ...BOARD, photo_url: 'https://cdn.example/b1.jpg' };
+  const climbAs = (name) => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name }]);
+  };
+
+  it('shows Replace board photo and Volumes when Rob is climbing', async () => {
+    climbAs('Rob');
+    getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
+    render(<App />);
+    await screen.findByText('You: Rob');
+    expect(screen.getByLabelText('Replace board photo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Volumes' })).toBeInTheDocument();
+  });
+
+  it('hides them from anyone else', async () => {
+    climbAs('Shawn');
+    getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
+    render(<App />);
+    await screen.findByText('You: Shawn');
+    expect(screen.queryByLabelText('Replace board photo')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
+  });
+
+  it('hides them when nobody is picked', async () => {
+    getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
+    render(<App />);
+    await screen.findByAltText('Climbing board');
+    expect(screen.queryByLabelText('Replace board photo')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
+  });
+
+  it('still lets anyone upload the first photo of a board that has none', async () => {
+    climbAs('Shawn');
+    render(<App />);
+    await screen.findByText('You: Shawn');
+    expect(screen.getByLabelText('Upload a photo of your board')).toBeInTheDocument();
+  });
+});
+
 describe('App (volumes setup)', () => {
   const PHOTO = 'https://cdn.example/b1.jpg';
   const OLD = 'https://cdn.example/old.jpg';
@@ -1986,6 +2027,8 @@ describe('App (volumes setup)', () => {
   const upgraded = (id, name, faces) => ({ id, name, sidesListed: true, faces });
 
   beforeEach(() => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
     saveVolumes.mockImplementation(async (id, volumes) => boardWith(volumes));
   });
 

@@ -80,6 +80,8 @@ function StarRating({ rating, onRate, readOnly = false }) {
   );
 }
 
+const BOARD_OWNER = 'Rob';
+
 function formatSendDate(dateStr) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric',
@@ -95,38 +97,30 @@ function Field({ label, children }) {
   );
 }
 
-function ClimberPicker({ climbers, currentClimber, open, onToggle, newName, onNewNameChange, onAdd, onSelect, adding }) {
+// Opens under the whole toolbar rather than under the pill, so the row keeps
+// its shape and stays centred while it's open.
+function ClimberPanel({ climbers, newName, onNewNameChange, onAdd, onSelect, adding }) {
   return (
-    <div>
-      <button onClick={onToggle} style={{
-        display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
-        color: '#c7c8cb', borderRadius: 20, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-      }}>
-        {currentClimber ? `You: ${currentClimber.name}` : "Who's climbing?"}
-      </button>
-      {open && (
-        <div style={{ marginTop: 8, background: '#232427', border: '1px solid #2A2B2E', borderRadius: 10, padding: 10 }}>
-          {climbers.map((c) => (
-            <button key={c.id} onClick={() => onSelect(c.id)} style={{
-              display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none',
-              color: '#EDEAE3', padding: '6px 4px', fontSize: 13.5, cursor: 'pointer',
-            }}>{c.name}</button>
-          ))}
-          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-            <input
-              aria-label="New climber name"
-              value={newName}
-              onChange={(e) => onNewNameChange(e.target.value)}
-              placeholder="Add a climber"
-              style={{ ...inputStyle, marginTop: 0, flex: 1 }}
-            />
-            <button onClick={onAdd} disabled={adding || !newName.trim()} style={{
-              background: '#5C8A66', border: 'none', color: '#17181A', borderRadius: 8,
-              padding: '0 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-            }}>Add</button>
-          </div>
-        </div>
-      )}
+    <div style={{ marginBottom: 12, background: '#232427', border: '1px solid #2A2B2E', borderRadius: 10, padding: 10 }}>
+      {climbers.map((c) => (
+        <button key={c.id} onClick={() => onSelect(c.id)} style={{
+          display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none',
+          color: '#EDEAE3', padding: '6px 4px', fontSize: 13.5, cursor: 'pointer',
+        }}>{c.name}</button>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+        <input
+          aria-label="New climber name"
+          value={newName}
+          onChange={(e) => onNewNameChange(e.target.value)}
+          placeholder="Add a climber"
+          style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+        />
+        <button onClick={onAdd} disabled={adding || !newName.trim()} style={{
+          background: '#5C8A66', border: 'none', color: '#17181A', borderRadius: 8,
+          padding: '0 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+        }}>Add</button>
+      </div>
     </div>
   );
 }
@@ -715,6 +709,10 @@ export default function App() {
   };
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
+  // Re-shooting the board and marking volumes are Rob's jobs, so the buttons
+  // stay out of everyone else's way. It's tidying, not a lock -- anyone can
+  // pick Rob. A board with no photo yet still asks anyone for one.
+  const canSetUpBoard = currentClimber?.name === BOARD_OWNER;
   const selected = problems.find((p) => p.id === selectedId);
   // With nobody picked, Unsent falls back to unsent by anyone.
   const visibleProblems = sortAndFilterProblems(problems, {
@@ -832,7 +830,7 @@ export default function App() {
         </div>
         )}
 
-        {view === 'list' && (
+        {view === 'list' && (canSetUpBoard || !board?.photo_url) && (
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
             <label style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -922,7 +920,7 @@ export default function App() {
 
         {view === 'list' && (
           <div style={{ marginTop: 22 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {problems.length > 0 && (
                   <>
@@ -940,26 +938,31 @@ export default function App() {
               </div>
               {/* Beside the climber, not in the header -- a third header button
                   wraps the title on phones narrower than ~390px. */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={{
                 display: 'flex', alignItems: 'center', background: 'none', border: '1px solid #3a3b3e',
                 color: '#c7c8cb', borderRadius: 20, padding: '5px 10px', cursor: 'pointer',
               }}>
                 <CalendarDays size={14} />
               </button>
-              <ClimberPicker
+              <button onClick={() => setShowClimberPanel((prev) => !prev)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                color: '#c7c8cb', borderRadius: 20, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+              }}>
+                {currentClimber ? `You: ${currentClimber.name}` : "Who's climbing?"}
+              </button>
+              </div>
+            </div>
+            {showClimberPanel && (
+              <ClimberPanel
                 climbers={climbers}
-                currentClimber={currentClimber}
-                open={showClimberPanel}
-                onToggle={() => setShowClimberPanel((prev) => !prev)}
                 newName={newClimberName}
                 onNewNameChange={setNewClimberName}
                 onAdd={handleAddClimber}
                 onSelect={handleSelectClimber}
                 adding={addingClimber}
               />
-              </div>
-            </div>
+            )}
             {problems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
                 <CircleDot size={26} style={{ marginBottom: 8, opacity: 0.5 }} />
