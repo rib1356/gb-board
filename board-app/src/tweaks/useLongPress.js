@@ -2,6 +2,36 @@ import { useCallback, useEffect, useRef } from 'react';
 
 export const LONG_PRESS_MS = 600;
 const MOVE_TOLERANCE_PX = 10;
+const GHOST_CLICK_MS = 600;
+
+// iOS still sends a click where the finger lifts after a hold, and by then the
+// hold has opened something there (the password sheet's backdrop, or the back
+// button). Swallows that one click. A fresh touch, or 600ms after letting go,
+// stands it down, so real taps always get through. Returns the stand-down.
+function swallowNextClick() {
+  let timer = null;
+  const stop = () => {
+    clearTimeout(timer);
+    document.removeEventListener('click', swallow, true);
+    document.removeEventListener('pointerdown', stop, true);
+    document.removeEventListener('pointerup', lifted, true);
+    document.removeEventListener('pointercancel', lifted, true);
+  };
+  const swallow = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stop();
+  };
+  const lifted = () => {
+    clearTimeout(timer);
+    timer = setTimeout(stop, GHOST_CLICK_MS);
+  };
+  document.addEventListener('click', swallow, true);
+  document.addEventListener('pointerdown', stop, true);
+  document.addEventListener('pointerup', lifted, true);
+  document.addEventListener('pointercancel', lifted, true);
+  return stop;
+}
 
 // Props for an element that should react to a press-and-hold. Moving more than
 // 10px (a scroll), letting go or leaving cancels it.
@@ -9,6 +39,8 @@ export function useLongPress(onLongPress) {
   const timer = useRef(null);
   const start = useRef({ x: 0, y: 0 });
   const callback = useRef(onLongPress);
+  // Outlives the pressed element, which the hold usually swaps out.
+  const stopSwallowing = useRef(null);
 
   useEffect(() => { callback.current = onLongPress; });
 
@@ -17,13 +49,18 @@ export function useLongPress(onLongPress) {
     timer.current = null;
   }, []);
 
-  useEffect(() => clear, [clear]);
+  useEffect(() => () => {
+    clear();
+    stopSwallowing.current?.();
+  }, [clear]);
 
   const onPointerDown = (e) => {
     clear();
     start.current = { x: e.clientX, y: e.clientY };
     timer.current = setTimeout(() => {
       timer.current = null;
+      stopSwallowing.current?.();
+      stopSwallowing.current = swallowNextClick();
       callback.current();
     }, LONG_PRESS_MS);
   };

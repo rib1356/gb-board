@@ -75,11 +75,14 @@ beforeEach(() => {
   loadSegmenter.mockRejectedValue(new Error('segmentation unavailable in tests'));
 });
 
-async function holdTitle() {
+// Holds the title and lets go. iOS then sends a click where the finger was,
+// landing on whatever the hold opened there (ghostClickOn picks it).
+async function holdTitle(ghostClickOn = () => document.body) {
   const title = await screen.findByText('THE BOARD');
   fireEvent.pointerDown(title, { clientX: 5, clientY: 5, pointerId: 1 });
   await act(() => new Promise((resolve) => setTimeout(resolve, LONG_PRESS_MS + 20)));
   fireEvent.pointerUp(title, { clientX: 5, clientY: 5, pointerId: 1 });
+  fireEvent.click(ghostClickOn());
 }
 
 describe('App (read paths)', () => {
@@ -2301,6 +2304,19 @@ describe('App (Tweaks door and board setup)', () => {
     render(<App />);
     await holdTitle();
     expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
+  });
+
+  it("keeps the password sheet open through the click iOS sends as the finger lifts", async () => {
+    render(<App />);
+    await holdTitle(() => screen.getByRole('dialog', { name: 'Tweaks' }));
+    expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
+  });
+
+  it("stays in Tweaks through the click iOS sends as the finger lifts", async () => {
+    signedIn();
+    render(<App />);
+    await holdTitle(() => screen.getByRole('button', { name: /board/i }));
+    expect(screen.getByText('TWEAKS')).toBeInTheDocument();
   });
 
   it('does nothing on a quick tap', async () => {
