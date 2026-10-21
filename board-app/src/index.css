@@ -4,6 +4,9 @@
 
 body {
   margin: 0;
+  /* The app's own background, so Safari's status bar area and the overscroll
+     bounce match it instead of showing white. */
+  background: #17181A;
 }
 
 @keyframes spin {
