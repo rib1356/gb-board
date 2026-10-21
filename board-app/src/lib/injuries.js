@@ -1,7 +1,6 @@
 import { daysBetween, addDays } from './dates';
-import { formatShortDate } from '../ui';
 
-export const SIDES = [['left', 'Left'], ['right', 'Right'], ['none', 'Neither']];
+export const SIDES = [['left', 'Left'], ['right', 'Right'], ['none', 'Both / n/a']];
 export const AREAS = [
   ['finger', 'Finger'], ['wrist', 'Wrist'], ['elbow', 'Elbow'], ['shoulder', 'Shoulder'],
   ['back', 'Back'], ['knee', 'Knee'], ['other', 'Other'],
@@ -12,8 +11,10 @@ export const ACTIVITIES = [
   ['fingerboard', 'Fingerboard'], ['rest', 'Rest day'], ['taped', 'Taped'],
 ];
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// The app's en-GB date formatting, pinned to UTC so the YYYY-MM-DD string
+// never shifts a day.
+const format = (date, options) => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', ...options });
+
 
 const capitalise = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const clean = (text) => (typeof text === 'string' && text.trim() ? text.trim() : null);
@@ -59,16 +60,15 @@ export function formatPain({ pain_low, pain_high, pain_peak }) {
   return pain_peak == null ? range : `${range} / ${painValue(pain_peak)}`;
 }
 
-const dayMonth = (date) => `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1]}`;
 const sameYear = (date, today) => date.slice(0, 4) === today.slice(0, 4);
 
 export function shortDate(date, today) {
-  return sameYear(date, today) ? formatShortDate(date) : `${formatShortDate(date)} ${date.slice(0, 4)}`;
+  return format(date, { day: 'numeric', month: 'short', ...(sameYear(date, today) ? {} : { year: 'numeric' }) });
 }
 
 export function dayLabel(date, today) {
-  const weekday = WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()];
-  return `${weekday} ${dayMonth(date)}${sameYear(date, today) ? '' : ` ${date.slice(0, 4)}`}`;
+  // en-GB puts a comma after the weekday when there's a year, so join them here.
+  return `${format(date, { weekday: 'short' })} ${shortDate(date, today)}`;
 }
 
 export function sheetDateLabel(date, today) {
@@ -78,12 +78,12 @@ export function sheetDateLabel(date, today) {
 }
 
 export function monthYear(date) {
-  return `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(2, 4)}`;
+  return format(date, { month: 'short', year: '2-digit' });
 }
 
 export function startLine({ started_on, started_roughly }) {
   if (!started_on) return 'Started: not sure';
-  const when = `${dayMonth(started_on)} ${started_on.slice(0, 4)}`;
+  const when = format(started_on, { day: 'numeric', month: 'short', year: 'numeric' });
   return started_roughly ? `Started around ${when}` : `Started ${when}`;
 }
 
@@ -98,8 +98,8 @@ export function lastCheckinLine(checkins, today) {
   const last = checkins.map((c) => c.checked_on).sort().at(-1);
   const days = daysBetween(last, today);
   if (days <= 0) return 'Checked in today';
-  if (days === 1) return `Last check-in ${formatShortDate(last)}, yesterday`;
-  return `Last check-in ${formatShortDate(last)}, ${days} days ago`;
+  if (days === 1) return `Last check-in ${shortDate(last, today)}, yesterday`;
+  return `Last check-in ${shortDate(last, today)}, ${days} days ago`;
 }
 
 const newestFirst = (key) => (a, b) => (key(a) < key(b) ? 1 : key(a) > key(b) ? -1 : 0);

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   injuryTitle, normaliseInjury, formatPain, shortDate, dayLabel, sheetDateLabel, monthYear,
   startLine, injuryStart, lastCheckinLine, hubLists, sameSpot, boardDays,
+  SIDES, AREAS, FINGERS, ACTIVITIES,
 } from './injuries';
 
 const today = '2026-10-21';
@@ -139,4 +140,26 @@ it('collects only this climber\'s board days', () => {
     { sent_by: 'Rob', sent_on: '2026-10-05' },
   ];
   expect([...boardDays(ticks, 'Rob')].sort()).toEqual(['2026-10-01', '2026-10-05']);
+});
+
+it('has the binding option lists', () => {
+  expect(SIDES).toEqual([['left', 'Left'], ['right', 'Right'], ['none', 'Both / n/a']]);
+  expect(AREAS).toEqual([
+    ['finger', 'Finger'], ['wrist', 'Wrist'], ['elbow', 'Elbow'], ['shoulder', 'Shoulder'],
+    ['back', 'Back'], ['knee', 'Knee'], ['other', 'Other'],
+  ]);
+  expect(FINGERS).toEqual([['thumb', 'Thumb'], ['index', 'Index'], ['middle', 'Middle'], ['ring', 'Ring'], ['little', 'Little']]);
+  expect(ACTIVITIES).toEqual([
+    ['board', 'Board'], ['indoor', 'Climbed inside'], ['outside', 'Outside'],
+    ['fingerboard', 'Fingerboard'], ['rest', 'Rest day'], ['taped', 'Taped'],
+  ]);
+});
+
+it('renders September the same way everywhere', () => {
+  expect(shortDate('2026-09-03', today)).toBe('3 Sept');
+  expect(dayLabel('2026-09-03', today)).toBe('Thu 3 Sept');
+  expect(sheetDateLabel('2026-09-03', today)).toBe('Thu 3 Sept');
+  expect(startLine({ started_on: '2026-09-03', started_roughly: false })).toBe('Started 3 Sept 2026');
+  expect(monthYear('2026-09-03')).toBe('Sept 26');
+  expect(lastCheckinLine([{ checked_on: '2026-09-03' }], today)).toBe('Last check-in 3 Sept, 48 days ago');
 });
