@@ -90,6 +90,57 @@ create table problems (
   created_at timestamptz default now(),
   deleted_at timestamptz
 );
+
+-- Tweaks (Rob's private injury log)
+begin;
+
+create table injuries (
+  id uuid primary key default gen_random_uuid(),
+  side text not null check (side in ('left', 'right', 'none')),
+  area text not null check (area in ('finger', 'wrist', 'elbow', 'shoulder', 'back', 'knee', 'other')),
+  finger text check (finger in ('thumb', 'index', 'middle', 'ring', 'little')),
+  area_other text,                       -- the "Where?" text when area = 'other'
+  what text,                             -- e.g. "A2 pulley?", free text
+  symptoms text,
+  started_on date,                       -- null = not known
+  started_roughly boolean not null default false,
+  how_it_happened text,
+  closed_on date,                        -- null = open
+  created_at timestamptz not null default now(),
+  check ((area = 'finger') = (finger is not null)),
+  check ((area = 'other') = (area_other is not null))
+);
+
+create table injury_checkins (
+  id uuid primary key default gen_random_uuid(),
+  injury_id uuid not null references injuries(id) on delete cascade,
+  checked_on date not null,
+  pain_low numeric(3,1) not null check (pain_low between 0 and 10 and pain_low * 2 = round(pain_low * 2)),
+  pain_high numeric(3,1) not null check (pain_high between pain_low and 10 and pain_high * 2 = round(pain_high * 2)),
+  pain_peak numeric(3,1) check (pain_peak between pain_high and 10 and pain_peak * 2 = round(pain_peak * 2)),
+  activities text[] not null default '{}'
+    check (activities <@ array['board', 'indoor', 'outside', 'fingerboard', 'rest', 'taped']),
+  notes text,
+  created_at timestamptz not null default now()
+);
+create index on injury_checkins (injury_id, checked_on);
+
+alter table injuries enable row level security;
+alter table injury_checkins enable row level security;
+revoke all on injuries, injury_checkins from anon;
+grant select, insert, update, delete on injuries, injury_checkins to authenticated;
+
+do $$
+declare rob uuid := (select id from auth.users where email = 'tweaks@example.com');
+begin
+  if rob is null then
+    raise exception 'Create the tweaks@example.com user in Authentication first';
+  end if;
+  execute format('create policy "Rob only" on injuries for all to authenticated using (auth.uid() = %L) with check (auth.uid() = %L)', rob, rob);
+  execute format('create policy "Rob only" on injury_checkins for all to authenticated using (auth.uid() = %L) with check (auth.uid() = %L)', rob, rob);
+end $$;
+
+commit;
 ```
 
 `deleted_at`, `rating`, and `ticked_at` are created now (schema changes
