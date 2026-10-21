@@ -8,7 +8,8 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
-import { inputStyle, sectionHeading } from './ui';
+import { inputStyle, sectionHeading, formatShortDate } from './ui';
+import { firstAscents, repeatsLabel } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
 import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
@@ -737,6 +738,14 @@ export default function App() {
   const lockedMaskUrl = lockedProblem?.mask_url;
   const detailPhotoStatus = lockedProblem ? photoStatus(lockedProblem, board) : null;
   const faceRows = view === 'new' ? facesOnPhoto(volumes, activePhotoUrl) : [];
+  // The problem page's FA line: who got it, or that it's still up for grabs.
+  // Nothing when the first send was logged before climber names existed.
+  let faText = null;
+  if (view === 'detail' && selected) {
+    const fa = firstAscents(problems, boardTicks).get(selected.id);
+    if (fa === undefined) faText = 'No FA yet · up for grabs';
+    else if (fa) faText = `FA ${fa.climber} · ${formatShortDate(fa.date)} · ${repeatsLabel(fa.repeats)}`;
+  }
 
   if (loading) {
     return (
@@ -1024,6 +1033,11 @@ export default function App() {
               <div>
                 <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, letterSpacing: 0.5, margin: 0 }}>{selected.name}</h2>
                 <p style={{ margin: '2px 0 0', fontSize: 13, color: '#8b8d91' }}>{selected.setter ? `Set by ${selected.setter}` : ''}</p>
+                {faText && (
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: '#c7c8cb', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Trophy size={13} color="#C9A227" aria-hidden="true" />{faText}
+                  </p>
+                )}
               </div>
               {selected.grade && (
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#232427', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 14, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{selected.grade}</span>

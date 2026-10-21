@@ -1540,6 +1540,32 @@ describe('App (board stats)', () => {
     expect(screen.getByText('No sends yet in November')).toBeInTheDocument();
     expect(screen.getByText('Last month: Shawn ticked the most new problems (2)')).toBeInTheDocument();
   });
+  it('shows who got the FA on a problem, with its repeats', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Gaston Traverse'));
+    expect(await screen.findByText('FA Rob · 2 Oct · 1 repeat')).toBeInTheDocument();
+  });
+
+  it("says a problem nobody has sent is up for grabs", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Pinchin'));
+    expect(await screen.findByText('No FA yet · up for grabs')).toBeInTheDocument();
+  });
+
+  it('shows no FA when the first send was logged before climber names', async () => {
+    listBoardTicks.mockResolvedValue([
+      { id: 't0', problem_id: 'p2', sent_by: null, sent_on: '2026-08-30', created_at: '2026-08-30T18:00:00Z', flash: false },
+      ...TICKS,
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Crimpy Corner'));
+    await screen.findByRole('heading', { name: 'Crimpy Corner' });
+    expect(screen.queryByText(/^FA /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/up for grabs/)).not.toBeInTheDocument();
+  });
 });
 
 describe('App (warm-up screen)', () => {
