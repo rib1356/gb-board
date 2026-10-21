@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, CalendarDays, Zap } from 'lucide-react';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, CalendarDays, Trophy, Zap } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
@@ -8,7 +8,8 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
-import { inputStyle, sectionHeading } from './ui';
+import { inputStyle, sectionHeading, formatShortDate } from './ui';
+import { firstAscents, repeatsLabel } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
 import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
@@ -17,6 +18,7 @@ import WarmupEditor from './warmup/WarmupEditor';
 import WarmupRun from './warmup/WarmupRun';
 import VolumesScreen from './volumes/VolumesScreen';
 import LogbookScreen from './logbook/LogbookScreen';
+import BoardStatsScreen from './stats/BoardStatsScreen';
 import FaceButtons from './volumes/FaceButtons';
 import { todayISO } from './lib/warmup';
 import { localDate } from './lib/dates';
@@ -82,6 +84,12 @@ function StarRating({ rating, onRate, readOnly = false }) {
 }
 
 const BOARD_OWNER = 'Rob';
+
+// The logbook and board stats buttons beside the climber pill.
+const iconButton = {
+  display: 'flex', alignItems: 'center', background: 'none', border: '1px solid #3a3b3e',
+  color: '#c7c8cb', borderRadius: 20, padding: '5px 8px', cursor: 'pointer',
+};
 
 function formatSendDate(dateStr) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB', {
@@ -303,7 +311,7 @@ export default function App() {
   }, [view, selectedId]);
 
   useLayoutEffect(() => {
-    if (view !== 'list' && view !== 'logbook') return;
+    if (view !== 'list' && view !== 'logbook' && view !== 'stats') return;
     // Landing on either one uses up the spot, so one left behind by leaving a
     // problem some other way (saving an edit, say) can't jump the page later.
     const saved = returnScrollRef.current;
@@ -730,6 +738,14 @@ export default function App() {
   const lockedMaskUrl = lockedProblem?.mask_url;
   const detailPhotoStatus = lockedProblem ? photoStatus(lockedProblem, board) : null;
   const faceRows = view === 'new' ? facesOnPhoto(volumes, activePhotoUrl) : [];
+  // The problem page's FA line: who got it, or that it's still up for grabs.
+  // Nothing when the first send was logged before climber names existed.
+  let faText = null;
+  if (view === 'detail' && selected) {
+    const fa = firstAscents(problems, boardTicks).get(selected.id);
+    if (fa === undefined) faText = 'No FA yet · up for grabs';
+    else if (fa) faText = `FA ${fa.climber} · ${formatShortDate(fa.date)} · ${repeatsLabel(fa.repeats)}`;
+  }
 
   if (loading) {
     return (
@@ -752,7 +768,7 @@ export default function App() {
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>WARM-UP</h1>
           ) : (
             <button onClick={() => { setSelectedId(null); setEditingId(null); setView(view === 'detail' ? backTo : 'list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
-              <ChevronLeft size={18} /> {view === 'detail' && backTo === 'logbook' ? 'Logbook' : 'Board'}
+              <ChevronLeft size={18} /> {view === 'detail' && backTo === 'logbook' ? 'Logbook' : view === 'detail' && backTo === 'stats' ? 'Stats' : 'Board'}
             </button>
           )}
           {view === 'list' && (
@@ -785,7 +801,7 @@ export default function App() {
       )}
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
-        {view !== 'logbook' && (
+        {view !== 'logbook' && view !== 'stats' && (
         <div
           ref={imgWrapRef}
           onClick={handleImageClick}
@@ -940,19 +956,31 @@ export default function App() {
                 )}
               </div>
               {/* Beside the climber, not in the header -- a third header button
-                  wraps the title on phones narrower than ~390px. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={{
-                display: 'flex', alignItems: 'center', background: 'none', border: '1px solid #3a3b3e',
-                color: '#c7c8cb', borderRadius: 20, padding: '5px 10px', cursor: 'pointer',
-              }}>
+                  wraps the title on phones narrower than ~390px. Slim buttons
+                  and a name-only pill keep the row on one line at 360px. The group
+                  takes the rest of the row and the pill gives way with … before
+                  the row would wrap; only below ~330px does it drop a line. */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: '1 1 0', minWidth: currentClimber ? 120 : 'auto' }}>
+              <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
                 <CalendarDays size={14} />
               </button>
-              <button onClick={() => setShowClimberPanel((prev) => !prev)} style={{
-                display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
-                color: '#c7c8cb', borderRadius: 20, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              }}>
-                {currentClimber ? `You: ${currentClimber.name}` : "Who's climbing?"}
+              <button onClick={() => setView('stats')} aria-label="Board stats" title="Board stats" style={iconButton}>
+                <Trophy size={14} />
+              </button>
+              {/* Just the name, cut off with … if it's long, so the pill and
+                  both buttons fit on one line on a 360px phone. */}
+              <button
+                onClick={() => setShowClimberPanel((prev) => !prev)}
+                aria-label={currentClimber ? `Climbing as ${currentClimber.name}` : undefined}
+                style={{
+                  display: 'block', whiteSpace: 'nowrap', background: 'none', border: '1px solid #3a3b3e',
+                  color: '#c7c8cb', borderRadius: 20, padding: '5px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  // Only a name gives way; "Who's climbing?" is what you tap to
+                  // pick yourself, so it stays whole and the row wraps instead.
+                  ...(currentClimber && { minWidth: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }),
+                }}
+              >
+                {currentClimber ? currentClimber.name : "Who's climbing?"}
               </button>
               </div>
             </div>
@@ -1009,6 +1037,11 @@ export default function App() {
               <div>
                 <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, letterSpacing: 0.5, margin: 0 }}>{selected.name}</h2>
                 <p style={{ margin: '2px 0 0', fontSize: 13, color: '#8b8d91' }}>{selected.setter ? `Set by ${selected.setter}` : ''}</p>
+                {faText && (
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: '#c7c8cb', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Trophy size={13} color="#C9A227" aria-hidden="true" />{faText}
+                  </p>
+                )}
               </div>
               {selected.grade && (
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#232427', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 14, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{selected.grade}</span>
@@ -1187,6 +1220,16 @@ export default function App() {
             onToggleDay={toggleLogbookDay}
             onOpenProblem={(problemId) => openProblem(problemId, 'logbook')}
             onPickClimber={() => { returnScrollRef.current = { view: 'list', y: 0 }; setView('list'); setShowClimberPanel(true); }}
+          />
+        )}
+
+        {view === 'stats' && (
+          <BoardStatsScreen
+            problems={problems}
+            ticks={boardTicks}
+            climberCount={climbers.length}
+            today={localDate()}
+            onOpenProblem={(problemId) => openProblem(problemId, 'stats')}
           />
         )}
 
