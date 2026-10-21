@@ -145,6 +145,16 @@ Rob didn't specify these, so they're worth checking:
   Rob signs in once in each. That's expected.
 - The sign-in endpoint is public, so the password should be longer than a
   PIN. Supabase rate-limits sign-in attempts.
+- This account is a user inside the project's database. It's separate from
+  Rob's own supabase.com login, which nothing here touches. The dashboard's
+  Table Editor and SQL editor still see the injury tables, because they run
+  as the admin and skip RLS.
+- **Forgotten password:** a reset email can't reach a made-up address.
+  Instead, run this in the SQL editor:
+  ```sql
+  update auth.users set encrypted_password = extensions.crypt('<new password>', extensions.gen_salt('bf'))
+  where email = '<TWEAKS_EMAIL>';
+  ```
 
 ### Board setup moves
 
