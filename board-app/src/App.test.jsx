@@ -271,7 +271,7 @@ describe('App (create flow)', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(screen.getByText('New problem'));
 
     expect(screen.getByPlaceholderText('Your name')).toHaveValue('Rob');
@@ -722,7 +722,7 @@ describe('App (unsent by the current climber)', () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(screen.getByRole('button', { name: /unsent/i }));
 
     expect(listBoardTicks).toHaveBeenCalledWith('b1');
@@ -740,7 +740,7 @@ describe('App (unsent by the current climber)', () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(screen.getByRole('button', { name: /unsent/i }));
     await user.click(screen.getByText('Crimpy Corner'));
     await user.click(await screen.findByText('Log a send'));
@@ -778,7 +778,7 @@ describe('App (unsent by the current climber)', () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(screen.getByRole('button', { name: /unsent/i }));
     expect(screen.getByText('Gaston Traverse')).toBeInTheDocument();
 
@@ -974,7 +974,7 @@ describe('App (tick log flow)', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(await screen.findByText('Gaston Traverse'));
     await user.click(await screen.findByText('Log a send'));
     fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-08-22' } });
@@ -1026,7 +1026,7 @@ describe('App (tick log flow)', () => {
     );
 
     await user.click(screen.getByText('Board'));
-    await user.click(screen.getByText('You: Rob'));
+    await user.click(screen.getByRole('button', { name: 'Climbing as Rob' }));
     await user.click(await screen.findByText('Alex'));
     await user.click(await screen.findByText('Gaston Traverse'));
     await user.click(await screen.findByText('Log a send'));
@@ -1165,7 +1165,7 @@ describe('App (climber picker)', () => {
     await user.click(await screen.findByText("Who's climbing?"));
     await user.click(await screen.findByText('Bob'));
 
-    expect(await screen.findByText('You: Bob')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Climbing as Bob' })).toBeInTheDocument();
     expect(localStorage.getItem('board-app:currentClimberId')).toBe('c2');
   });
 
@@ -1179,7 +1179,7 @@ describe('App (climber picker)', () => {
     await user.click(screen.getByText('Add'));
 
     await waitFor(() => expect(createClimber).toHaveBeenCalledWith('Charlie'));
-    expect(await screen.findByText('You: Charlie')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Climbing as Charlie' })).toBeInTheDocument();
   });
 
   it('restores a previously selected climber from localStorage on load', async () => {
@@ -1187,7 +1187,7 @@ describe('App (climber picker)', () => {
     listClimbers.mockResolvedValue([{ id: 'c1', name: 'Alice' }]);
     render(<App />);
 
-    expect(await screen.findByText('You: Alice')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Climbing as Alice' })).toBeInTheDocument();
   });
 
   it('ignores a stored climber id that no longer matches any fetched climber', async () => {
@@ -1196,6 +1196,15 @@ describe('App (climber picker)', () => {
     render(<App />);
 
     expect(await screen.findByText("Who's climbing?")).toBeInTheDocument();
+  });
+  it('shows just your name on the pill, beside the logbook and board stats buttons', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    render(<App />);
+    const pill = await screen.findByRole('button', { name: 'Climbing as Rob' });
+    expect(pill.textContent).toBe('Rob');
+    expect(screen.getByRole('button', { name: 'Logbook' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Board stats' })).toBeInTheDocument();
   });
 });
 
@@ -1299,7 +1308,7 @@ describe('App (logbook)', () => {
     listBoardTicks.mockResolvedValue(TICKS);
     render(<App />);
     const user = userEvent.setup();
-    await screen.findByText(`You: ${name}`);
+    await screen.findByRole("button", { name: `Climbing as ${name}` });
     await user.click(screen.getByRole('button', { name: 'Logbook' }));
     return user;
   };
@@ -1332,7 +1341,7 @@ describe('App (logbook)', () => {
     listProblems.mockResolvedValue(PROBLEMS);
     render(<App />);
     const user = userEvent.setup();
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(screen.getByRole('button', { name: 'Logbook' }));
 
     expect(screen.getAllByRole('heading', { name: /^(October|September) 2026$/ }).map((h) => h.textContent))
@@ -1902,7 +1911,7 @@ describe('App (list scroll position)', () => {
     ]);
     render(<App />);
     const user = userEvent.setup();
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(screen.getByRole('button', { name: 'Logbook' }));
     await user.click(screen.getByRole('button', { name: /Tue 1 Sept/ }));
     await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
@@ -1923,7 +1932,7 @@ describe('App (list scroll position)', () => {
     updateProblem.mockResolvedValue({ ...PROBLEMS[1], name: 'Crimpy Corner v2' });
     render(<App />);
     const user = userEvent.setup();
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     await user.click(screen.getByRole('button', { name: 'Logbook' }));
     await user.click(screen.getByRole('button', { name: /Tue 1 Sept/ }));
     await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
@@ -2139,7 +2148,7 @@ describe('App (board setup is just for Rob)', () => {
     climbAs('Rob');
     getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
     render(<App />);
-    await screen.findByText('You: Rob');
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
     expect(screen.getByLabelText('Replace board photo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Volumes' })).toBeInTheDocument();
   });
@@ -2148,7 +2157,7 @@ describe('App (board setup is just for Rob)', () => {
     climbAs('Shawn');
     getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
     render(<App />);
-    await screen.findByText('You: Shawn');
+    await screen.findByRole('button', { name: 'Climbing as Shawn' });
     expect(screen.queryByLabelText('Replace board photo')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
   });
@@ -2164,7 +2173,7 @@ describe('App (board setup is just for Rob)', () => {
   it('still lets anyone upload the first photo of a board that has none', async () => {
     climbAs('Shawn');
     render(<App />);
-    await screen.findByText('You: Shawn');
+    await screen.findByRole('button', { name: 'Climbing as Shawn' });
     expect(screen.getByLabelText('Upload a photo of your board')).toBeInTheDocument();
   });
 });

@@ -947,7 +947,8 @@ export default function App() {
                 )}
               </div>
               {/* Beside the climber, not in the header -- a third header button
-                  wraps the title on phones narrower than ~390px. */}
+                  wraps the title on phones narrower than ~390px. Slim buttons
+                  and a name-only pill keep the row on one line at 360px. */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
                 <CalendarDays size={14} />
@@ -955,11 +956,18 @@ export default function App() {
               <button onClick={() => setView('stats')} aria-label="Board stats" title="Board stats" style={iconButton}>
                 <Trophy size={14} />
               </button>
-              <button onClick={() => setShowClimberPanel((prev) => !prev)} style={{
-                display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
-                color: '#c7c8cb', borderRadius: 20, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              }}>
-                {currentClimber ? `You: ${currentClimber.name}` : "Who's climbing?"}
+              {/* Just the name, cut off with … if it's long, so the pill and
+                  both buttons fit on one line on a 360px phone. */}
+              <button
+                onClick={() => setShowClimberPanel((prev) => !prev)}
+                aria-label={currentClimber ? `Climbing as ${currentClimber.name}` : undefined}
+                style={{
+                  display: 'block', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  background: 'none', border: '1px solid #3a3b3e', color: '#c7c8cb', borderRadius: 20,
+                  padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                {currentClimber ? currentClimber.name : "Who's climbing?"}
               </button>
               </div>
             </div>
