@@ -24,13 +24,20 @@ const dateInput = {
   border: 0, opacity: 0, fontSize: 16, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none',
 };
 
-// A draft left on this phone wins, then the check-in being edited, then a new
-// one for today.
+// A draft left on this phone wins, then the check-in being edited, then
+// today's if there is one (ready to add to), then a new one for today.
+// openedAsEdit marks a check-in Rob chose to edit (or a draft of one); only
+// that kind moves when the date changes.
 function startingState({ injury, checkins, boardDays, today, editing }) {
   const stored = loadDraft(injury.id);
-  if (stored) return { draft: stored.draft, editingId: stored.editingId ?? null, restored: true };
-  if (editing) return { draft: draftFromCheckin(editing), editingId: editing.id, restored: false };
-  return { draft: newCheckinDraft({ injuryId: injury.id, checkins, date: today, boardDays }), editingId: null, restored: false };
+  if (stored) {
+    const editingId = stored.editingId ?? null;
+    return { draft: stored.draft, editingId, restored: true, openedAsEdit: Boolean(editingId) };
+  }
+  if (editing) return { draft: draftFromCheckin(editing), editingId: editing.id, restored: false, openedAsEdit: true };
+  const sameDay = checkinOn(checkins, injury.id, today);
+  if (sameDay) return { draft: draftFromCheckin(sameDay), editingId: sameDay.id, restored: false, openedAsEdit: false };
+  return { draft: newCheckinDraft({ injuryId: injury.id, checkins, date: today, boardDays }), editingId: null, restored: false, openedAsEdit: false };
 }
 
 // "1 – 2", "1" when both ends match, with " / 7" for a spike.
@@ -110,20 +117,23 @@ export default function CheckinSheet({ injury, checkins, boardDays, today, editi
   const changeDate = (e) => {
     const date = e.target.value;
     if (!date) return;
-    // Editing moves the check-in; once something's changed, only the date
-    // moves and saving adds to any check-in already on it.
-    if (editingId || touched) {
+    // Opened to edit, or once something's changed, only the date changes: a
+    // check-in being edited moves with it, and a new one adds to any check-in
+    // already on that date.
+    if (touched || start.openedAsEdit) {
       setDraft((d) => ({ ...d, checked_on: date }));
       return;
     }
-    // Untouched: open the check-in already on that day, or start afresh for
-    // it so Board follows that day's sends.
+    // Untouched, and nothing Rob chose to edit: open the check-in already on
+    // that day, or start afresh for it so Board follows that day's sends.
     const existing = checkinOn(checkins, injury.id, date);
+    setConfirmingDelete(false);
     if (existing) {
       setDraft(draftFromCheckin(existing));
       setEditingId(existing.id);
     } else {
       setDraft(newCheckinDraft({ injuryId: injury.id, checkins, date, boardDays }));
+      setEditingId(null);
     }
   };
 

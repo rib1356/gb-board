@@ -127,15 +127,54 @@ describe('CheckinSheet', () => {
       expect(plan.fields.checked_on).toBe('2026-10-12');
     });
 
-    it('says a new check-in adds to one already on today', async () => {
-      const { onSave } = renderSheet({ checkins: [C('c21', TODAY, { notes: 'Fine this morning' }), oct13] });
-      expect(screen.getByText("There's already a check-in on 21 Oct — saving adds to it.")).toBeInTheDocument();
-      type('Sore after the board');
-      save();
-      await waitFor(() => expect(onSave).toHaveBeenCalled());
-      const plan = onSave.mock.calls[0][0];
-      expect(plan).toMatchObject({ action: 'update', id: 'c21' });
-      expect(plan.fields.notes).toBe('Fine this morning\n\nSore after the board');
+    describe('with a check-in already on today', () => {
+      const oct21 = C('c21', TODAY, { pain_low: 2, pain_high: 3, notes: 'Fine this morning' });
+      const withToday = { checkins: [oct21, oct13, oct10] };
+
+      it('opens it, ready to add to the notes', async () => {
+        const { onSave } = renderSheet(withToday);
+        expect(notes()).toHaveValue('Fine this morning');
+        expect(notes()).toHaveFocus();
+        expect(notes().selectionStart).toBe('Fine this morning'.length);
+        expect(button('Delete')).toBeInTheDocument();
+        expect(screen.queryByText(/There's already a check-in/)).not.toBeInTheDocument();
+
+        type('Fine this morning\nSore after the board');
+        save();
+        await waitFor(() => expect(onSave).toHaveBeenCalled());
+        expect(onSave).toHaveBeenCalledWith({
+          action: 'update',
+          id: 'c21',
+          fields: {
+            injury_id: 'i1', checked_on: TODAY, pain_low: 2, pain_high: 3, pain_peak: null, activities: [],
+            notes: 'Fine this morning\nSore after the board',
+          },
+        });
+      });
+
+      it('starts a fresh check-in, leaving it be, when an empty day is picked before anything is touched', async () => {
+        const { onSave } = renderSheet(withToday);
+        pickDate('2026-10-20');
+        expect(screen.getByText('Yesterday, Tue 20 Oct')).toBeInTheDocument();
+        expect(notes()).toHaveValue('');
+        expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+        save();
+        await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+        const plan = onSave.mock.calls[0][0];
+        expect(plan.action).toBe('create');
+        expect(plan.id).toBeUndefined();
+        expect(plan.fields.checked_on).toBe('2026-10-20');
+      });
+
+      it('opens the check-in on another day picked before anything is touched', async () => {
+        const { onSave } = renderSheet(withToday);
+        pickDate('2026-10-13');
+        expect(notes()).toHaveValue('Bit stiff in the morning');
+        expect(button('Delete')).toBeInTheDocument();
+        save();
+        await waitFor(() => expect(onSave).toHaveBeenCalled());
+        expect(onSave.mock.calls[0][0]).toMatchObject({ action: 'update', id: 'c13', fields: { checked_on: '2026-10-13' } });
+      });
     });
 
     it('ignores a cleared date', () => {
