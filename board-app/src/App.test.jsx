@@ -1235,7 +1235,7 @@ describe('App (flash)', () => {
 
     await user.click(screen.getByRole('button', { name: /board/i }));
     await user.click(await screen.findByRole('button', { name: 'Logbook' }));
-    await user.click(screen.getByRole('button', { name: /Sat 22 Aug 2026.*1 problem · 1 new · 1 flash/ }));
+    await user.click(screen.getByRole('button', { name: /Sat 22 Aug.*1 problem · 1 new · 1 flash/ }));
     expect(within(screen.getByRole('listitem')).getByText('Flash')).toBeInTheDocument();
   });
 
@@ -1304,27 +1304,49 @@ describe('App (logbook)', () => {
     return user;
   };
   const day = (label) => screen.getByRole('button', { name: new RegExp(label) });
+  const DAY_ROW = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d/;
 
   it('opens from beside the climber pill with every day collapsed, newest first', async () => {
     await openAs('Rob');
 
     expect(screen.getByText("Rob's logbook")).toBeInTheDocument();
     expect(screen.getByText('2 sessions · 3 sends')).toBeInTheDocument();
-    const days = screen.getAllByRole('button', { name: /Sept 2026/ });
+    expect(screen.getByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
+    const days = screen.getAllByRole('button', { name: DAY_ROW });
     expect(days.map((d) => d.textContent)).toEqual([
-      'Tue 8 Sept 20261 problem',
-      'Tue 1 Sept 20262 problems · 2 new · 1 flash',
+      'Tue 8 Sept1 problem',
+      'Tue 1 Sept2 problems · 2 new · 1 flash',
     ]);
     days.forEach((d) => expect(d).toHaveAttribute('aria-expanded', 'false'));
     expect(screen.queryByText('Gaston Traverse')).not.toBeInTheDocument();
     expect(screen.queryByText('No board photo yet')).not.toBeInTheDocument();
   });
 
+  it('puts a heading above each month, newest first, and shows flashes as a bolt and a count', async () => {
+    listBoardTicks.mockResolvedValue([
+      ...TICKS,
+      { id: 't9', problem_id: 'p3', sent_by: 'Rob', sent_on: '2026-10-02', created_at: '2026-10-02T10:00:00Z', flash: true },
+    ]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('You: Rob');
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+
+    expect(screen.getAllByRole('heading', { name: /^(October|September) 2026$/ }).map((h) => h.textContent))
+      .toEqual(['October 2026', 'September 2026']);
+    const october = screen.getByRole('button', { name: /^Fri 2 Oct/ });
+    expect(october.textContent).toBe('Fri 2 Oct1 problem · 1 new · 1 flash');
+    expect(october.querySelector('svg')).not.toBeNull();
+  });
+
   it('opens a day to show what you logged that session, marking first sends and flashes', async () => {
     const user = await openAs('Rob');
 
-    await user.click(day('Tue 1 Sept 2026'));
-    expect(day('Tue 1 Sept 2026')).toHaveAttribute('aria-expanded', 'true');
+    await user.click(day('Tue 1 Sept'));
+    expect(day('Tue 1 Sept')).toHaveAttribute('aria-expanded', 'true');
     const rows = screen.getAllByRole('listitem');
     expect(rows).toHaveLength(2);
     expect(within(rows[0]).getByText('Crimpy Corner')).toBeInTheDocument();
@@ -1334,16 +1356,16 @@ describe('App (logbook)', () => {
     expect(within(rows[1]).getByText('Gaston Traverse')).toBeInTheDocument();
     expect(within(rows[1]).getByText('New')).toBeInTheDocument();
     expect(within(rows[1]).queryByText('Flash')).not.toBeInTheDocument();
-    expect(day('Tue 8 Sept 2026')).toHaveAttribute('aria-expanded', 'false');
+    expect(day('Tue 8 Sept')).toHaveAttribute('aria-expanded', 'false');
 
-    await user.click(day('Tue 1 Sept 2026'));
+    await user.click(day('Tue 1 Sept'));
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
   it("doesn't mark a repeat as new", async () => {
     const user = await openAs('Rob');
 
-    await user.click(day('Tue 8 Sept 2026'));
+    await user.click(day('Tue 8 Sept'));
     const row = screen.getByRole('listitem');
     expect(within(row).getByText('Crimpy Corner')).toBeInTheDocument();
     expect(within(row).queryByText('New')).not.toBeInTheDocument();
@@ -1353,16 +1375,16 @@ describe('App (logbook)', () => {
     listTicks.mockResolvedValue([TICKS[1]]);
     const user = await openAs('Rob');
 
-    await user.click(day('Tue 8 Sept 2026'));
-    await user.click(day('Tue 1 Sept 2026'));
+    await user.click(day('Tue 8 Sept'));
+    await user.click(day('Tue 1 Sept'));
     await user.click(screen.getByRole('button', { name: /Gaston Traverse/ }));
     expect(await screen.findByText('Log a send')).toBeInTheDocument();
     expect(listTicks).toHaveBeenCalledWith('p1');
 
     await user.click(screen.getByRole('button', { name: /logbook/i }));
     expect(screen.getByText("Rob's logbook")).toBeInTheDocument();
-    expect(day('Tue 8 Sept 2026')).toHaveAttribute('aria-expanded', 'true');
-    expect(day('Tue 1 Sept 2026')).toHaveAttribute('aria-expanded', 'true');
+    expect(day('Tue 8 Sept')).toHaveAttribute('aria-expanded', 'true');
+    expect(day('Tue 1 Sept')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
   });
 
@@ -1390,7 +1412,7 @@ describe('App (logbook)', () => {
   it("says so when you haven't logged anything yet", async () => {
     await openAs('Tom');
     expect(screen.getByText('Nothing logged yet')).toBeInTheDocument();
-    expect(screen.queryAllByRole('button', { name: /Sept 2026/ })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: DAY_ROW })).toHaveLength(0);
   });
 });
 
@@ -1752,7 +1774,7 @@ describe('App (list scroll position)', () => {
     const user = userEvent.setup();
     await screen.findByText('You: Rob');
     await user.click(screen.getByRole('button', { name: 'Logbook' }));
-    await user.click(screen.getByRole('button', { name: /Tue 1 Sept 2026/ }));
+    await user.click(screen.getByRole('button', { name: /Tue 1 Sept/ }));
     await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
     expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
     window.scrollY = 0;
@@ -1773,7 +1795,7 @@ describe('App (list scroll position)', () => {
     const user = userEvent.setup();
     await screen.findByText('You: Rob');
     await user.click(screen.getByRole('button', { name: 'Logbook' }));
-    await user.click(screen.getByRole('button', { name: /Tue 1 Sept 2026/ }));
+    await user.click(screen.getByRole('button', { name: /Tue 1 Sept/ }));
     await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
     await user.click(await screen.findByRole('button', { name: 'Edit details' }));
     await user.click(screen.getByText('Save changes'));
