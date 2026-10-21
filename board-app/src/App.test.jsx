@@ -1470,6 +1470,69 @@ describe('App (logbook)', () => {
   });
 });
 
+describe('App (board stats)', () => {
+  const PROBLEMS = [
+    { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: 5, created_at: '2026-09-01T12:00:00Z', send_count: 2 },
+    { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Shawn', notes: '', holds: [], rating: 4, created_at: '2026-09-01T12:00:00Z', send_count: 1 },
+    { id: 'p3', name: 'Pinchin', grade: 'V6', setter: 'Rob', notes: '', holds: [], rating: null, created_at: '2026-09-17T12:00:00Z', send_count: 0 },
+  ];
+  const TICKS = [
+    { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-10-02', created_at: '2026-10-02T18:00:00Z', flash: false },
+    { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-10-06', created_at: '2026-10-06T18:00:00Z', flash: true },
+    { id: 't3', problem_id: 'p2', sent_by: 'Shawn', sent_on: '2026-10-08', created_at: '2026-10-08T18:00:00Z', flash: false },
+  ];
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 21, 12)); // Wed 21 Oct 2026
+    listProblems.mockResolvedValue(PROBLEMS);
+    listBoardTicks.mockResolvedValue(TICKS);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const openStats = async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Board stats' }));
+    return user;
+  };
+
+  it("opens from the trophy button with this month's crew board, sorted by new ticks", async () => {
+    await openStats();
+    expect(screen.getByRole('heading', { name: 'Board stats' })).toBeInTheDocument();
+    expect(screen.getByText('3 problems · 2 climbers')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'October crew board' })).toBeInTheDocument();
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    expect(rows.map((r) => r.textContent)).toEqual(['ClimberProblemsNewFlashesTop', 'Shawn221V5', 'Rob110V5']);
+    expect(screen.queryByText('No board photo yet')).not.toBeInTheDocument();
+  });
+
+  it('shows the latest FAs, classics, popular lately and every open project with how long it has been open', async () => {
+    await openStats();
+    expect(screen.getByText('Most FAs')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /Crimpy Corner.*Shawn · 8 Oct/ })).getByText('V3')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Classics' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Popular lately' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Pinchin.*set by Rob.*open 34 days/ })).toBeInTheDocument();
+  });
+
+  it('opens a problem from a row, and Back returns to Stats', async () => {
+    const user = await openStats();
+    await user.click(screen.getByRole('button', { name: /Pinchin/ }));
+    expect(await screen.findByRole('heading', { name: 'Pinchin' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /stats/i }));
+    expect(screen.getByRole('heading', { name: 'Board stats' })).toBeInTheDocument();
+  });
+
+  it("says when nobody has sent anything yet this month, naming last month's top ticker", async () => {
+    vi.setSystemTime(new Date(2026, 10, 2, 12)); // 2 Nov
+    await openStats();
+    expect(screen.getByText('No sends yet in November')).toBeInTheDocument();
+    expect(screen.getByText('Last month: Shawn ticked the most new problems (2)')).toBeInTheDocument();
+  });
+});
+
 describe('App (warm-up screen)', () => {
   const PROBLEMS = [
     { id: 'p1', name: 'Jug Haul', grade: 'V1', setter: 'Rob', notes: '', holds: [{ x: 0.2, y: 0.3, type: 'start' }], send_count: 2, last_sent_on: '2026-09-01' },
@@ -1814,6 +1877,19 @@ describe('App (list scroll position)', () => {
     window.scrollY = 0;
     await user.click(await screen.findByRole('button', { name: /board/i }));
     await screen.findByText('THE BOARD');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+  });
+
+  it('puts you back where you were in board stats when you go back', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Board stats' }));
+    await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+    window.scrollY = 0;
+    await user.click(await screen.findByRole('button', { name: /stats/i }));
+    await screen.findByRole('heading', { name: 'Board stats' });
     expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
   });
 
