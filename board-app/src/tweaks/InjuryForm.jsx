@@ -66,7 +66,8 @@ export default function InjuryForm({ injury, injuries, checkins, onSubmit, onReo
     && (form.area !== 'finger' || Boolean(form.finger))
     && (form.area !== 'other' || form.area_other.trim() !== '');
   const matches = !injury && spotChosen ? sameSpot(form, injuries) : [];
-  // An open log is the one worth checking in on, otherwise the newest closed one.
+  // An open match wins even over a newer closed one: reopening the newer
+  // would leave two open logs for the same spot. Otherwise the newest.
   const target = matches.find((m) => !m.closed_on) ?? matches[0];
 
   const run = async (write) => {

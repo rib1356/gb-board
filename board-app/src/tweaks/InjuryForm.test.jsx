@@ -101,6 +101,20 @@ describe('InjuryForm', () => {
       expect(onCheckInInstead).toHaveBeenCalledWith('open');
     });
 
+    it('prefers an older open log over a newer closed one', () => {
+      const newer = made('newer', { what: 'Newer one', started_on: '2026-09-10' });
+      const older = made('older', { what: 'Older one', started_on: '2026-03-02', closed_on: null });
+      const { onCheckInInstead, onReopenInstead } = renderForm({ injuries: [older, newer] });
+      pickSpot();
+      const lines = screen.getByRole('status').textContent;
+      expect(lines.indexOf('Newer one')).toBeGreaterThan(-1);
+      expect(lines.indexOf('Newer one')).toBeLessThan(lines.indexOf('Older one'));
+      expect(screen.queryByRole('button', { name: 'Reopen that log instead?' })).not.toBeInTheDocument();
+      tap('Check in on that one instead?');
+      expect(onCheckInInstead).toHaveBeenCalledWith('older');
+      expect(onReopenInstead).not.toHaveBeenCalled();
+    });
+
     it('has no doubled separator when an imported log has no what', () => {
       renderForm({ injuries: [made('old', { what: null })] });
       pickSpot();
