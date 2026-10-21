@@ -1893,7 +1893,7 @@ describe('App (warm-up review fixes)', () => {
   });
 });
 
-describe('App (list scroll position)', () => {
+describe('App (scroll position)', () => {
   const PROBLEMS = [
     { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [] },
     { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [] },
@@ -1916,6 +1916,84 @@ describe('App (list scroll position)', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByText('Crimpy Corner'));
     expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('opens the logbook at the top of the page', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Crimpy Corner');
+    scrollTo.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('opens board stats at the top of the page', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Crimpy Corner');
+    scrollTo.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Board stats' }));
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('starts a new problem at the top of the page', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, photo_url: 'https://cdn.example/b1.jpg' });
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Crimpy Corner');
+    scrollTo.mockClear();
+    await user.click(screen.getByText('New problem'));
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('puts you back where you were in the list after the logbook', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Crimpy Corner');
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    window.scrollY = 1200;
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+  });
+
+  it('puts you back where you were in the list after board stats', async () => {
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Crimpy Corner');
+    await user.click(screen.getByRole('button', { name: 'Board stats' }));
+    window.scrollY = 1200;
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+  });
+
+  it('backs out of a problem, then the logbook, to each spot in turn', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue(PROBLEMS);
+    listBoardTicks.mockResolvedValue([
+      { id: 't1', problem_id: 'p2', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z', flash: false },
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    window.scrollY = 300;
+    await user.click(screen.getByRole('button', { name: /Tue 1 Sept/ }));
+    await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
+    window.scrollY = 0;
+    await user.click(await screen.findByRole('button', { name: 'Logbook' }));
+    await screen.findByText("Rob's logbook");
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 300);
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
   });
 
   it('puts you back where you were in the list when you go back', async () => {
@@ -1973,7 +2051,9 @@ describe('App (list scroll position)', () => {
     render(<App />);
     const user = userEvent.setup();
     await screen.findByRole('button', { name: 'Climbing as Rob' });
+    window.scrollY = 0;
     await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    window.scrollY = 640;
     await user.click(screen.getByRole('button', { name: /Tue 1 Sept/ }));
     await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
     await user.click(await screen.findByRole('button', { name: 'Edit details' }));
@@ -1995,14 +2075,18 @@ describe('App (list scroll position)', () => {
     expect(scrollTo).not.toHaveBeenCalledWith(0, 640);
   });
 
-  it('does not jump the list when coming back from somewhere other than a problem', async () => {
+  it('opens the warm-up at the top and puts you back where you were in the list after', async () => {
     listProblems.mockResolvedValue(PROBLEMS);
     render(<App />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await screen.findByText('Crimpy Corner');
+    scrollTo.mockClear();
+    await user.click(screen.getByRole('button', { name: /warm-up/i }));
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+    window.scrollY = 1200;
     await user.click(await screen.findByRole('button', { name: /board/i }));
     await screen.findByText('THE BOARD');
-    expect(scrollTo).not.toHaveBeenCalledWith(0, 640);
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
   });
 });
 

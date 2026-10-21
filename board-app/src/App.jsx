@@ -97,6 +97,15 @@ function formatSendDate(dateStr) {
   });
 }
 
+// When the next screen is shorter than where you were, iOS trims the old
+// scroll spot to fit a moment after the switch, and that beats a scroll to the
+// top made during it. Holding the page's height for a couple of frames lets
+// the top land first, then the page shrinks with nothing to trim.
+function holdPageHeight() {
+  document.body.style.minHeight = `${document.documentElement.scrollHeight}px`;
+  requestAnimationFrame(() => requestAnimationFrame(() => { document.body.style.minHeight = ''; }));
+}
+
 function Field({ label, children }) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -187,10 +196,10 @@ export default function App() {
   const [addingClimber, setAddingClimber] = useState(false);
 
   const imgWrapRef = useRef(null);
-  // Where the list (or logbook) was scrolled to when a problem was opened, so
-  // going back lands you on the same spot instead of wherever the detail view
-  // left off.
-  const returnScrollRef = useRef(null);
+  // Where the list, logbook or stats were scrolled to when you headed off
+  // somewhere, keyed by view, so going back lands you on the same spot instead
+  // of wherever the screen you're leaving left off.
+  const scrollSpotsRef = useRef({});
   const [segmentModule, setSegmentModule] = useState(null);
   // Whether THIS session's embedding (not just the session-wide model) is
   // ready -- the model only needs loading once per page session, but each
@@ -311,12 +320,15 @@ export default function App() {
   }, [view, selectedId]);
 
   useLayoutEffect(() => {
-    if (view !== 'list' && view !== 'logbook' && view !== 'stats') return;
-    // Landing on either one uses up the spot, so one left behind by leaving a
-    // problem some other way (saving an edit, say) can't jump the page later.
-    const saved = returnScrollRef.current;
-    returnScrollRef.current = null;
-    if (saved?.view === view) window.scrollTo(0, saved.y);
+    // Every screen shares the one page scroll, so each starts at the top unless
+    // you're coming back to a spot. Every trip starts from the list, so landing
+    // on it uses up the lot -- one left behind by leaving a problem some other
+    // way (saving an edit, say) can't jump the page later.
+    const spots = scrollSpotsRef.current;
+    const y = spots[view] ?? 0;
+    if (view === 'list') scrollSpotsRef.current = {};
+    else delete spots[view];
+    window.scrollTo(0, y);
   }, [view]);
 
   useEffect(() => {
@@ -452,12 +464,18 @@ export default function App() {
     setDraftHolds((prev) => [...prev, hold]);
   };
 
+  // Heads off from the list, logbook or stats, remembering where it was
+  // scrolled to for the way back.
+  const leaveFor = (next) => {
+    scrollSpotsRef.current[view] = window.scrollY;
+    holdPageHeight();
+    setView(next);
+  };
+
   const openProblem = (problemId, from) => {
-    returnScrollRef.current = { view: from, y: window.scrollY };
-    window.scrollTo(0, 0);
     setSelectedId(problemId); setConfirmingDelete(false); setShowLogForm(false); setTicks([]);
     setBackTo(from);
-    setView('detail');
+    leaveFor('detail');
   };
 
   const toggleLogbookDay = (date) => {
@@ -472,6 +490,7 @@ export default function App() {
     setDraftHolds([]); setName(''); setGrade(''); setSetter(currentClimber?.name || ''); setNotes(''); setPlaceType('start');
     setEditingId(null);
     setError('');
+    holdPageHeight();
     setView('new');
   };
 
@@ -767,13 +786,13 @@ export default function App() {
           ) : view === 'warmup-run' ? (
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>WARM-UP</h1>
           ) : (
-            <button onClick={() => { setSelectedId(null); setEditingId(null); setView(view === 'detail' ? backTo : 'list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
+            <button onClick={() => { setSelectedId(null); setEditingId(null); holdPageHeight(); setView(view === 'detail' ? backTo : 'list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
               <ChevronLeft size={18} /> {view === 'detail' && backTo === 'logbook' ? 'Logbook' : view === 'detail' && backTo === 'stats' ? 'Stats' : 'Board'}
             </button>
           )}
           {view === 'list' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => { setWarmupFocusId(null); setView('warmup'); }} aria-label="Warm-up" title="Warm-up" style={{
+            <button onClick={() => { setWarmupFocusId(null); leaveFor('warmup'); }} aria-label="Warm-up" title="Warm-up" style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', color: '#EDEAE3',
               border: '1px solid #3a3b3e', borderRadius: 8, width: 38, height: 38, padding: 0, cursor: 'pointer',
             }}>
@@ -861,7 +880,7 @@ export default function App() {
               <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
             </label>
             {board?.photo_url && (
-              <button onClick={() => { setMarking(null); setView('volumes'); }} style={{
+              <button onClick={() => { setMarking(null); leaveFor('volumes'); }} style={{
                 display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed #3a3b3e',
                 borderRadius: 10, padding: '10px 14px', fontSize: 13.5, color: '#a9abaf', cursor: 'pointer',
               }}>
@@ -961,10 +980,10 @@ export default function App() {
                   takes the rest of the row and the pill gives way with … before
                   the row would wrap; only below ~330px does it drop a line. */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: '1 1 0', minWidth: currentClimber ? 120 : 'auto' }}>
-              <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
+              <button onClick={() => leaveFor('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
                 <CalendarDays size={14} />
               </button>
-              <button onClick={() => setView('stats')} aria-label="Board stats" title="Board stats" style={iconButton}>
+              <button onClick={() => leaveFor('stats')} aria-label="Board stats" title="Board stats" style={iconButton}>
                 <Trophy size={14} />
               </button>
               {/* Just the name, cut off with … if it's long, so the pill and
@@ -1084,7 +1103,7 @@ export default function App() {
               {!currentClimber ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: '#8b8d91' }}>Select who you are to log a send</span>
-                  <button onClick={() => { returnScrollRef.current = { view: 'list', y: 0 }; setView('list'); setShowClimberPanel(true); }} style={{
+                  <button onClick={() => { scrollSpotsRef.current.list = 0; setView('list'); setShowClimberPanel(true); }} style={{
                     display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
                     color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
                   }}>Pick a climber</button>
@@ -1219,7 +1238,7 @@ export default function App() {
             openDays={openLogbookDays}
             onToggleDay={toggleLogbookDay}
             onOpenProblem={(problemId) => openProblem(problemId, 'logbook')}
-            onPickClimber={() => { returnScrollRef.current = { view: 'list', y: 0 }; setView('list'); setShowClimberPanel(true); }}
+            onPickClimber={() => { scrollSpotsRef.current.list = 0; setView('list'); setShowClimberPanel(true); }}
           />
         )}
 
