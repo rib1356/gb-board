@@ -23,3 +23,53 @@ export async function signOutOfTweaks() {
     // ignore
   }
 }
+
+export async function listInjuries() {
+  const { data, error } = await tweaksSupabase.from('injuries').select('*').order('created_at');
+  if (error) throw error;
+  return data;
+}
+
+export async function listCheckins() {
+  const { data, error } = await tweaksSupabase
+    .from('injury_checkins')
+    .select('*')
+    .order('checked_on')
+    .order('created_at');
+  if (error) throw error;
+  return data;
+}
+
+async function insertRow(table, fields) {
+  const { data, error } = await tweaksSupabase.from(table).insert(fields).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function updateRow(table, id, fields) {
+  const { data, error } = await tweaksSupabase
+    .from(table)
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function deleteRow(table, id) {
+  const { error } = await tweaksSupabase.from(table).delete().eq('id', id);
+  if (error) throw error;
+}
+
+export const createInjury = (fields) => insertRow('injuries', fields);
+export const updateInjury = (id, fields) => updateRow('injuries', id, fields);
+export const createCheckin = (fields) => insertRow('injury_checkins', fields);
+export const updateCheckin = (id, fields) => updateRow('injury_checkins', id, fields);
+export const deleteInjury = (id) => deleteRow('injuries', id);
+export const deleteCheckin = (id) => deleteRow('injury_checkins', id);
+
+// A lapsed or missing login: RLS denial, an expired JWT, or a plain 401.
+export function isSignedOutError(err) {
+  return err?.code === '42501' || err?.code === 'PGRST301' || err?.status === 401;
+}
