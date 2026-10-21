@@ -1414,6 +1414,60 @@ describe('App (logbook)', () => {
     expect(screen.getByText('Nothing logged yet')).toBeInTheDocument();
     expect(screen.queryAllByRole('button', { name: DAY_ROW })).toHaveLength(0);
   });
+  describe('Progress tab', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 8, 10, 12)); // Thu 10 Sept 2026
+    });
+    afterEach(() => vi.useRealTimers());
+
+    const tile = (label) => screen.getByText(label).parentElement;
+    const readout = () => screen.getByText(/^Week of/).closest('p');
+
+    it('switches to Progress, with your headline numbers and the latest week picked', async () => {
+      const user = await openAs('Rob');
+      await user.click(screen.getByRole('tab', { name: 'Progress' }));
+
+      expect(screen.getByRole('tab', { name: 'Progress' })).toHaveAttribute('aria-selected', 'true');
+      expect(tile('Hardest send')).toHaveTextContent('V5');
+      expect(tile('Sessions a week, last 4 weeks')).toHaveTextContent('0.5');
+      expect(tile('Problems ticked')).toHaveTextContent('2/3');
+      expect(readout().textContent).toBe('Week of 7 Sept · 1 session · top V3 · 1 problem');
+      expect(screen.queryAllByRole('button', { name: DAY_ROW })).toHaveLength(0);
+      expect(screen.getByText('Board ticklist')).toBeInTheDocument();
+    });
+
+    it('picks an earlier week with the arrow keys', async () => {
+      const user = await openAs('Rob');
+      await user.click(screen.getByRole('tab', { name: 'Progress' }));
+      fireEvent.keyDown(screen.getByRole('group', { name: /^Weekly charts/ }), { key: 'ArrowLeft' });
+      expect(readout().textContent).toBe('Week of 31 Aug · 1 session · top V5 · 2 problems');
+    });
+
+    it("reads 'no sessions' for a week you didn't climb", async () => {
+      vi.setSystemTime(new Date(2026, 8, 16, 12)); // Wed 16 Sept: this week is empty so far
+      const user = await openAs('Rob');
+      await user.click(screen.getByRole('tab', { name: 'Progress' }));
+      expect(readout().textContent).toBe('Week of 14 Sept · no sessions');
+    });
+
+    it('opens one of your most-climbed, and comes back to the Progress tab', async () => {
+      const user = await openAs('Rob');
+      await user.click(screen.getByRole('tab', { name: 'Progress' }));
+      expect(screen.getByRole('button', { name: /Crimpy Corner/ })).toHaveTextContent('×2');
+
+      await user.click(screen.getByRole('button', { name: /Crimpy Corner/ }));
+      expect(await screen.findByText('Log a send')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /logbook/i }));
+      expect(screen.getByRole('tab', { name: 'Progress' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it("prompts you to log a send when you haven't yet", async () => {
+      const user = await openAs('Tom');
+      await user.click(screen.getByRole('tab', { name: 'Progress' }));
+      expect(screen.getByText('Log a send to start your progress')).toBeInTheDocument();
+    });
+  });
 });
 
 describe('App (warm-up screen)', () => {

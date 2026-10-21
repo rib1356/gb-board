@@ -2,6 +2,7 @@ import { ChevronDown, Zap } from 'lucide-react';
 import { buildLogbook } from '../lib/sends';
 import { monthOf } from '../lib/dates';
 import { sectionHeading, visuallyHidden } from '../ui';
+import ProgressTab from './ProgressTab';
 
 const mono = "'JetBrains Mono', monospace";
 
@@ -90,7 +91,24 @@ function Sessions({ days, openDays, onToggleDay, onOpenProblem }) {
   });
 }
 
-export default function LogbookScreen({ problems, ticks, climber, openDays, onToggleDay, onOpenProblem, onPickClimber }) {
+const TABS = [['sessions', 'Sessions'], ['progress', 'Progress']];
+
+function Tabs({ tab, onChange }) {
+  return (
+    <div role="tablist" aria-label="Logbook view" style={{
+      display: 'flex', gap: 4, background: '#232427', border: '1px solid #2A2B2E', borderRadius: 999, padding: 3, marginBottom: 14,
+    }}>
+      {TABS.map(([value, label]) => (
+        <button key={value} role="tab" aria-selected={tab === value} onClick={() => onChange(value)} style={{
+          flex: 1, border: 'none', borderRadius: 999, padding: '6px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          fontFamily: "'Inter'", background: tab === value ? '#D9552B' : 'transparent', color: tab === value ? '#17181A' : '#8b8d91',
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+export default function LogbookScreen({ problems, ticks, climber, today, tab, onTabChange, openDays, onToggleDay, onOpenProblem, onPickClimber }) {
   if (!climber) {
     return (
       <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: '#8b8d91' }}>
@@ -112,7 +130,10 @@ export default function LogbookScreen({ problems, ticks, climber, openDays, onTo
       <p style={{ margin: '2px 0 16px', fontSize: 13, color: '#8b8d91' }}>
         {days.length > 0 ? `${count(days.length, 'session')} · ${count(sends, 'send')}` : 'Nothing logged yet'}
       </p>
-      <Sessions days={days} openDays={openDays} onToggleDay={onToggleDay} onOpenProblem={onOpenProblem} />
+      <Tabs tab={tab} onChange={onTabChange} />
+      {tab === 'progress'
+        ? <ProgressTab problems={problems} ticks={ticks} climber={climber.name} today={today} onOpenProblem={onOpenProblem} />
+        : <Sessions days={days} openDays={openDays} onToggleDay={onToggleDay} onOpenProblem={onOpenProblem} />}
     </div>
   );
 }
