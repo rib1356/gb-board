@@ -1206,6 +1206,20 @@ describe('App (climber picker)', () => {
     expect(screen.getByRole('button', { name: 'Logbook' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Board stats' })).toBeInTheDocument();
   });
+  it("never cuts off Who's climbing?, so it can still be read and tapped", async () => {
+    render(<App />);
+    const prompt = await screen.findByText("Who's climbing?");
+    expect(prompt).not.toHaveStyle({ maxWidth: '120px' });
+    expect(prompt).not.toHaveStyle({ textOverflow: 'ellipsis' });
+  });
+
+  it('cuts off only a long climber name, which gives way before the row would wrap', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Bartholomew-Smythe' }]);
+    render(<App />);
+    const pill = await screen.findByRole('button', { name: 'Climbing as Bartholomew-Smythe' });
+    expect(pill).toHaveStyle({ maxWidth: '120px', textOverflow: 'ellipsis' });
+  });
 });
 
 describe('App (flash)', () => {

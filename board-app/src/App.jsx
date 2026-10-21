@@ -960,7 +960,7 @@ export default function App() {
                   and a name-only pill keep the row on one line at 360px. The group
                   takes the rest of the row and the pill gives way with … before
                   the row would wrap; only below ~330px does it drop a line. */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: '1 1 0', minWidth: 120 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: '1 1 0', minWidth: currentClimber ? 120 : 'auto' }}>
               <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
                 <CalendarDays size={14} />
               </button>
@@ -973,9 +973,11 @@ export default function App() {
                 onClick={() => setShowClimberPanel((prev) => !prev)}
                 aria-label={currentClimber ? `Climbing as ${currentClimber.name}` : undefined}
                 style={{
-                  display: 'block', minWidth: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  background: 'none', border: '1px solid #3a3b3e', color: '#c7c8cb', borderRadius: 20,
-                  padding: '5px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  display: 'block', whiteSpace: 'nowrap', background: 'none', border: '1px solid #3a3b3e',
+                  color: '#c7c8cb', borderRadius: 20, padding: '5px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  // Only a name gives way; "Who's climbing?" is what you tap to
+                  // pick yourself, so it stays whole and the row wraps instead.
+                  ...(currentClimber && { minWidth: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }),
                 }}
               >
                 {currentClimber ? currentClimber.name : "Who's climbing?"}
