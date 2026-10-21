@@ -15,13 +15,24 @@ export async function signInToTweaks(password) {
   throw error;
 }
 
+const LOGIN_KEYS = ['board-app:tweaks-auth', 'board-app:tweaks-auth-user', 'board-app:tweaks-auth-code-verifier'];
+
 // Signs out this device only; a failed sign-out shouldn't stop the caller leaving.
+// With no signal, auth-js can give up before forgetting the stored login, so
+// it's removed here too, or the next long press would walk straight back in.
 export async function signOutOfTweaks() {
   try {
     await tweaksSupabase.auth.signOut({ scope: 'local' });
   } catch {
     // ignore
   }
+  LOGIN_KEYS.forEach((key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Nothing to forget if storage is unavailable.
+    }
+  });
 }
 
 export async function listInjuries() {

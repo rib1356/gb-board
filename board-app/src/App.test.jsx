@@ -2386,6 +2386,17 @@ describe('App (Tweaks door and board setup)', () => {
     expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
   });
 
+  it('signs out back to the board straight away, even with the server slow to answer', async () => {
+    signedIn();
+    signOutOfTweaks.mockReturnValue(new Promise(() => {}));
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(screen.getByText('THE BOARD')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('goes from Tweaks back to the board', async () => {
     signedIn();
     render(<App />);

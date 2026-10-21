@@ -48,13 +48,15 @@ export function useTweaks() {
     return ok;
   }, []);
 
+  // Everything goes from the screen before the server is told, so a slow or
+  // dropped signal never leaves the injuries showing.
   const signOut = useCallback(async () => {
-    await signOutOfTweaks();
     supersedeRefreshes();
     clearAllDrafts();
     setInjuries([]);
     setCheckins([]);
     setStatus('signed-out');
+    await signOutOfTweaks();
   }, [supersedeRefreshes]);
 
   // Run a write; a signed-out failure drops the status first, then every failure is passed on.

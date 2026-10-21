@@ -506,8 +506,8 @@ export default function App() {
   };
   const titlePress = useLongPress(openTweaks);
 
-  // Back to the board once a new photo or a sign-out lands -- unless Rob has
-  // moved on from the hub while it was on its way.
+  // Back to the board once a new photo lands -- unless Rob has moved on from
+  // the hub while it was on its way. (Sign-out goes back straight away.)
   const leaveHubForBoard = () => setView((v) => (v === 'tweaks' ? 'list' : v));
 
   const showInjury = (id) => {
@@ -1393,7 +1393,7 @@ export default function App() {
             uploading={uploading}
             onPhotoUpload={async (e) => { if (await handlePhotoUpload(e)) leaveHubForBoard(); }}
             onVolumes={() => { setMarking(null); leaveFor('volumes'); }}
-            onSignOut={async () => { await tweaks.signOut(); leaveHubForBoard(); }}
+            onSignOut={() => { tweaks.signOut(); setView('list'); }}
           />
         )}
 

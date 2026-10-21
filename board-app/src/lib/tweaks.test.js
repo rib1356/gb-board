@@ -89,6 +89,29 @@ describe('signOutOfTweaks', () => {
     mocks.client.auth.signOut.mockRejectedValue(new Error('offline'));
     await expect(signOutOfTweaks()).resolves.toBeUndefined();
   });
+
+  describe('forgets the login on this phone', () => {
+    const LOGIN_KEYS = ['board-app:tweaks-auth', 'board-app:tweaks-auth-user', 'board-app:tweaks-auth-code-verifier'];
+
+    beforeEach(() => {
+      localStorage.clear();
+      LOGIN_KEYS.forEach((key) => localStorage.setItem(key, '{"made":"up"}'));
+      localStorage.setItem('board-app:currentClimberId', 'c1');
+    });
+
+    it('even when the sign-out call fails with no signal', async () => {
+      mocks.client.auth.signOut.mockResolvedValue({ error: { name: 'AuthRetryableFetchError', status: 0 } });
+      await signOutOfTweaks();
+      LOGIN_KEYS.forEach((key) => expect(localStorage.getItem(key)).toBeNull());
+      expect(localStorage.getItem('board-app:currentClimberId')).toBe('c1');
+    });
+
+    it('even when the sign-out call throws', async () => {
+      mocks.client.auth.signOut.mockRejectedValue(new Error('offline'));
+      await expect(signOutOfTweaks()).resolves.toBeUndefined();
+      LOGIN_KEYS.forEach((key) => expect(localStorage.getItem(key)).toBeNull());
+    });
+  });
 });
 
 describe('injuries and check-ins', () => {

@@ -207,6 +207,17 @@ describe('useTweaks', () => {
       expect(result.current.checkins).toEqual([]);
     });
 
+    it('signOut empties everything straight away, without waiting on the server', async () => {
+      const { result } = await signedInHook();
+      signOutOfTweaks.mockReturnValue(new Promise(() => {}));
+      act(() => { result.current.signOut(); });
+      expect(result.current.status).toBe('signed-out');
+      expect(result.current.injuries).toEqual([]);
+      expect(result.current.checkins).toEqual([]);
+      expect(clearAllDrafts).toHaveBeenCalledTimes(1);
+      expect(signOutOfTweaks).toHaveBeenCalledTimes(1);
+    });
+
     it('drops a refresh that resolves after sign-out', async () => {
       const { result } = await signedInHook();
       let release;
