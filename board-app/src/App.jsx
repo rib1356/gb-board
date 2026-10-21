@@ -957,8 +957,10 @@ export default function App() {
               </div>
               {/* Beside the climber, not in the header -- a third header button
                   wraps the title on phones narrower than ~390px. Slim buttons
-                  and a name-only pill keep the row on one line at 360px. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  and a name-only pill keep the row on one line at 360px. The group
+                  takes the rest of the row and the pill gives way with … before
+                  the row would wrap; only below ~330px does it drop a line. */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: '1 1 0', minWidth: 120 }}>
               <button onClick={() => setView('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
                 <CalendarDays size={14} />
               </button>
@@ -971,9 +973,9 @@ export default function App() {
                 onClick={() => setShowClimberPanel((prev) => !prev)}
                 aria-label={currentClimber ? `Climbing as ${currentClimber.name}` : undefined}
                 style={{
-                  display: 'block', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  display: 'block', minWidth: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   background: 'none', border: '1px solid #3a3b3e', color: '#c7c8cb', borderRadius: 20,
-                  padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  padding: '5px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
                 }}
               >
                 {currentClimber ? currentClimber.name : "Who's climbing?"}

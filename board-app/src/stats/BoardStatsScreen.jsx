@@ -22,7 +22,9 @@ function Section({ title, note, children }) {
   );
 }
 
-function ProblemRow({ problem, meta, extra, first, onOpen }) {
+// meta sits on the right; sub, when given, goes on a second line under the
+// name so a long detail never squeezes the name out.
+function ProblemRow({ problem, meta, sub, extra, first, onOpen }) {
   return (
     <button onClick={() => onOpen(problem.id)} style={{
       width: '100%', display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none',
@@ -30,7 +32,10 @@ function ProblemRow({ problem, meta, extra, first, onOpen }) {
       textAlign: 'left', fontFamily: "'Inter'", fontSize: 13.5,
     }}>
       <span style={{ width: 24, flexShrink: 0, fontFamily: mono, fontSize: 12, fontWeight: 700, color: '#D9552B' }}>{problem.grade || '–'}</span>
-      <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{problem.name}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{problem.name}</span>
+        {sub && <span style={{ display: 'block', marginTop: 2, fontSize: 12, color: muted }}>{sub}</span>}
+      </span>
       {extra}
       {meta && <span style={{ fontSize: 12, color: muted, whiteSpace: 'nowrap' }}>{meta}</span>}
     </button>
@@ -141,7 +146,7 @@ export default function BoardStatsScreen({ problems, ticks, climberCount, today,
           {stats.open.map((p, i) => (
             <ProblemRow
               key={p.id} problem={p} first={i === 0} onOpen={onOpenProblem}
-              meta={[p.setter && `set by ${p.setter}`, p.daysOpen !== null && openLabel(p.daysOpen)].filter(Boolean).join(' · ')}
+              sub={[p.setter && `set by ${p.setter}`, p.daysOpen !== null && openLabel(p.daysOpen)].filter(Boolean).join(' · ')}
             />
           ))}
         </Section>
