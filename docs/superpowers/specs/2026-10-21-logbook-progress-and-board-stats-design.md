@@ -131,9 +131,10 @@ Top to bottom:
      week, and dragging moves through the weeks. The picked week gets a faint
      band across all four charts, and the readout updates. Keyboard: the panel
      is focusable, and the left and right arrow keys step through weeks.
-4. **Board ticklist:** a row per grade, V0 up to the hardest grade on the
-   board, with a track sized to that grade's problem count, filled for how
-   many you've ticked, and a "7/9" label. Ungraded problems are left out.
+4. **Board ticklist:** a row for each grade that has problems on the board,
+   easiest first, with a track sized to that grade's problem count, filled
+   for how many you've ticked, and a "7/9" label. Ungraded problems are left
+   out.
 5. **Your most-climbed:** your top 5 problems by how many sessions you've sent
    each one, with ties going to the most recent. Each row shows grade, name
    and "×12", and opens the problem.
@@ -220,7 +221,9 @@ can pin the date.
 - `ticklist(problems, ticks, climber)` → `[{ grade, ticked, total }]`.
 - `mostClimbed(problems, ticks, climber, limit = 5)` → `[{ id, name, grade,
   sessions }]`.
-- `weekStartOf(dateStr)`: the Monday of that date, as `YYYY-MM-DD`.
+Date helpers (`localDate`, `addDays`, `daysBetween`, `weekStartOf`,
+`monthOf`, `previousMonth`, `nextMonth`, `monthName`) live in
+`src/lib/dates.js` and are shared by both modules.
 
 ### `src/lib/boardStats.js` (whole board)
 

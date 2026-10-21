@@ -38,6 +38,7 @@ function chain(result) {
     is: vi.fn(() => builder),
     order: vi.fn(() => builder),
     limit: vi.fn(() => builder),
+    range: vi.fn(() => builder),
     single: vi.fn(() => Promise.resolve(result)),
     maybeSingle: vi.fn(() => Promise.resolve(result)),
     then: (resolve) => resolve(result),
@@ -210,15 +211,35 @@ describe('listTicks', () => {
 });
 
 describe('listBoardTicks', () => {
+  const tick = (n) => ({ id: `t${n}`, problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z' });
+
   it("lists every send on the board's problems, through the problem each one is on", async () => {
-    const rows = [{ id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T10:00:00Z' }];
-    const c = chain({ data: rows, error: null });
-    mocks.supabase.from.mockReturnValue(c);
+    const rows = [tick(1)];
+    const first = chain({ data: rows, error: null });
+    mocks.supabase.from.mockReturnValueOnce(first).mockReturnValueOnce(chain({ data: [], error: null }));
     const result = await listBoardTicks('b1');
     expect(result).toEqual(rows);
     expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
-    expect(c.select).toHaveBeenCalledWith('id, problem_id, sent_by, sent_on, created_at, flash, problems!inner(board_id)');
-    expect(c.eq).toHaveBeenCalledWith('problems.board_id', 'b1');
+    expect(first.select).toHaveBeenCalledWith('id, problem_id, sent_by, sent_on, created_at, flash, problems!inner(board_id)');
+    expect(first.eq).toHaveBeenCalledWith('problems.board_id', 'b1');
+    expect(first.order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(first.order).toHaveBeenCalledWith('id', { ascending: true });
+    expect(first.range).toHaveBeenCalledWith(0, 999);
+  });
+
+  it('keeps reading pages until one comes back empty, so nothing past 1,000 sends is lost', async () => {
+    const page1 = Array.from({ length: 1000 }, (_, i) => tick(i));
+    const page2 = [tick(1000), tick(1001), tick(1002)];
+    const second = chain({ data: page2, error: null });
+    const third = chain({ data: [], error: null });
+    mocks.supabase.from
+      .mockReturnValueOnce(chain({ data: page1, error: null }))
+      .mockReturnValueOnce(second)
+      .mockReturnValueOnce(third);
+    const result = await listBoardTicks('b1');
+    expect(result).toHaveLength(1003);
+    expect(second.range).toHaveBeenCalledWith(1000, 1999);
+    expect(third.range).toHaveBeenCalledWith(1003, 2002);
   });
 
   it('throws when the query fails', async () => {

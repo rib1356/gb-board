@@ -151,14 +151,25 @@ export async function listTicks(problemId) {
 }
 
 // Just enough of every send on the board to know who has sent what, without
-// fetching each problem's log.
+// fetching each problem's log. Supabase hands back at most 1,000 rows a
+// request (or whatever the project's cap is), so this reads a page at a time
+// until one comes back empty -- ordered, so a send can't slip between pages.
+const TICK_PAGE = 1000;
+
 export async function listBoardTicks(boardId) {
-  const { data, error } = await supabase
-    .from('ticks')
-    .select('id, problem_id, sent_by, sent_on, created_at, flash, problems!inner(board_id)')
-    .eq('problems.board_id', boardId);
-  if (error) throw error;
-  return data;
+  const all = [];
+  for (;;) {
+    const { data, error } = await supabase
+      .from('ticks')
+      .select('id, problem_id, sent_by, sent_on, created_at, flash, problems!inner(board_id)')
+      .eq('problems.board_id', boardId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(all.length, all.length + TICK_PAGE - 1);
+    if (error) throw error;
+    if (data.length === 0) return all;
+    all.push(...data);
+  }
 }
 
 export async function createTick(problemId, { sentOn, notes, sentBy, flash = false }) {

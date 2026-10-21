@@ -19,6 +19,7 @@ import VolumesScreen from './volumes/VolumesScreen';
 import LogbookScreen from './logbook/LogbookScreen';
 import FaceButtons from './volumes/FaceButtons';
 import { todayISO } from './lib/warmup';
+import { localDate } from './lib/dates';
 
 // Dynamically imported so the segmentation library (and its model weights)
 // only load once someone actually opens "New problem" -- most visits are
@@ -132,8 +133,10 @@ export default function App() {
   const [view, setView] = useState('list'); // list | new | edit-details | detail
   // Where Back on a problem goes -- the list, or the logbook it was opened from.
   const [backTo, setBackTo] = useState('list');
-  // Logbook days stay open while you look at one of their problems and come back.
+  // Logbook days stay open, and the tab stays picked, while you look at one
+  // of their problems and come back.
   const [openLogbookDays, setOpenLogbookDays] = useState(() => new Set());
+  const [logbookTab, setLogbookTab] = useState('sessions');
   const [selectedId, setSelectedId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -1177,6 +1180,9 @@ export default function App() {
             problems={problems}
             ticks={boardTicks}
             climber={currentClimber}
+            today={localDate()}
+            tab={logbookTab}
+            onTabChange={setLogbookTab}
             openDays={openLogbookDays}
             onToggleDay={toggleLogbookDay}
             onOpenProblem={(problemId) => openProblem(problemId, 'logbook')}
