@@ -9,7 +9,7 @@ import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
 import { inputStyle, sectionHeading, formatShortDate } from './ui';
-import { firstAscents, repeatsLabel } from './lib/boardStats';
+import { firstAscents } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
 import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
 import { usePullToRefresh, PULL_THRESHOLD } from './usePullToRefresh';
@@ -744,7 +744,7 @@ export default function App() {
   if (view === 'detail' && selected) {
     const fa = firstAscents(problems, boardTicks).get(selected.id);
     if (fa === undefined) faText = 'No FA yet · up for grabs';
-    else if (fa) faText = `FA ${fa.climber} · ${formatShortDate(fa.date)} · ${repeatsLabel(fa.repeats)}`;
+    else if (fa) faText = `FA ${fa.climber} · ${formatShortDate(fa.date)}`;
   }
 
   if (loading) {

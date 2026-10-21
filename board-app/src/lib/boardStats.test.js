@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   crewBoard, firstAscents, latestFAs, faTally, classics, popularLately, openProjects, leastClimbedLately,
-  daysAgoLabel, openLabel, repeatsLabel,
+  daysAgoLabel, openLabel,
 } from './boardStats';
 
 const P = (id, name, grade, extra = {}) => ({ id, name, grade, setter: 'Rob', rating: null, created_at: '2026-09-01T12:00:00Z', ...extra });
@@ -54,7 +54,7 @@ describe('firstAscents', () => {
       T('t4', 'p1', 'Will', '2026-09-11'),
     ];
     expect(firstAscents(PROBLEMS, ticks).get('p1')).toEqual({
-      climber: 'Rob', date: '2026-09-02', loggedAt: '2026-09-02T09:00:00Z', repeats: 2,
+      climber: 'Rob', date: '2026-09-02', loggedAt: '2026-09-02T09:00:00Z',
     });
   });
 
@@ -167,6 +167,5 @@ describe('labels', () => {
   it('reads naturally for 0, 1 and many', () => {
     expect([0, 1, 8].map(daysAgoLabel)).toEqual(['today', 'yesterday', '8 days ago']);
     expect([0, 1, 34].map(openLabel)).toEqual(['set today', 'open 1 day', 'open 34 days']);
-    expect([0, 1, 3].map(repeatsLabel)).toEqual(['no repeats yet', '1 repeat', '3 repeats']);
   });
 });

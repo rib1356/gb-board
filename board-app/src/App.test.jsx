@@ -1554,11 +1554,11 @@ describe('App (board stats)', () => {
     expect(screen.getByText('No sends yet in November')).toBeInTheDocument();
     expect(screen.getByText('Last month: Shawn ticked the most new problems (2)')).toBeInTheDocument();
   });
-  it('shows who got the FA on a problem, with its repeats', async () => {
+  it('shows who got the FA on a problem, and when', async () => {
     render(<App />);
     const user = userEvent.setup();
     await user.click(await screen.findByText('Gaston Traverse'));
-    expect(await screen.findByText('FA Rob · 2 Oct · 1 repeat')).toBeInTheDocument();
+    expect(await screen.findByText('FA Rob · 2 Oct')).toBeInTheDocument();
   });
 
   it("says a problem nobody has sent is up for grabs", async () => {

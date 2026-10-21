@@ -191,8 +191,8 @@ Back returns here ("‹ Stats") at the same scroll position.
 
 Under "Set by …", with a small gold trophy icon:
 
-- **FA exists:** "FA Rob · 20 Oct · 1 repeat" ("no repeats yet" for none,
-  "3 repeats" for more than one).
+- **FA exists:** "FA Rob · 20 Oct". (A repeats count was dropped after
+  launch: the send list below already shows who has sent it.)
 - **Never sent:** "No FA yet · up for grabs".
 - **First send was logged before climber names:** no line.
 
@@ -229,7 +229,7 @@ Date helpers (`localDate`, `addDays`, `daysBetween`, `weekStartOf`,
 
 - `crewBoard(problems, ticks, month)` → rows as above. `month` is `YYYY-MM`.
 - `firstAscents(problems, ticks)` → `Map(problemId → { climber, date,
-  repeats } | null)`.
+  loggedAt } | null)`.
 - `latestFAs(problems, ticks, limit = 5)` and `faTally(problems, ticks)`.
 - `classics(problems, ticks, limit = 5)`.
 - `popularLately(problems, ticks, today, limit = 5)`.
@@ -278,7 +278,6 @@ Chart colours reuse the app's tokens: accent `#D9552B` for marks, gridlines
   - leaders and ties;
   - an FA whose first send has no name gives no FA, and nobody else is
     credited;
-  - repeats count different climbers;
   - classics ordering;
   - popular lately's 30-day window;
   - open projects ordering and "open N days";

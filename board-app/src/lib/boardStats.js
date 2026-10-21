@@ -58,13 +58,13 @@ export function crewBoard(problems, ticks, month) {
 
 // The FA is the first send. If that was logged before climber names existed,
 // nobody gets it -- not even whoever sent it next. Problems never sent aren't
-// in the map. Repeats are the other climbers who've sent it.
+// in the map.
 export function firstAscents(problems, ticks) {
   const fas = new Map();
   for (const [id, list] of groupByProblem(liveTicks(problems, ticks))) {
     const first = [...list].sort(earliestFirst)[0];
     fas.set(id, first.sent_by
-      ? { climber: first.sent_by, date: first.sent_on, loggedAt: first.created_at, repeats: climbersOn(list).size - 1 }
+      ? { climber: first.sent_by, date: first.sent_on, loggedAt: first.created_at }
       : null);
   }
   return fas;
@@ -156,9 +156,4 @@ export function daysAgoLabel(days) {
 export function openLabel(days) {
   if (days <= 0) return 'set today';
   return `open ${days} ${days === 1 ? 'day' : 'days'}`;
-}
-
-export function repeatsLabel(repeats) {
-  if (repeats === 0) return 'no repeats yet';
-  return `${repeats} ${repeats === 1 ? 'repeat' : 'repeats'}`;
 }
