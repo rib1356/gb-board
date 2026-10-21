@@ -127,7 +127,7 @@ create index on injury_checkins (injury_id, checked_on);
 
 alter table injuries enable row level security;
 alter table injury_checkins enable row level security;
-revoke all on injuries, injury_checkins from anon;
+revoke all on injuries, injury_checkins from anon, authenticated;
 grant select, insert, update, delete on injuries, injury_checkins to authenticated;
 
 do $$

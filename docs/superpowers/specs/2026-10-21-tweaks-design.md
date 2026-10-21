@@ -214,7 +214,7 @@ create index on injury_checkins (injury_id, checked_on);
 
 alter table injuries enable row level security;
 alter table injury_checkins enable row level security;
-revoke all on injuries, injury_checkins from anon;
+revoke all on injuries, injury_checkins from anon, authenticated;
 grant select, insert, update, delete on injuries, injury_checkins to authenticated;
 
 do $$
@@ -236,7 +236,7 @@ end $$;
   imported history has one day with two entries. The UI still treats a date
   as a single check-in: it opens the most recently created one.
 - The full schema SQL in `2026-08-22-board-problem-tracker-mvp-design.md`
-  needs these tables added (the policy looks the id up, so there's no placeholder).
+  includes these tables, with the same SQL as above.
 - The SQL goes to Rob **in the chat**, in order, as steps he has to do. It
   must not only live in a spec.
 - After he runs it, a probe with the anon key from `board-app/.env` should get
