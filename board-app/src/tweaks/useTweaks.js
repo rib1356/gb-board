@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getTweaksSession, signInToTweaks, signOutOfTweaks, isSignedOutError,
   listInjuries, listCheckins, createInjury, updateInjury, deleteInjury as removeInjury,
@@ -24,6 +24,14 @@ export function useTweaks() {
   const [checkins, setCheckins] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  // Bumped by sign-out, every refresh and every landed write, so an older
+  // refresh that resolves late is dropped instead of overwriting newer state.
+  const generation = useRef(0);
+
+  const supersedeRefreshes = useCallback(() => {
+    generation.current += 1;
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,34 +50,41 @@ export function useTweaks() {
 
   const signOut = useCallback(async () => {
     await signOutOfTweaks();
+    supersedeRefreshes();
     clearAllDrafts();
     setInjuries([]);
     setCheckins([]);
     setStatus('signed-out');
-  }, []);
+  }, [supersedeRefreshes]);
 
   // Run a write; a signed-out failure drops the status first, then every failure is passed on.
   const run = useCallback(async (action) => {
     try {
-      return await action();
+      const result = await action();
+      supersedeRefreshes();
+      return result;
     } catch (err) {
       if (isSignedOutError(err)) setStatus('signed-out');
       throw err;
     }
-  }, []);
+  }, [supersedeRefreshes]);
 
   const refresh = useCallback(async () => {
+    generation.current += 1;
+    const mine = generation.current;
     setLoading(true);
     setLoadError('');
     try {
       const [nextInjuries, nextCheckins] = await Promise.all([listInjuries(), listCheckins()]);
+      if (generation.current !== mine) return;
       setInjuries(nextInjuries);
       setCheckins(nextCheckins);
     } catch (err) {
+      if (generation.current !== mine) return;
       if (isSignedOutError(err)) setStatus('signed-out');
       else setLoadError(LOAD_ERROR);
     } finally {
-      setLoading(false);
+      if (generation.current === mine) setLoading(false);
     }
   }, []);
 

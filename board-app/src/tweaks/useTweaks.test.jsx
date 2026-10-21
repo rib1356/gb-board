@@ -206,5 +206,35 @@ describe('useTweaks', () => {
       expect(result.current.injuries).toEqual([]);
       expect(result.current.checkins).toEqual([]);
     });
+
+    it('drops a refresh that resolves after sign-out', async () => {
+      const { result } = await signedInHook();
+      let release;
+      listInjuries.mockReturnValue(new Promise((r) => { release = r; }));
+      listCheckins.mockResolvedValue([C1]);
+      let pending;
+      act(() => { pending = result.current.refresh(); });
+      await act(async () => { await result.current.signOut(); });
+      await act(async () => { release([I1]); await pending; });
+      expect(result.current.injuries).toEqual([]);
+      expect(result.current.checkins).toEqual([]);
+      expect(result.current.loading).toBe(false);
+    });
+
+    it('keeps a row saved while a refresh was pending', async () => {
+      const { result } = await signedInHook();
+      let release;
+      listInjuries.mockReturnValue(new Promise((r) => { release = r; }));
+      listCheckins.mockResolvedValue([C1, C2]);
+      let pending;
+      act(() => { pending = result.current.refresh(); });
+      const row = { id: 'c3', injury_id: 'i1', pain: 2 };
+      createCheckin.mockResolvedValue(row);
+      await act(async () => {
+        await result.current.saveCheckin({ action: 'create', fields: {} });
+      });
+      await act(async () => { release([I1, I2]); await pending; });
+      expect(result.current.checkins).toContainEqual(row);
+    });
   });
 });
