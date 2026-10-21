@@ -18,4 +18,13 @@ describe('supabaseClient', () => {
     const { supabase } = await import('./supabaseClient');
     expect(supabase.from).toBeInstanceOf(Function);
   });
+
+  it('gives Tweaks its own client, so signing in never touches the board client', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'test-anon-key');
+    const { supabase, tweaksSupabase } = await import('./supabaseClient');
+    expect(tweaksSupabase).not.toBe(supabase);
+    expect(tweaksSupabase.auth.storageKey).toBe('board-app:tweaks-auth');
+    expect(supabase.auth.storageKey).not.toBe('board-app:tweaks-auth');
+  });
 });

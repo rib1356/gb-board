@@ -10,3 +10,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Separate client and storage key so the Tweaks login never touches the board's session.
+export const tweaksSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { storageKey: 'board-app:tweaks-auth' },
+});
