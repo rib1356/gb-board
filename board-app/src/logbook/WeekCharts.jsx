@@ -15,6 +15,8 @@ const MONO = "'JetBrains Mono', monospace";
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // Past this many weeks a dot on every week turns the line into a string of beads.
 const DOTS_UP_TO = 20;
+// How far a finger has to move sideways before it counts as a drag.
+const DRAG_START = 6;
 
 const eyebrow = { ...sectionHeading, fontSize: 10.5, margin: '0 0 6px' };
 const legendKey = (color) => ({ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: color, marginRight: 5, verticalAlign: -1 });
@@ -30,6 +32,8 @@ const unique = (values) => [...new Set(values)];
 
 export default function WeekCharts({ weeks, total, selected, onSelect }) {
   const plotRef = useRef(null);
+  // Where the current touch started, and whether it's become a sideways drag.
+  const gesture = useRef(null);
   const n = weeks.length;
   const pitch = (W - LX) / n;
   const cx = (i) => LX + i * pitch + pitch / 2;
@@ -37,7 +41,9 @@ export default function WeekCharts({ weeks, total, selected, onSelect }) {
   const showDot = (i) => n <= DOTS_UP_TO || i === selected || i === n - 1;
 
   // A tap picks the nearest week, so a 6px column is still easy to hit, and
-  // dragging keeps picking as you go.
+  // a sideways drag keeps picking as you go. Nothing happens on touch-down:
+  // on a phone most touches here are the start of a scroll, which the
+  // browser takes over with a pointercancel.
   const pick = (clientX) => {
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect?.width) return;
@@ -102,8 +108,21 @@ export default function WeekCharts({ weeks, total, selected, onSelect }) {
       tabIndex={0}
       aria-label="Weekly charts. Use the left and right arrow keys to pick a week."
       onKeyDown={onKeyDown}
-      onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); pick(e.clientX); }}
-      onPointerMove={(e) => { if (e.buttons) pick(e.clientX); }}
+      onPointerDown={(e) => { gesture.current = { x: e.clientX, dragging: false }; }}
+      onPointerMove={(e) => {
+        const g = gesture.current;
+        if (!g) return;
+        if (!g.dragging && Math.abs(e.clientX - g.x) > DRAG_START) {
+          g.dragging = true;
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        }
+        if (g.dragging) pick(e.clientX);
+      }}
+      onPointerUp={(e) => {
+        if (gesture.current && !gesture.current.dragging) pick(e.clientX);
+        gesture.current = null;
+      }}
+      onPointerCancel={() => { gesture.current = null; }}
       style={{
         background: SURFACE, border: '1px solid #2A2B2E', borderRadius: 10, padding: 11, marginBottom: 10,
         touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'pointer',
