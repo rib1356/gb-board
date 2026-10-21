@@ -92,6 +92,11 @@ describe('InjuryPage', () => {
     expect(onOpenInjury).toHaveBeenCalledWith('i0');
   });
 
+  it('leaves out the separator for an earlier log with no what', () => {
+    renderPage({ injuries: [injury, { ...earlier, what: null }] });
+    expect(button('RH ring finger · Mar 25')).toBeTruthy();
+  });
+
   it('hides Same spot before with no match', () => {
     renderPage({ injuries: [injury] });
     expect(screen.queryByText('Same spot before')).toBeNull();

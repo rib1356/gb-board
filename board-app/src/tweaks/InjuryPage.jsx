@@ -74,7 +74,7 @@ export default function InjuryPage({
           <h2 style={sectionHeading}>Same spot before</h2>
           {before.map((other) => (
             <button key={other.id} onClick={() => onOpenInjury(other.id)} style={{ ...card, color: '#C08552', fontWeight: 600 }}>
-              {`${injuryTitle(other)} · ${other.what ?? ''} · ${monthYear(injuryStart(other, checkins))}`}
+              {[injuryTitle(other), other.what, monthYear(injuryStart(other, checkins))].filter(Boolean).join(' · ')}
             </button>
           ))}
         </>
