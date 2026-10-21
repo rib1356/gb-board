@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import WeekCharts from './WeekCharts';
 
@@ -50,5 +50,44 @@ describe('WeekCharts', () => {
     expect(container.querySelectorAll('[data-chart="sessions"] path')).toHaveLength(1);
     expect(container.querySelectorAll('[data-chart="grade"] circle')).toHaveLength(1);
     expect(container.innerHTML).not.toContain('NaN');
+  });
+  describe('picking a week by touch', () => {
+    // The charts are drawn 326 wide with a 24px gutter, so with the panel
+    // stubbed at 326px a pointer's x lands straight on the viewBox: three
+    // weeks are ~100px apart, starting at x=24.
+    const stubWidth = () => vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ left: 0, top: 0, width: 326, height: 400, right: 326, bottom: 400, x: 0, y: 0 });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('picks the week you tap', () => {
+      stubWidth();
+      const onSelect = vi.fn();
+      render(<WeekCharts weeks={WEEKS} total={10} selected={2} onSelect={onSelect} />);
+      fireEvent.pointerDown(charts(), { clientX: 60, pointerId: 1 });
+      fireEvent.pointerUp(charts(), { clientX: 60, pointerId: 1 });
+      expect(onSelect).toHaveBeenLastCalledWith(0);
+    });
+
+    it('leaves the picked week alone when a touch turns into a scroll', () => {
+      stubWidth();
+      const onSelect = vi.fn();
+      render(<WeekCharts weeks={WEEKS} total={10} selected={2} onSelect={onSelect} />);
+      fireEvent.pointerDown(charts(), { clientX: 60, pointerId: 1 });
+      fireEvent.pointerCancel(charts(), { clientX: 60, pointerId: 1 });
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('moves through the weeks as you drag sideways', () => {
+      stubWidth();
+      const onSelect = vi.fn();
+      render(<WeekCharts weeks={WEEKS} total={10} selected={2} onSelect={onSelect} />);
+      fireEvent.pointerDown(charts(), { clientX: 60, pointerId: 1, buttons: 1 });
+      fireEvent.pointerMove(charts(), { clientX: 62, pointerId: 1, buttons: 1 });
+      expect(onSelect).not.toHaveBeenCalled();
+      fireEvent.pointerMove(charts(), { clientX: 200, pointerId: 1, buttons: 1 });
+      expect(onSelect).toHaveBeenLastCalledWith(1);
+      fireEvent.pointerMove(charts(), { clientX: 300, pointerId: 1, buttons: 1 });
+      expect(onSelect).toHaveBeenLastCalledWith(2);
+    });
   });
 });
