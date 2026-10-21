@@ -66,6 +66,12 @@ export default function CheckinSheet({ injury, checkins, boardDays, today, editi
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const notesRef = useRef(null);
   const notesId = useId();
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     if (touched) saveDraft(injury.id, { draft, editingId });
@@ -140,8 +146,11 @@ export default function CheckinSheet({ injury, checkins, boardDays, today, editi
   const existingOnDate = editingId ? null : checkinOn(checkins, injury.id, draft.checked_on);
 
   // Clears the draft and closes once the write lands; on a failure everything
-  // stays as it was, draft included.
+  // stays as it was, draft included. Closed while the write was on its way and
+  // opened again, the newer sheet stays open and keeps anything typed since:
+  // only the draft that was sent is cleared.
   const finish = async (write) => {
+    const sent = JSON.stringify({ draft, editingId });
     setBusy(true);
     setError('');
     try {
@@ -151,9 +160,9 @@ export default function CheckinSheet({ injury, checkins, boardDays, today, editi
       setBusy(false);
       return;
     }
-    clearDraft(injury.id);
+    if (JSON.stringify(loadDraft(injury.id)) === sent) clearDraft(injury.id);
     setBusy(false);
-    onClose();
+    if (mounted.current) onClose();
   };
 
   const save = () => finish(() => onSave(planCheckinSave({ draft, editingId, existingOnDate })));

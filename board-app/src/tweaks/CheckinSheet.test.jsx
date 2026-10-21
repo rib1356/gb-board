@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import CheckinSheet from './CheckinSheet';
 import { loadDraft } from '../lib/checkinDrafts';
 
@@ -237,6 +237,44 @@ describe('CheckinSheet', () => {
     expect(button('Save check-in')).toBeDisabled();
     save();
     expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  describe('closed while a save is on its way', () => {
+    function slowSave() {
+      let land;
+      const onSave = vi.fn(() => new Promise((resolve) => { land = resolve; }));
+      return { onSave, land: () => act(async () => { land({}); }) };
+    }
+
+    it('clears the draft once the save lands', async () => {
+      const { onSave, land } = slowSave();
+      const first = renderSheet({ onSave });
+      type('Felt fine');
+      save();
+      fireEvent.click(screen.getByRole('dialog'));
+      first.unmount();
+      await land();
+      expect(loadDraft('i1')).toBeNull();
+      expect(first.onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves a sheet opened again, and what was typed in it since, alone when the save lands', async () => {
+      const { onSave, land } = slowSave();
+      const first = renderSheet({ onSave });
+      type('Felt fine');
+      save();
+      fireEvent.click(screen.getByRole('dialog'));
+      first.unmount();
+
+      const second = renderSheet();
+      expect(notes()).toHaveValue('Felt fine');
+      type('Felt fine, bit sore by the evening');
+      await land();
+      expect(loadDraft('i1')?.draft.notes).toBe('Felt fine, bit sore by the evening');
+      expect(first.onClose).toHaveBeenCalledTimes(1);
+      expect(second.onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
   });
 
   it('keeps a draft after a tap outside, and Discard throws it away', () => {
