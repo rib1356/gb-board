@@ -1385,13 +1385,19 @@ export default function App() {
             injuries={tweaks.injuries}
             checkins={tweaks.checkins}
             today={localDate()}
+            loading={tweaks.loading}
             loadError={tweaks.loadError}
             onOpenInjury={(id) => { setInjuryId(id); leaveFor('injury'); }}
             onCheckIn={(id) => openCheckin(id)}
             onNewInjury={() => leaveFor('injury-new')}
             hasPhoto={!!board?.photo_url}
             uploading={uploading}
-            onPhotoUpload={async (e) => { if (await handlePhotoUpload(e)) leaveHubForBoard(); }}
+            onPhotoUpload={async (e) => {
+              if (!(await handlePhotoUpload(e))) return;
+              // The new photo sits at the top of the board.
+              scrollSpotsRef.current.list = 0;
+              leaveHubForBoard();
+            }}
             onVolumes={() => { setMarking(null); leaveFor('volumes'); }}
             onSignOut={() => { tweaks.signOut(); setView('list'); }}
           />

@@ -40,7 +40,7 @@ vi.mock('./lib/tweaks', () => ({
   createCheckin: vi.fn(),
   updateCheckin: vi.fn(),
   deleteCheckin: vi.fn(),
-  isSignedOutError: (e) => e?.code === '42501' || e?.code === 'PGRST301' || e?.status === 401,
+  isSignedOutError: (e) => e?.code === '42501' || e?.code === 'PGRST301' || e?.code === 'PGRST303' || e?.status === 401,
 }));
 vi.mock('./lib/segment', () => ({
   loadSegmenter: vi.fn(),
@@ -2118,6 +2118,22 @@ describe('App (scroll position)', () => {
     await user.click(await screen.findByRole('button', { name: /board/i }));
     await screen.findByText('THE BOARD');
     expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+  });
+
+  it('lands at the top of the board after a new photo from Tweaks, with the photo in view', async () => {
+    getTweaksSession.mockResolvedValue({ user: { id: 'u1' } });
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, photo_url: 'https://cdn.example/b1.jpg' });
+    resizeFileToBlob.mockResolvedValue(new Blob(['x']));
+    uploadBoardPhoto.mockResolvedValue({ ...BOARD, photo_url: 'https://cdn.example/new.jpg' });
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Crimpy Corner');
+    await holdTitle();
+    scrollTo.mockClear();
+    await user.upload(screen.getByLabelText('New photo'), new File(['x'], 'b.jpg', { type: 'image/jpeg' }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
   });
 });
 

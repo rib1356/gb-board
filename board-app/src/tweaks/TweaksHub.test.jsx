@@ -19,7 +19,7 @@ const C = (id, checked_on) => ({
 
 function renderHub(props = {}) {
   const all = {
-    injuries: [], checkins: [], today: TODAY, loadError: '',
+    injuries: [], checkins: [], today: TODAY, loading: false, loadError: '',
     onOpenInjury: vi.fn(), onCheckIn: vi.fn(), onNewInjury: vi.fn(),
     hasPhoto: true, uploading: false, onPhotoUpload: vi.fn(), onVolumes: vi.fn(), onSignOut: vi.fn(),
     ...props,
@@ -76,6 +76,17 @@ describe('TweaksHub', () => {
     const { onNewInjury } = renderHub();
     fireEvent.click(screen.getByRole('button', { name: '+ New injury' }));
     expect(onNewInjury).toHaveBeenCalled();
+  });
+
+  it('holds back the empty line while the first load is on its way', () => {
+    renderHub({ loading: true });
+    expect(screen.queryByText('Nothing tweaky. Long may it last.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ New injury' })).toBeInTheDocument();
+  });
+
+  it('keeps the empty line through a reload once the logs are in', () => {
+    renderHub({ loading: true, injuries: [wrist] });
+    expect(screen.getByText('Nothing tweaky. Long may it last.')).toBeInTheDocument();
   });
 
   it('shows a load error in place of the empty line', () => {

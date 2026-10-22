@@ -194,6 +194,7 @@ describe('isSignedOutError', () => {
   it('spots the errors a lapsed login produces', () => {
     expect(isSignedOutError({ code: '42501' })).toBe(true);
     expect(isSignedOutError({ code: 'PGRST301' })).toBe(true);
+    expect(isSignedOutError({ code: 'PGRST303', message: 'JWT expired' })).toBe(true);
     expect(isSignedOutError({ status: 401 })).toBe(true);
     expect(isSignedOutError({ message: 'Failed to fetch' })).toBe(false);
     expect(isSignedOutError(null)).toBe(false);

@@ -80,7 +80,7 @@ export const updateCheckin = (id, fields) => updateRow('injury_checkins', id, fi
 export const deleteInjury = (id) => deleteRow('injuries', id);
 export const deleteCheckin = (id) => deleteRow('injury_checkins', id);
 
-// A lapsed or missing login: RLS denial, an expired JWT, or a plain 401.
+// A lapsed or missing login: RLS denial, a bad or expired JWT, or a plain 401.
 export function isSignedOutError(err) {
-  return err?.code === '42501' || err?.code === 'PGRST301' || err?.status === 401;
+  return err?.code === '42501' || err?.code === 'PGRST301' || err?.code === 'PGRST303' || err?.status === 401;
 }

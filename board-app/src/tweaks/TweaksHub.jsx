@@ -23,10 +23,12 @@ const logRow = {
 const titleAndWhat = (injury) => [injuryTitle(injury), injury.what].filter(Boolean).join(' · ');
 
 export default function TweaksHub({
-  injuries, checkins, today, loadError, onOpenInjury, onCheckIn, onNewInjury,
+  injuries, checkins, today, loading, loadError, onOpenInjury, onCheckIn, onNewInjury,
   hasPhoto, uploading, onPhotoUpload, onVolumes, onSignOut,
 }) {
   const { open, closed } = hubLists(injuries, checkins);
+  // Not while the first load is still on its way, when there's nothing to go on yet.
+  const showEmpty = open.length === 0 && !loadError && !(loading && injuries.length === 0);
 
   return (
     <div>
@@ -46,7 +48,7 @@ export default function TweaksHub({
           <button onClick={() => onCheckIn(injury.id)} style={{ ...primaryButton(true), width: '100%' }}>Check in</button>
         </div>
       ))}
-      {open.length === 0 && !loadError && (
+      {showEmpty && (
         <p style={{ fontSize: 13.5, color: '#8b8d91', margin: 0 }}>Nothing tweaky. Long may it last.</p>
       )}
 

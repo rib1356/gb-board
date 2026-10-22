@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import UnlockSheet from './UnlockSheet';
 
+vi.mock('../lib/supabaseClient', () => ({ tweaksSupabase: {} }));
+
 const type = (value) => fireEvent.change(screen.getByLabelText('Password'), { target: { value } });
 const submit = () => fireEvent.submit(screen.getByLabelText('Password').closest('form'));
 
@@ -34,6 +36,17 @@ describe('UnlockSheet', () => {
     type('hunter22');
     submit();
     expect(await screen.findByText("Couldn't reach the server — try again.")).toBeInTheDocument();
+  });
+
+  it('names the account alongside the password, so iOS offers to save it', () => {
+    render(<UnlockSheet onUnlock={vi.fn()} onClose={() => {}} />);
+    const form = screen.getByLabelText('Password').closest('form');
+    const username = form.querySelector('input[autocomplete="username"]');
+    expect(username).toHaveValue('tweaks@example.com');
+    expect(username).toHaveAttribute('readonly');
+    expect(username).toHaveAttribute('tabindex', '-1');
+    expect(username).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByLabelText('Password')).toHaveFocus();
   });
 
   it('closes on a tap outside', () => {
