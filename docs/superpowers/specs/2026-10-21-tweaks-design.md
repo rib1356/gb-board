@@ -214,22 +214,29 @@ create index on injury_checkins (injury_id, checked_on);
 
 alter table injuries enable row level security;
 alter table injury_checkins enable row level security;
-revoke all on injuries, injury_checkins from anon;
+revoke all on injuries, injury_checkins from anon, authenticated;
 grant select, insert, update, delete on injuries, injury_checkins to authenticated;
 
-create policy "Rob only" on injuries for all to authenticated
-  using (auth.uid() = '<ROB_USER_ID>') with check (auth.uid() = '<ROB_USER_ID>');
-create policy "Rob only" on injury_checkins for all to authenticated
-  using (auth.uid() = '<ROB_USER_ID>') with check (auth.uid() = '<ROB_USER_ID>');
+do $$
+declare rob uuid := (select id from auth.users where email = 'tweaks@example.com');
+begin
+  if rob is null then
+    raise exception 'Create the tweaks@example.com user in Authentication first';
+  end if;
+  execute format('create policy "Rob only" on injuries for all to authenticated using (auth.uid() = %L) with check (auth.uid() = %L)', rob, rob);
+  execute format('create policy "Rob only" on injury_checkins for all to authenticated using (auth.uid() = %L) with check (auth.uid() = %L)', rob, rob);
+end $$;
 ```
 
-- `<ROB_USER_ID>` is the UUID of the account Rob creates. The SQL handed to
-  him should have it filled in.
+- The policies look Rob's user id up from `tweaks@example.com`, so nobody
+  pastes an id. The SQL raises if that user doesn't exist yet. Run it as
+  one transaction (`begin; … commit;`) so a failed run leaves nothing
+  behind. The same SQL, with `begin`/`commit`, is in the MVP spec.
 - There's deliberately no unique constraint on `(injury_id, checked_on)`. The
   imported history has one day with two entries. The UI still treats a date
   as a single check-in: it opens the most recently created one.
 - The full schema SQL in `2026-08-22-board-problem-tracker-mvp-design.md`
-  needs these tables added (with the placeholder, not the real id).
+  includes these tables, with the same SQL as above.
 - The SQL goes to Rob **in the chat**, in order, as steps he has to do. It
   must not only live in a spec.
 - After he runs it, a probe with the anon key from `board-app/.env` should get

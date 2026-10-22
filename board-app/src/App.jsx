@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, CalendarDays, Trophy, Zap } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
@@ -22,10 +22,15 @@ import BoardStatsScreen from './stats/BoardStatsScreen';
 import FaceButtons from './volumes/FaceButtons';
 import TweaksHub from './tweaks/TweaksHub';
 import UnlockSheet from './tweaks/UnlockSheet';
+import InjuryPage from './tweaks/InjuryPage';
+import InjuryForm from './tweaks/InjuryForm';
+import CheckinSheet from './tweaks/CheckinSheet';
 import { useTweaks } from './tweaks/useTweaks';
 import { useLongPress } from './tweaks/useLongPress';
 import { todayISO } from './lib/warmup';
 import { localDate } from './lib/dates';
+import { boardDays, injuryTitle } from './lib/injuries';
+import { checkinsFor } from './lib/checkins';
 
 // Dynamically imported so the segmentation library (and its model weights)
 // only load once someone actually opens "New problem" -- most visits are
@@ -86,6 +91,9 @@ function StarRating({ rating, onRate, readOnly = false }) {
     </div>
   );
 }
+
+// Whose sends mark the board days on an injury's pain chart.
+const BOARD_OWNER = 'Rob';
 
 // The logbook and board stats buttons beside the climber pill.
 const iconButton = {
@@ -151,7 +159,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const tweaks = useTweaks();
   const [unlocking, setUnlocking] = useState(false);
-  const [view, setView] = useState('list'); // list | new | edit-details | detail | tweaks | volumes | ...
+  // The injury the injury page (and its edit form) shows.
+  const [injuryId, setInjuryId] = useState(null);
+  // The open check-in sheet: { injuryId, editing: the check-in tapped, or null }.
+  const [checkinSheet, setCheckinSheet] = useState(null);
+  const [view, setView] = useState('list'); // list | new | edit-details | detail | tweaks | injury | injury-new | injury-edit | volumes | ...
   // Where Back on a problem goes -- the list, or the logbook it was opened from.
   const [backTo, setBackTo] = useState('list');
   // Logbook days stay open, and the tab stays picked, while you look at one
@@ -347,6 +359,15 @@ export default function App() {
     })();
   }, [view, board]);
 
+  // The hub reloads the injuries each time it's opened, once signed in.
+  // (refresh never changes, so this runs on the view and the status alone.)
+  const refreshTweaks = tweaks.refresh;
+  useEffect(() => {
+    if (view === 'tweaks' && tweaks.status === 'signed-in') refreshTweaks();
+  }, [view, tweaks.status, refreshTweaks]);
+
+  const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER), [boardTicks]);
+
   // Added to the home screen, the app sits suspended in memory between visits,
   // so the list never sees problems someone else has set unless it re-reads.
   const refreshList = async ({ quiet = false } = {}) => {
@@ -484,6 +505,29 @@ export default function App() {
     else setUnlocking(true);
   };
   const titlePress = useLongPress(openTweaks);
+
+  // Back to the board once a new photo lands -- unless Rob has moved on from
+  // the hub while it was on its way. (Sign-out goes back straight away.)
+  const leaveHubForBoard = () => setView((v) => (v === 'tweaks' ? 'list' : v));
+
+  const showInjury = (id) => {
+    setInjuryId(id);
+    setView('injury');
+  };
+  const openCheckin = (id, editing = null) => setCheckinSheet({ injuryId: id, editing });
+
+  // Closes a log (closedOn is today) or reopens it (null); true once saved.
+  const setInjuryClosed = async (id, closedOn) => {
+    setError('');
+    try {
+      await tweaks.setInjuryClosed(id, closedOn);
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError("Couldn't save — check your connection and try again.");
+      return false;
+    }
+  };
 
   const openProblem = (problemId, from) => {
     setSelectedId(problemId); setConfirmingDelete(false); setShowLogForm(false); setTicks([]);
@@ -753,8 +797,15 @@ export default function App() {
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
   const selected = problems.find((p) => p.id === selectedId);
+  const currentInjury = tweaks.injuries.find((i) => i.id === injuryId) || null;
+  const sheetInjury = checkinSheet ? tweaks.injuries.find((i) => i.id === checkinSheet.injuryId) || null : null;
+  // The hub and the injury screens, none of which shows the board photo.
+  const isTweaksView = view === 'tweaks' || view.startsWith('injury');
+  // A session that runs out while Rob is in Tweaks brings the password sheet back.
+  const sessionGone = isTweaksView && tweaks.status === 'signed-out';
   const [backTarget, backLabel] = view === 'tweaks' ? ['list', 'Board']
-    : view === 'volumes' ? ['tweaks', 'Tweaks']
+    : view === 'volumes' || view === 'injury' || view === 'injury-new' ? ['tweaks', 'Tweaks']
+    : view === 'injury-edit' && currentInjury ? ['injury', injuryTitle(currentInjury)]
     : view === 'detail' ? [backTo, backTo === 'logbook' ? 'Logbook' : backTo === 'stats' ? 'Stats' : 'Board']
     : ['list', 'Board'];
   // With nobody picked, Unsent falls back to unsent by anyone.
@@ -792,14 +843,40 @@ export default function App() {
     <div style={{ background: '#17181A', minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: '#EDEAE3' }}>
       <style>{fontImport}</style>
 
-      {unlocking && (
+      {sheetInjury && (
+        <CheckinSheet
+          key={checkinSheet.injuryId + (checkinSheet.editing?.id ?? 'new')}
+          injury={sheetInjury}
+          checkins={checkinsFor(tweaks.checkins, checkinSheet.injuryId)}
+          boardDays={robsBoardDays}
+          today={localDate()}
+          editing={checkinSheet.editing}
+          onSave={tweaks.saveCheckin}
+          onDelete={tweaks.deleteCheckin}
+          onClose={() => setCheckinSheet(null)}
+        />
+      )}
+
+      {/* After the check-in sheet, so it sits on top of one left open. */}
+      {(unlocking || sessionGone) && (
         <UnlockSheet
           onUnlock={async (pw) => {
             const ok = await tweaks.signIn(pw);
-            if (ok) { setUnlocking(false); leaveFor('tweaks'); }
+            if (ok) {
+              setUnlocking(false);
+              if (!isTweaksView) leaveFor('tweaks');
+              // The hub reloads itself once signed in; an injury screen needs telling.
+              else if (view !== 'tweaks') tweaks.refresh();
+            }
             return ok;
           }}
-          onClose={() => setUnlocking(false)}
+          onClose={() => {
+            setUnlocking(false);
+            if (isTweaksView) {
+              setCheckinSheet(null);
+              setView('list');
+            }
+          }}
         />
       )}
 
@@ -844,7 +921,7 @@ export default function App() {
       )}
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
-        {view !== 'logbook' && view !== 'stats' && view !== 'tweaks' && (
+        {view !== 'logbook' && view !== 'stats' && !isTweaksView && (
         <div
           ref={imgWrapRef}
           onClick={handleImageClick}
@@ -994,8 +1071,17 @@ export default function App() {
                   wraps the title on phones narrower than ~390px. Slim buttons
                   and a name-only pill keep the row on one line at 360px. The group
                   takes the rest of the row and the pill gives way with … before
-                  the row would wrap; only below ~330px does it drop a line. */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: '1 1 0', minWidth: currentClimber ? 120 : 'auto' }}>
+                  the row would wrap; only below ~330px does it drop a line.
+                  "Who's climbing?" never gives way, so with nobody picked the
+                  group is just its own width: when it doesn't fit it drops under
+                  the filters and starts on the left, rather than stretching
+                  across and sitting off to the right. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6,
+                ...(currentClimber
+                  ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 120 }
+                  : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }),
+              }}>
               <button onClick={() => leaveFor('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
                 <CalendarDays size={14} />
               </button>
@@ -1305,11 +1391,74 @@ export default function App() {
 
         {view === 'tweaks' && (
           <TweaksHub
+            injuries={tweaks.injuries}
+            checkins={tweaks.checkins}
+            today={localDate()}
+            loading={tweaks.loading}
+            loadError={tweaks.loadError}
+            onOpenInjury={(id) => { setInjuryId(id); leaveFor('injury'); }}
+            onCheckIn={(id) => openCheckin(id)}
+            onNewInjury={() => leaveFor('injury-new')}
             hasPhoto={!!board?.photo_url}
             uploading={uploading}
-            onPhotoUpload={async (e) => { if (await handlePhotoUpload(e)) setView('list'); }}
+            onPhotoUpload={async (e) => {
+              if (!(await handlePhotoUpload(e))) return;
+              // The new photo sits at the top of the board.
+              scrollSpotsRef.current.list = 0;
+              leaveHubForBoard();
+            }}
             onVolumes={() => { setMarking(null); leaveFor('volumes'); }}
-            onSignOut={async () => { await tweaks.signOut(); setView('list'); }}
+            onSignOut={() => { tweaks.signOut(); setView('list'); }}
+          />
+        )}
+
+        {view === 'injury' && currentInjury && (
+          <InjuryPage
+            key={currentInjury.id}
+            injury={currentInjury}
+            injuries={tweaks.injuries}
+            checkins={tweaks.checkins}
+            boardDays={robsBoardDays}
+            today={localDate()}
+            onCheckIn={() => openCheckin(currentInjury.id)}
+            onEditCheckin={(c) => openCheckin(currentInjury.id, c)}
+            onEdit={() => leaveFor('injury-edit')}
+            onClose={() => setInjuryClosed(currentInjury.id, localDate())}
+            onReopen={() => setInjuryClosed(currentInjury.id, null)}
+            onOpenInjury={(id) => { setInjuryId(id); window.scrollTo(0, 0); }}
+          />
+        )}
+
+        {view === 'injury-new' && (
+          <InjuryForm
+            injury={null}
+            injuries={tweaks.injuries}
+            checkins={tweaks.checkins}
+            onSubmit={async (fields) => {
+              const created = await tweaks.saveInjury(fields);
+              showInjury(created.id);
+              openCheckin(created.id);
+            }}
+            onReopenInstead={async (id) => { if (await setInjuryClosed(id, null)) showInjury(id); }}
+            onCheckInInstead={(id) => { showInjury(id); openCheckin(id); }}
+          />
+        )}
+
+        {view === 'injury-edit' && currentInjury && (
+          <InjuryForm
+            injury={currentInjury}
+            injuries={tweaks.injuries}
+            checkins={tweaks.checkins}
+            onSubmit={async (fields) => {
+              await tweaks.saveInjury(fields, currentInjury.id);
+              setView('injury');
+            }}
+            onDelete={async () => {
+              await tweaks.deleteInjury(currentInjury.id);
+              // Its page is gone, so whichever opens next starts at the top.
+              delete scrollSpotsRef.current.injury;
+              setView('tweaks');
+            }}
           />
         )}
 

@@ -32,6 +32,15 @@ vi.mock('./lib/tweaks', () => ({
   getTweaksSession: vi.fn(),
   signInToTweaks: vi.fn(),
   signOutOfTweaks: vi.fn(),
+  listInjuries: vi.fn(),
+  listCheckins: vi.fn(),
+  createInjury: vi.fn(),
+  updateInjury: vi.fn(),
+  deleteInjury: vi.fn(),
+  createCheckin: vi.fn(),
+  updateCheckin: vi.fn(),
+  deleteCheckin: vi.fn(),
+  isSignedOutError: (e) => e?.code === '42501' || e?.code === 'PGRST301' || e?.code === 'PGRST303' || e?.status === 401,
 }));
 vi.mock('./lib/segment', () => ({
   loadSegmenter: vi.fn(),
@@ -44,8 +53,9 @@ vi.mock('./lib/segment', () => ({
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
-import { getTweaksSession, signInToTweaks, signOutOfTweaks } from './lib/tweaks';
+import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCheckins, createInjury, updateInjury, createCheckin } from './lib/tweaks';
 import { LONG_PRESS_MS } from './tweaks/useLongPress';
+import { addDays, localDate } from './lib/dates';
 import App from './App';
 
 const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
@@ -60,14 +70,19 @@ beforeEach(() => {
   listClimbers.mockResolvedValue([]);
   listWarmupSessions.mockResolvedValue([]);
   getTweaksSession.mockResolvedValue(null);
+  listInjuries.mockResolvedValue([]);
+  listCheckins.mockResolvedValue([]);
   loadSegmenter.mockRejectedValue(new Error('segmentation unavailable in tests'));
 });
 
-async function holdTitle() {
+// Holds the title and lets go. iOS then sends a click where the finger was,
+// landing on whatever the hold opened there (ghostClickOn picks it).
+async function holdTitle(ghostClickOn = () => document.body) {
   const title = await screen.findByText('THE BOARD');
   fireEvent.pointerDown(title, { clientX: 5, clientY: 5, pointerId: 1 });
   await act(() => new Promise((resolve) => setTimeout(resolve, LONG_PRESS_MS + 20)));
   fireEvent.pointerUp(title, { clientX: 5, clientY: 5, pointerId: 1 });
+  fireEvent.click(ghostClickOn());
 }
 
 describe('App (read paths)', () => {
@@ -1229,6 +1244,25 @@ describe('App (climber picker)', () => {
     expect(prompt).not.toHaveStyle({ textOverflow: 'ellipsis' });
   });
 
+  // Too wide for the row beside the filters, the group drops a line. Sized to
+  // its content, it then starts on the left under the filters instead of being
+  // stretched across and pushed to the right.
+  it("drops the buttons under the filters on the left when Who's climbing? doesn't fit", async () => {
+    render(<App />);
+    await screen.findByText("Who's climbing?");
+    const group = screen.getByRole('button', { name: 'Logbook' }).parentElement;
+    expect(group).toHaveStyle({ flexGrow: '0', flexShrink: '0', flexBasis: 'auto' });
+  });
+
+  it('keeps a picked climber beside the filters, the group taking the rest of the row', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    render(<App />);
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    const group = screen.getByRole('button', { name: 'Logbook' }).parentElement;
+    expect(group).toHaveStyle({ flexGrow: '1', flexShrink: '1', flexBasis: '0px' });
+  });
+
   it('cuts off only a long climber name, which gives way before the row would wrap', async () => {
     localStorage.setItem('board-app:currentClimberId', 'c1');
     listClimbers.mockResolvedValue([{ id: 'c1', name: 'Bartholomew-Smythe' }]);
@@ -2104,6 +2138,22 @@ describe('App (scroll position)', () => {
     await screen.findByText('THE BOARD');
     expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
   });
+
+  it('lands at the top of the board after a new photo from Tweaks, with the photo in view', async () => {
+    getTweaksSession.mockResolvedValue({ user: { id: 'u1' } });
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, photo_url: 'https://cdn.example/b1.jpg' });
+    resizeFileToBlob.mockResolvedValue(new Blob(['x']));
+    uploadBoardPhoto.mockResolvedValue({ ...BOARD, photo_url: 'https://cdn.example/new.jpg' });
+    listProblems.mockResolvedValue(PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Crimpy Corner');
+    await holdTitle();
+    scrollTo.mockClear();
+    await user.upload(screen.getByLabelText('New photo'), new File(['x'], 'b.jpg', { type: 'image/jpeg' }));
+    await screen.findByText('THE BOARD');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
 });
 
 describe('App (deleting a warm-up session)', () => {
@@ -2291,6 +2341,19 @@ describe('App (Tweaks door and board setup)', () => {
     expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
   });
 
+  it("keeps the password sheet open through the click iOS sends as the finger lifts", async () => {
+    render(<App />);
+    await holdTitle(() => screen.getByRole('dialog', { name: 'Tweaks' }));
+    expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
+  });
+
+  it("stays in Tweaks through the click iOS sends as the finger lifts", async () => {
+    signedIn();
+    render(<App />);
+    await holdTitle(() => screen.getByRole('button', { name: /board/i }));
+    expect(screen.getByText('TWEAKS')).toBeInTheDocument();
+  });
+
   it('does nothing on a quick tap', async () => {
     render(<App />);
     const title = await screen.findByText('THE BOARD');
@@ -2374,6 +2437,17 @@ describe('App (Tweaks door and board setup)', () => {
     expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
   });
 
+  it('signs out back to the board straight away, even with the server slow to answer', async () => {
+    signedIn();
+    signOutOfTweaks.mockReturnValue(new Promise(() => {}));
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(screen.getByText('THE BOARD')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('goes from Tweaks back to the board', async () => {
     signedIn();
     render(<App />);
@@ -2381,6 +2455,163 @@ describe('App (Tweaks door and board setup)', () => {
     await holdTitle();
     await user.click(screen.getByRole('button', { name: /board/i }));
     expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+  });
+});
+
+describe('App (injury log)', () => {
+  const today = localDate();
+  const daysAgo = (n) => addDays(today, -n);
+  const INJURY = {
+    id: 'i1', side: 'right', area: 'finger', finger: 'ring', area_other: null, what: 'Pulley strain',
+    symptoms: null, started_on: daysAgo(20), started_roughly: false, how_it_happened: null,
+    closed_on: null, created_at: `${daysAgo(20)}T09:00:00Z`,
+  };
+  const checkin = (id, n, extra = {}) => ({
+    id, injury_id: 'i1', checked_on: daysAgo(n), created_at: `${daysAgo(n)}T09:00:00Z`,
+    pain_low: 1, pain_high: 2, pain_peak: null, activities: [], notes: null, ...extra,
+  });
+  // Neither is today's, so Check in starts a new one rather than opening it.
+  const CHECKINS = [checkin('c1', 9, { pain_low: 2, pain_high: 3 }), checkin('c2', 4)];
+
+  beforeEach(() => {
+    getTweaksSession.mockResolvedValue({ user: { id: 'u1' } });
+    listInjuries.mockResolvedValue([INJURY]);
+    listCheckins.mockResolvedValue(CHECKINS);
+  });
+
+  async function openTheInjury(user) {
+    await holdTitle();
+    await user.click(await screen.findByRole('button', { name: /RH ring finger/ }));
+    await screen.findByText('RH RING FINGER');
+  }
+
+  it('shows the open injury in Tweaks', async () => {
+    render(<App />);
+    await holdTitle();
+    expect(await screen.findByText('RH ring finger')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check in' })).toBeInTheDocument();
+  });
+
+  it('logs a check-in from the hub', async () => {
+    createCheckin.mockImplementation(async (fields) => ({ id: 'c3', created_at: `${today}T10:00:00Z`, ...fields }));
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(await screen.findByRole('button', { name: 'Check in' }));
+    const sheet = screen.getByRole('dialog', { name: 'RH ring finger' });
+    await user.type(within(sheet).getByLabelText("How's it feeling?"), 'Bit stiff');
+    await user.click(within(sheet).getByRole('button', { name: 'Save check-in' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(createCheckin).toHaveBeenCalledWith(expect.objectContaining({ injury_id: 'i1', checked_on: today, notes: 'Bit stiff' }));
+  });
+
+  it('opens an injury and comes back', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await openTheInjury(user);
+    expect(screen.getByText('Check-ins')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /tweaks/i }));
+    expect(await screen.findByText('TWEAKS')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+  });
+
+  it('starts a new log and lands on its check-in', async () => {
+    createInjury.mockImplementation(async (fields) => ({ id: 'i2', closed_on: null, created_at: `${today}T10:00:00Z`, ...fields }));
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(await screen.findByRole('button', { name: '+ New injury' }));
+    await user.click(screen.getByRole('button', { name: 'Left' }));
+    await user.click(screen.getByRole('button', { name: 'Wrist' }));
+    await user.click(screen.getByRole('button', { name: 'Start log' }));
+    expect(await screen.findByText('L WRIST')).toBeInTheDocument();
+    expect(createInjury).toHaveBeenCalledWith(expect.objectContaining({ side: 'left', area: 'wrist' }));
+    expect(screen.getByRole('dialog', { name: 'L wrist' })).toBeInTheDocument();
+  });
+
+  it('closes a log', async () => {
+    updateInjury.mockImplementation(async (id, fields) => ({ ...INJURY, ...fields }));
+    render(<App />);
+    const user = userEvent.setup();
+    await openTheInjury(user);
+    await user.click(screen.getByRole('button', { name: 'Close this log' }));
+    expect(updateInjury).toHaveBeenCalledWith('i1', { closed_on: today });
+    expect(await screen.findByRole('button', { name: 'Reopen' })).toBeInTheDocument();
+  });
+
+  it("says so when closing a log doesn't save", async () => {
+    updateInjury.mockRejectedValue(new Error('offline'));
+    render(<App />);
+    const user = userEvent.setup();
+    await openTheInjury(user);
+    await user.click(screen.getByRole('button', { name: 'Close this log' }));
+    expect(await screen.findByText("Couldn't save — check your connection and try again.")).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close this log' })).toBeInTheDocument();
+  });
+
+  it('asks for the password again when the session has gone', async () => {
+    listInjuries.mockRejectedValue({ code: '42501' });
+    render(<App />);
+    await holdTitle();
+    expect(await screen.findByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
+  });
+
+  it('goes back to the board if the password sheet is closed instead', async () => {
+    listInjuries.mockRejectedValue({ code: '42501' });
+    render(<App />);
+    await holdTitle();
+    fireEvent.click(await screen.findByRole('dialog', { name: 'Tweaks' }));
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('stays in Tweaks and reloads after unlocking again', async () => {
+    listInjuries.mockRejectedValueOnce({ code: '42501' });
+    signInToTweaks.mockResolvedValue(true);
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.type(await screen.findByLabelText('Password'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: 'Unlock' }));
+    expect(await screen.findByText('RH ring finger')).toBeInTheDocument();
+    expect(screen.getByText('TWEAKS')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps a check-in being written when the session has gone', async () => {
+    createCheckin
+      .mockRejectedValueOnce({ code: '42501' })
+      .mockImplementation(async (fields) => ({ id: 'c3', created_at: `${today}T10:00:00Z`, ...fields }));
+    signInToTweaks.mockResolvedValue(true);
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(await screen.findByRole('button', { name: 'Check in' }));
+    await user.type(screen.getByLabelText("How's it feeling?"), 'Bit stiff');
+    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
+    await user.type(await screen.findByLabelText('Password'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: 'Unlock' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Tweaks' })).not.toBeInTheDocument());
+    expect(screen.getByLabelText("How's it feeling?")).toHaveValue('Bit stiff');
+    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(createCheckin).toHaveBeenLastCalledWith(expect.objectContaining({ injury_id: 'i1', notes: 'Bit stiff' }));
+  });
+
+  it('stays on the injury page after unlocking from it, and reloads', async () => {
+    updateInjury.mockRejectedValue({ code: '42501' });
+    signInToTweaks.mockResolvedValue(true);
+    render(<App />);
+    const user = userEvent.setup();
+    await openTheInjury(user);
+    await user.click(screen.getByRole('button', { name: 'Close this log' }));
+    await user.type(await screen.findByLabelText('Password'), 'hunter2');
+    listInjuries.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Unlock' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('RH RING FINGER')).toBeInTheDocument();
+    expect(listInjuries).toHaveBeenCalledTimes(1);
   });
 });
 

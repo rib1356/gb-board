@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import Sheet from './Sheet';
 import { inputStyle, primaryButton } from '../ui';
+import { TWEAKS_EMAIL } from '../lib/tweaks';
+
+// Only there so iOS Keychain sees which account the password is for and offers
+// to save it, so it's kept off screen, out of the tab order and from screen readers.
+const keychainOnly = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, border: 0,
+  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', opacity: 0,
+};
 
 export default function UnlockSheet({ onUnlock, onClose }) {
   const [password, setPassword] = useState('');
@@ -28,6 +36,7 @@ export default function UnlockSheet({ onUnlock, onClose }) {
     <Sheet label="Tweaks" onClose={onClose}>
       <form onSubmit={submit}>
         <h2 style={{ fontFamily: "'Bebas Neue'", fontSize: 24, letterSpacing: 1, margin: '0 0 8px', color: '#EDEAE3' }}>Tweaks</h2>
+        <input type="email" name="username" autoComplete="username" value={TWEAKS_EMAIL} readOnly tabIndex={-1} aria-hidden="true" style={keychainOnly} />
         <input
           type="password"
           aria-label="Password"
