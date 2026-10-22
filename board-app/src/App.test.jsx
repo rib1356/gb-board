@@ -1768,6 +1768,13 @@ describe('App (board stats)', () => {
     expect(screen.getByRole('button', { name: /Pinchin.*set by Rob.*open 34 days/ })).toBeInTheDocument();
   });
 
+  it("ranks classics by the crew's average star vote, keeping the old rating where nobody has voted", async () => {
+    listBoardVotes.mockResolvedValue([{ id: 'v1', problem_id: 'p2', climber: 'Shawn', grade: null, stars: 3 }]);
+    await openStats();
+    expect(screen.getByRole('button', { name: /Crimpy Corner.*3\.0 stars/ })).toHaveTextContent('★ 3.0');
+    expect(screen.getByRole('button', { name: /Gaston Traverse.*5 stars/ })).toHaveTextContent('★ 5');
+  });
+
   it('opens a problem from a row, and Back returns to Stats', async () => {
     const user = await openStats();
     await user.click(screen.getByRole('button', { name: /Pinchin/ }));

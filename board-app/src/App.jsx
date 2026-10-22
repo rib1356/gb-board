@@ -1397,6 +1397,7 @@ export default function App() {
             ticks={boardTicks}
             climberCount={climbers.length}
             today={localDate()}
+            votes={boardVotes}
             onOpenProblem={(problemId) => openProblem(problemId, 'stats')}
           />
         )}

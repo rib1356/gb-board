@@ -1,5 +1,6 @@
 import { gradeNumber } from './problemList';
 import { firstSendIds } from './sends';
+import { countedVotes, starSummary } from './votes';
 import { addDays, daysBetween, localDate } from './dates';
 
 // Board-wide numbers for the stats screen. Each takes the live problems and
@@ -90,11 +91,13 @@ export function faTally(problems, ticks) {
 }
 
 // Ascents are different climbers, not laps.
-export function classics(problems, ticks, limit = 5) {
+export function classics(problems, ticks, votes, limit = 5) {
   const groups = groupByProblem(liveTicks(problems, ticks));
+  const counted = countedVotes(votes, ticks);
   return problems
-    .filter((p) => p.rating)
-    .map((p) => ({ ...summary(p), rating: p.rating, ascents: climbersOn(groups.get(p.id) || []).size }))
+    .map((p) => ({ p, stars: starSummary(p, counted) }))
+    .filter(({ stars }) => stars)
+    .map(({ p, stars }) => ({ ...summary(p), rating: stars.average, legacy: stars.legacy, ascents: climbersOn(groups.get(p.id) || []).size }))
     .sort((a, b) => b.rating - a.rating || b.ascents - a.ascents || a.name.localeCompare(b.name))
     .slice(0, limit);
 }
