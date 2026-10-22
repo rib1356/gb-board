@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, CalendarDays, Trophy, Zap } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
@@ -8,6 +8,8 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
+import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote } from './lib/votes';
+import VotePicker from './votes/VotePicker';
 import { inputStyle, sectionHeading, formatShortDate } from './ui';
 import { firstAscents } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
@@ -64,29 +66,19 @@ const fontImport = `
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 `;
 
-function StarRating({ rating, onRate, readOnly = false }) {
-  if (readOnly) {
-    if (rating == null) return null;
-    return (
-      <div aria-label={`Rating: ${rating} out of 5`} style={{ display: 'flex', gap: 2 }}>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <Star key={n} size={14} fill={n <= rating ? '#D9552B' : 'none'} color={n <= rating ? '#D9552B' : '#3a3b3e'} />
-        ))}
-      </div>
-    );
-  }
+function StarRating({ rating }) {
+  if (rating == null) return null;
   return (
-    <div style={{ display: 'flex', gap: 2 }}>
+    <div aria-label={`Rating: ${rating} out of 5`} style={{ display: 'flex', gap: 2 }}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          aria-label={`Rate ${n} star${n > 1 ? 's' : ''}`}
-          onClick={() => onRate(n === rating ? null : n)}
-          style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer' }}
-        >
-          <Star size={22} fill={rating != null && n <= rating ? '#D9552B' : 'none'} color={rating != null && n <= rating ? '#D9552B' : '#8b8d91'} />
-        </button>
+        n - 0.5 === rating ? (
+          <span key={n} style={{ position: 'relative', display: 'inline-flex' }}>
+            <Star size={14} fill="none" color="#3a3b3e" />
+            <StarHalf size={14} fill="#D9552B" color="#D9552B" style={{ position: 'absolute', left: 0, top: 0 }} />
+          </span>
+        ) : (
+          <Star key={n} size={14} fill={n <= rating ? '#D9552B' : 'none'} color={n <= rating ? '#D9552B' : '#3a3b3e'} />
+        )
       ))}
     </div>
   );
@@ -197,12 +189,15 @@ export default function App() {
   const [savingVolumes, setSavingVolumes] = useState(false);
 
   const [ticks, setTicks] = useState([]);
+  const [savingVote, setSavingVote] = useState(false);
   // Every send on the board, so the list knows who has sent what.
   const [boardTicks, setBoardTicks] = useState([]);
+  const [boardVotes, setBoardVotes] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
   const [tickDate, setTickDate] = useState('');
   const [tickNotes, setTickNotes] = useState('');
   const [tickIsFlash, setTickIsFlash] = useState(false);
+  const [tickVote, setTickVote] = useState({ grade: null, feel: null, stars: null });
   const [loggingTick, setLoggingTick] = useState(false);
 
   const [climbers, setClimbers] = useState([]);
@@ -299,9 +294,10 @@ export default function App() {
       try {
         const b = await getOrCreateBoard();
         setBoard(b);
-        const [p, bt] = await Promise.all([listProblems(b.id), listBoardTicks(b.id)]);
+        const [p, bt, bv] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id)]);
         setProblems(p);
         setBoardTicks(bt);
+        setBoardVotes(bv);
         const c = await listClimbers();
         setClimbers(c);
         const storedId = getStoredClimberId();
@@ -366,6 +362,7 @@ export default function App() {
     if (view === 'tweaks' && tweaks.status === 'signed-in') refreshTweaks();
   }, [view, tweaks.status, refreshTweaks]);
 
+  const counted = useMemo(() => countedVotes(boardVotes, boardTicks), [boardVotes, boardTicks]);
   const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER), [boardTicks]);
 
   // Added to the home screen, the app sits suspended in memory between visits,
@@ -373,10 +370,11 @@ export default function App() {
   const refreshList = async ({ quiet = false } = {}) => {
     try {
       const b = await getOrCreateBoard();
-      const [p, bt, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listClimbers()]);
+      const [p, bt, bv, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listClimbers()]);
       setBoard(b);
       setProblems(p);
       setBoardTicks(bt);
+      setBoardVotes(bv);
       setClimbers(c);
     } catch (err) {
       console.error(err);
@@ -640,20 +638,24 @@ export default function App() {
     setSaving(false);
   };
 
-  const handleRate = async (id, rating) => {
+  const handleVote = async (problemId, next) => {
+    setSavingVote(true);
+    setError('');
     try {
-      const updated = await rateProblem(id, rating);
-      setProblems((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      const row = await saveVote(problemId, currentClimber.name, next);
+      setBoardVotes((prev) => replaceVote(prev, problemId, currentClimber.name, row));
     } catch (err) {
       console.error(err);
-      setError('Could not save that rating — check your connection and try again.');
+      setError('Could not save your vote — check your connection and try again.');
     }
+    setSavingVote(false);
   };
 
   const startLogTick = () => {
     setTickDate(new Date().toISOString().slice(0, 10));
     setTickNotes('');
     setTickIsFlash(false);
+    setTickVote({ grade: null, feel: null, stars: null });
     setShowLogForm(true);
   };
 
@@ -661,15 +663,35 @@ export default function App() {
     if (!tickDate) return;
     setLoggingTick(true);
     setError('');
+    let sent = false;
     try {
       const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes, sentBy: currentClimber?.name, flash: tickIsFlash });
       setTicks((prev) => [created, ...prev]);
       setBoardTicks((prev) => [...prev, created]);
       setProblems((prev) => applySend(prev, problemId, created.sent_on));
       setShowLogForm(false);
+      sent = true;
     } catch (err) {
       console.error(err);
       setError('Could not log that send — check your connection and try again.');
+    }
+    // The vote is saved on its own, so a vote failure never reads as a failed send.
+    if (sent && (tickVote.grade || tickVote.stars)) {
+      const name = currentClimber?.name;
+      try {
+        const existing = voteFor(boardVotes, problemId, name);
+        // A grade and its feel travel together: a picked chip wins whole, even with a null feel.
+        const picked = tickVote.grade != null;
+        const row = await saveVote(problemId, name, {
+          grade: picked ? tickVote.grade : existing?.grade ?? null,
+          feel: picked ? tickVote.feel ?? null : existing?.feel ?? null,
+          stars: tickVote.stars ?? existing?.stars ?? null,
+        });
+        setBoardVotes((prev) => replaceVote(prev, problemId, name, row));
+      } catch (err) {
+        console.error(err);
+        setError("Your send is logged, but your vote didn't save. You can add it from the problem page.");
+      }
     }
     setLoggingTick(false);
   };
@@ -797,6 +819,9 @@ export default function App() {
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
   const selected = problems.find((p) => p.id === selectedId);
+  const selectedStars = selected ? starSummary(selected, counted) : null;
+  const selectedGradeVotes = selected ? gradeVoteCounts(selected.id, counted) : [];
+  const myVote = selected && currentClimber ? voteFor(boardVotes, selected.id, currentClimber.name) : null;
   const currentInjury = tweaks.injuries.find((i) => i.id === injuryId) || null;
   const sheetInjury = checkinSheet ? tweaks.injuries.find((i) => i.id === checkinSheet.injuryId) || null : null;
   // The hub and the injury screens, none of which shows the board photo.
@@ -1136,7 +1161,7 @@ export default function App() {
                   <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: '#8b8d91', marginTop: 2 }}>{p.setter ? `Set by ${p.setter}` : 'Unknown setter'}</div>
                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StarRating rating={p.rating} readOnly />
+                    <StarRating rating={starSummary(p, counted)?.stars ?? null} />
                     {p.send_count > 0 && (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#5C8A66', textTransform: 'uppercase' }}>
                         <CheckCircle2 size={12} /> Sent ×{p.send_count}
@@ -1182,7 +1207,12 @@ export default function App() {
               </p>
             )}
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 14 }}>
-              <StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} />
+              <StarRating rating={selectedStars?.stars ?? null} />
+              {selectedStars && !selectedStars.legacy && (
+                <span style={{ fontSize: 13, color: '#8b8d91' }}>
+                  {`${selectedStars.average.toFixed(1)} · ${selectedStars.count} ${selectedStars.count === 1 ? 'vote' : 'votes'}`}
+                </span>
+              )}
               <span style={{
                 display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700,
                 color: selected.send_count > 0 ? '#5C8A66' : '#8b8d91',
@@ -1191,6 +1221,24 @@ export default function App() {
                 {selected.send_count > 0 ? `Sent ×${selected.send_count}` : 'Not sent yet'}
               </span>
             </div>
+            {selectedGradeVotes.length > 0 && (
+              <p style={{ margin: '8px 0 0', fontSize: 13, fontFamily: "'Inter', sans-serif", color: '#8b8d91' }}>
+                {`Grade votes: ${selectedGradeVotes.map((g) => `${gradeVoteLabel(g)} ×${g.count}`).join(' · ')}`}
+              </p>
+            )}
+            {currentClimber && ticks.some((t) => t.sent_by === currentClimber.name) && (
+              <div style={{ marginTop: 14 }}>
+                <h3 style={sectionHeading}>Your vote</h3>
+                <VotePicker
+                  choices={gradeChoices(selected.grade, myVote)}
+                  grade={myVote?.grade ?? null}
+                  feel={myVote?.feel ?? null}
+                  stars={myVote?.stars ?? null}
+                  disabled={savingVote || loggingTick}
+                  onChange={(next) => handleVote(selected.id, next)}
+                />
+              </div>
+            )}
             {faceListLines(selected.holds, volumes).length > 0 && (
               <div style={{ marginTop: 14 }}>
                 <h3 style={sectionHeading}>Volumes</h3>
@@ -1230,10 +1278,13 @@ export default function App() {
                   </Field>
                   {/* Only a first send can be a flash. */}
                   {!ticks.some((t) => t.sent_by === currentClimber.name) && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#c7c8cb', marginBottom: 12, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
-                      <Zap size={14} color="#C9A227" /> Flashed it
-                    </label>
+                    <>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#c7c8cb', marginBottom: 12, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
+                        <Zap size={14} color="#C9A227" /> Flashed it
+                      </label>
+                      <VotePicker choices={gradeChoices(selected.grade, null)} grade={tickVote.grade} feel={tickVote.feel} stars={tickVote.stars} disabled={loggingTick} onChange={setTickVote} />
+                    </>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => handleAddTick(selected.id)} disabled={loggingTick || !tickDate} style={{
@@ -1350,6 +1401,7 @@ export default function App() {
             ticks={boardTicks}
             climberCount={climbers.length}
             today={localDate()}
+            votes={boardVotes}
             onOpenProblem={(problemId) => openProblem(problemId, 'stats')}
           />
         )}
