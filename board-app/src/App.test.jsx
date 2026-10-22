@@ -1285,6 +1285,81 @@ describe('App (votes)', () => {
   });
 });
 
+describe('App (votes on a first send)', () => {
+  const GASTON = { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: null, send_count: 0, last_sent_on: null };
+  const ROB_FIRST = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-08-01', notes: '', created_at: '2026-08-01T10:00:00Z', flash: false };
+
+  const openForm = async ({ ticks = [], votes = [] } = {}) => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    listProblems.mockResolvedValue([GASTON]);
+    listTicks.mockResolvedValue(ticks);
+    listBoardTicks.mockResolvedValue(ticks);
+    listBoardVotes.mockResolvedValue(votes);
+    createTick.mockImplementation(async (problemId, { sentOn, notes, sentBy, flash }) => ({
+      id: 't9', problem_id: problemId, sent_on: sentOn, notes, sent_by: sentBy, flash, created_at: '2026-10-22T10:00:00Z',
+    }));
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(await screen.findByText('Log a send'));
+    fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-10-22' } });
+    return user;
+  };
+
+  it('offers a grade and star vote on your first send, with nothing picked', async () => {
+    await openForm();
+    const grade = screen.getByRole('group', { name: 'Grade vote' });
+    expect(within(grade).getAllByRole('button').map((b) => b.textContent)).toEqual(['V4', 'V5', 'V6']);
+    expect(within(grade).queryAllByRole('button', { pressed: true })).toHaveLength(0);
+    expect(within(screen.getByRole('group', { name: 'Star vote' })).queryAllByRole('button', { pressed: true })).toHaveLength(0);
+  });
+
+  it('saves the send, then the vote', async () => {
+    const user = await openForm();
+    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V6', stars: 5 });
+    await user.click(screen.getByRole('button', { name: 'V6' }));
+    await user.click(screen.getByRole('button', { name: '5 stars' }));
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V6', stars: 5 }));
+    expect(createTick.mock.invocationCallOrder[0]).toBeLessThan(saveVote.mock.invocationCallOrder[0]);
+    expect(await screen.findByText('Grade votes: V6 ×1')).toBeInTheDocument();
+  });
+
+  it('logs a send with no vote when nothing is picked', async () => {
+    const user = await openForm();
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() => expect(createTick).toHaveBeenCalled());
+    expect(saveVote).not.toHaveBeenCalled();
+  });
+
+  it("doesn't ask on a repeat send", async () => {
+    await openForm({ ticks: [ROB_FIRST] });
+    // The only pickers on screen are the problem page's own "Your vote" block, not the send form's.
+    expect(screen.getAllByRole('group', { name: 'Grade vote' })).toHaveLength(1);
+    expect(screen.getAllByRole('group', { name: 'Star vote' })).toHaveLength(1);
+  });
+
+  it('keeps an old grade vote when only stars are picked', async () => {
+    const user = await openForm({ votes: [{ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', stars: null }] });
+    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', stars: 3 });
+    await user.click(within(screen.getByRole('group', { name: 'Star vote' })).getByRole('button', { name: '3 stars' }));
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V4', stars: 3 }));
+  });
+
+  it('keeps the send when the vote fails, says so, and offers Your vote to try again', async () => {
+    const user = await openForm();
+    saveVote.mockRejectedValue(new Error('down'));
+    await user.click(screen.getByRole('button', { name: '4 stars' }));
+    await user.click(screen.getByText('Save entry'));
+    expect(await screen.findByText("Your send is logged, but your vote didn't save. You can add it from the problem page.")).toBeInTheDocument();
+    expect(screen.getByText('Rob · 22 Oct 2026')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your vote' })).toBeInTheDocument();
+  });
+});
+
 describe('App (climber picker)', () => {
   it('shows a prompt to pick a climber when none is selected', async () => {
     render(<App />);

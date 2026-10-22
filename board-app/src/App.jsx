@@ -197,6 +197,7 @@ export default function App() {
   const [tickDate, setTickDate] = useState('');
   const [tickNotes, setTickNotes] = useState('');
   const [tickIsFlash, setTickIsFlash] = useState(false);
+  const [tickVote, setTickVote] = useState({ grade: null, stars: null });
   const [loggingTick, setLoggingTick] = useState(false);
 
   const [climbers, setClimbers] = useState([]);
@@ -654,6 +655,7 @@ export default function App() {
     setTickDate(new Date().toISOString().slice(0, 10));
     setTickNotes('');
     setTickIsFlash(false);
+    setTickVote({ grade: null, stars: null });
     setShowLogForm(true);
   };
 
@@ -661,15 +663,32 @@ export default function App() {
     if (!tickDate) return;
     setLoggingTick(true);
     setError('');
+    let sent = false;
     try {
       const created = await createTick(problemId, { sentOn: tickDate, notes: tickNotes, sentBy: currentClimber?.name, flash: tickIsFlash });
       setTicks((prev) => [created, ...prev]);
       setBoardTicks((prev) => [...prev, created]);
       setProblems((prev) => applySend(prev, problemId, created.sent_on));
       setShowLogForm(false);
+      sent = true;
     } catch (err) {
       console.error(err);
       setError('Could not log that send — check your connection and try again.');
+    }
+    // The vote is saved on its own, so a vote failure never reads as a failed send.
+    if (sent && (tickVote.grade || tickVote.stars)) {
+      const name = currentClimber?.name;
+      try {
+        const existing = voteFor(boardVotes, problemId, name);
+        const row = await saveVote(problemId, name, {
+          grade: tickVote.grade ?? existing?.grade ?? null,
+          stars: tickVote.stars ?? existing?.stars ?? null,
+        });
+        setBoardVotes((prev) => replaceVote(prev, problemId, name, row));
+      } catch (err) {
+        console.error(err);
+        setError("Your send is logged, but your vote didn't save. You can add it from the problem page.");
+      }
     }
     setLoggingTick(false);
   };
@@ -1255,10 +1274,13 @@ export default function App() {
                   </Field>
                   {/* Only a first send can be a flash. */}
                   {!ticks.some((t) => t.sent_by === currentClimber.name) && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#c7c8cb', marginBottom: 12, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
-                      <Zap size={14} color="#C9A227" /> Flashed it
-                    </label>
+                    <>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#c7c8cb', marginBottom: 12, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
+                        <Zap size={14} color="#C9A227" /> Flashed it
+                      </label>
+                      <VotePicker choices={gradeChoices(selected.grade, null)} grade={tickVote.grade} stars={tickVote.stars} onChange={setTickVote} />
+                    </>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => handleAddTick(selected.id)} disabled={loggingTick || !tickDate} style={{
