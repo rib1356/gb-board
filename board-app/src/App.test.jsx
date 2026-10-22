@@ -1131,6 +1131,30 @@ describe('App (tick log flow)', () => {
     expect(screen.queryByText('1 Aug 2026')).not.toBeInTheDocument();
   });
 
+  it("ignores a slow send log for a problem you've already left", async () => {
+    listProblems.mockResolvedValue([
+      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-01' },
+      { id: 'p2', name: 'Crimpy Corner', grade: 'V3', setter: 'Rob', notes: '', holds: [], send_count: 1, last_sent_on: '2026-08-02' },
+    ]);
+    let finishGaston;
+    listTicks.mockImplementation((problemId) => (problemId === 'p1'
+      ? new Promise((resolve) => { finishGaston = resolve; })
+      : Promise.resolve([{ id: 't2', problem_id: 'p2', sent_by: 'Shawn', sent_on: '2026-08-02', notes: '' }])));
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Open Gaston on slow signal, give up and open Crimpy Corner instead.
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    await user.click(await screen.findByText('Crimpy Corner'));
+    expect(await screen.findByText('Shawn · 2 Aug 2026')).toBeInTheDocument();
+
+    // Gaston's sends finally arrive.
+    await act(async () => finishGaston([{ id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-08-01', notes: '' }]));
+    expect(screen.getByText('Shawn · 2 Aug 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Rob · 1 Aug 2026')).not.toBeInTheDocument();
+  });
+
   it('shows a sent count badge in the problem list', async () => {
     listProblems.mockResolvedValue([
       { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 3, last_sent_on: '2026-08-20' },

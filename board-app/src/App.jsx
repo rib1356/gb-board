@@ -319,16 +319,22 @@ export default function App() {
   }, [deletedProblem]);
 
   useEffect(() => {
-    if (view !== 'detail' || !selectedId) return;
+    if (view !== 'detail' || !selectedId) return undefined;
+    // On slow signal you can leave and open another problem before this one's
+    // sends arrive, so an answer for a problem you've left is dropped.
+    let cancelled = false;
     (async () => {
       try {
         const t = await listTicks(selectedId);
-        setTicks(t);
+        if (!cancelled) setTicks(t);
       } catch (err) {
         console.error(err);
-        setError('Could not load the send log — check your connection and try again.');
+        if (!cancelled) setError('Could not load the send log — check your connection and try again.');
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [view, selectedId]);
 
   useLayoutEffect(() => {
