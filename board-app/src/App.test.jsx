@@ -1156,8 +1156,8 @@ describe('App (votes)', () => {
   const GASTON = { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: null, send_count: 2, last_sent_on: '2026-10-02' };
   const ROB_SEND = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-10-01', notes: '', created_at: '2026-10-01T18:00:00Z', flash: false };
   const SHAWN_SEND = { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-10-02', notes: '', created_at: '2026-10-02T18:00:00Z', flash: false };
-  const ROB_VOTE = { id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', stars: 4, created_at: '2026-10-01T18:00:00Z' };
-  const SHAWN_VOTE = { id: 'v2', problem_id: 'p1', climber: 'Shawn', grade: 'V5', stars: 5, created_at: '2026-10-02T18:00:00Z' };
+  const ROB_VOTE = { id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', feel: null, stars: 4, created_at: '2026-10-01T18:00:00Z' };
+  const SHAWN_VOTE = { id: 'v2', problem_id: 'p1', climber: 'Shawn', grade: 'V5', feel: null, stars: 5, created_at: '2026-10-02T18:00:00Z' };
   const asRob = () => {
     localStorage.setItem('board-app:currentClimberId', 'c1');
     listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
@@ -1204,15 +1204,23 @@ describe('App (votes)', () => {
     expect(screen.getByRole('button', { name: 'V4' })).toHaveAttribute('aria-pressed', 'true');
     saveVote.mockResolvedValue({ ...ROB_VOTE, grade: 'V5' });
     await user.click(screen.getByRole('button', { name: 'V5' }));
-    expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', stars: 4 });
+    expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', feel: null, stars: 4 });
     expect(await screen.findByText('Grade votes: V5 ×2')).toBeInTheDocument();
+  });
+
+  it('shows a saved hard vote as pressed and saves a change to soft with the saved stars', async () => {
+    const user = await openGaston({ votes: [{ ...ROB_VOTE, grade: 'V5', feel: 'hard', stars: 3 }, SHAWN_VOTE] });
+    expect(screen.getByRole('button', { name: 'hard V5' })).toHaveAttribute('aria-pressed', 'true');
+    saveVote.mockResolvedValue({ ...ROB_VOTE, grade: 'V5', feel: 'soft', stars: 3 });
+    await user.click(screen.getByRole('button', { name: 'soft V5' }));
+    expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', feel: 'soft', stars: 3 });
   });
 
   it('removes the vote when both are unpicked', async () => {
     const user = await openGaston({ votes: [{ ...ROB_VOTE, stars: null }, SHAWN_VOTE] });
     saveVote.mockResolvedValue(null);
     await user.click(screen.getByRole('button', { name: 'V4' }));
-    expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: null, stars: null });
+    expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: null, feel: null, stars: null });
     expect(await screen.findByText('Grade votes: V5 ×1')).toBeInTheDocument();
   });
 
@@ -1311,18 +1319,18 @@ describe('App (votes on a first send)', () => {
   it('offers a grade and star vote on your first send, with nothing picked', async () => {
     await openForm();
     const grade = screen.getByRole('group', { name: 'Grade vote' });
-    expect(within(grade).getAllByRole('button').map((b) => b.textContent)).toEqual(['V4', 'V5', 'V6']);
+    expect(within(grade).getAllByRole('button').map((b) => b.textContent)).toEqual(['V4', 'soft V5', 'V5', 'hard V5', 'V6']);
     expect(within(grade).queryAllByRole('button', { pressed: true })).toHaveLength(0);
     expect(within(screen.getByRole('group', { name: 'Star vote' })).queryAllByRole('button', { pressed: true })).toHaveLength(0);
   });
 
   it('saves the send, then the vote', async () => {
     const user = await openForm();
-    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V6', stars: 5 });
+    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V6', feel: null, stars: 5 });
     await user.click(screen.getByRole('button', { name: 'V6' }));
     await user.click(screen.getByRole('button', { name: '5 stars' }));
     await user.click(screen.getByText('Save entry'));
-    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V6', stars: 5 }));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V6', feel: null, stars: 5 }));
     expect(createTick.mock.invocationCallOrder[0]).toBeLessThan(saveVote.mock.invocationCallOrder[0]);
     expect(await screen.findByText('Grade votes: V6 ×1')).toBeInTheDocument();
   });
@@ -1342,11 +1350,29 @@ describe('App (votes on a first send)', () => {
   });
 
   it('keeps an old grade vote when only stars are picked', async () => {
-    const user = await openForm({ votes: [{ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', stars: null }] });
-    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', stars: 3 });
+    const user = await openForm({ votes: [{ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', feel: 'hard', stars: null }] });
+    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', feel: 'hard', stars: 3 });
     await user.click(within(screen.getByRole('group', { name: 'Star vote' })).getByRole('button', { name: '3 stars' }));
     await user.click(screen.getByText('Save entry'));
-    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V4', stars: 3 }));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V4', feel: 'hard', stars: 3 }));
+  });
+
+  it('saves a hard grade vote and shows it', async () => {
+    const user = await openForm();
+    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: 'hard', stars: 4 });
+    await user.click(screen.getByRole('button', { name: 'hard V5' }));
+    await user.click(screen.getByRole('button', { name: '4 stars' }));
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', feel: 'hard', stars: 4 }));
+    expect(await screen.findByText('Grade votes: hard V5 ×1')).toBeInTheDocument();
+  });
+
+  it("saves a picked plain grade with a null feel, not the old vote's feel", async () => {
+    const user = await openForm({ votes: [{ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', feel: 'hard', stars: null }] });
+    saveVote.mockResolvedValue({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: null, stars: null });
+    await user.click(within(screen.getByRole('group', { name: 'Grade vote' })).getByRole('button', { name: 'V5' }));
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', feel: null, stars: null }));
   });
 
   it('keeps the send when the vote fails, says so, and offers Your vote to try again', async () => {
@@ -1372,7 +1398,7 @@ describe('App (votes on a first send)', () => {
     const stars = within(block).getByRole('button', { name: '5 stars' });
     expect(grade).toBeDisabled();
     expect(stars).toBeDisabled();
-    await act(async () => finish({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V6', stars: 5 }));
+    await act(async () => finish({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V6', feel: null, stars: 5 }));
     await waitFor(() => expect(within(block).getByRole('button', { name: '5 stars' })).toBeEnabled());
     expect(within(block).getByRole('button', { name: '5 stars' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(block).getByRole('button', { name: 'V6' })).toHaveAttribute('aria-pressed', 'true');

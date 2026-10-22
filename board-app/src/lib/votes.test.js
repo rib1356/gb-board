@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, voteFor, replaceVote } from './votes';
+import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote } from './votes';
 
 const V = (problem_id, climber, grade, stars) => ({ id: `${problem_id}-${climber}`, problem_id, climber, grade, stars });
 const T = (problem_id, sent_by) => ({ id: `${problem_id}-${sent_by}`, problem_id, sent_by });
@@ -34,28 +34,59 @@ describe('starSummary', () => {
   });
 });
 
+const C = (grade, feel = null) => ({ grade, feel });
+
+describe('gradeVoteLabel', () => {
+  it('says soft, plain or hard', () => {
+    expect(gradeVoteLabel({ grade: 'V5', feel: 'soft' })).toBe('soft V5');
+    expect(gradeVoteLabel({ grade: 'V5', feel: null })).toBe('V5');
+    expect(gradeVoteLabel({ grade: 'V5' })).toBe('V5');
+    expect(gradeVoteLabel({ grade: 'V5', feel: 'hard' })).toBe('hard V5');
+  });
+});
+
 describe('gradeVoteCounts', () => {
-  it('tallies each grade, easiest first, skipping star-only and unparseable votes', () => {
-    const counted = [V('p1', 'A', 'V5', null), V('p1', 'B', 'V4', 3), V('p1', 'C', 'V5', null), V('p1', 'D', null, 4), V('p1', 'E', '6a', null), V('p2', 'F', 'V1', null)];
-    expect(gradeVoteCounts('p1', counted)).toEqual([{ grade: 'V4', count: 1 }, { grade: 'V5', count: 2 }]);
+  it('tallies each grade and feel, easiest first, skipping star-only and unparseable votes', () => {
+    const counted = [
+      V('p1', 'A', 'V4', null),
+      { ...V('p1', 'B', 'V5', null), feel: 'soft' },
+      V('p1', 'C', 'V5', null),
+      { ...V('p1', 'D', 'V5', null), feel: null },
+      { ...V('p1', 'E', 'V5', null), feel: 'hard' },
+      V('p1', 'F', null, 4),
+      V('p1', 'G', '6a', null),
+      V('p2', 'H', 'V1', null),
+    ];
+    expect(gradeVoteCounts('p1', counted)).toEqual([
+      { grade: 'V4', feel: null, count: 1 },
+      { grade: 'V5', feel: 'soft', count: 1 },
+      { grade: 'V5', feel: null, count: 2 },
+      { grade: 'V5', feel: 'hard', count: 1 },
+    ]);
   });
 });
 
 describe('gradeChoices', () => {
-  it('offers the grade either side of the current one', () => {
-    expect(gradeChoices('V5', null)).toEqual(['V4', 'V5', 'V6']);
+  it('offers soft, plain and hard of the current grade, with the grade either side', () => {
+    expect(gradeChoices('V5', null)).toEqual([C('V4'), C('V5', 'soft'), C('V5'), C('V5', 'hard'), C('V6')]);
   });
   it('stops at the ends of the scale', () => {
-    expect(gradeChoices('V0', null)).toEqual(['V0', 'V1']);
-    expect(gradeChoices('V18', null)).toEqual(['V17', 'V18']);
+    expect(gradeChoices('V0', null)).toEqual([C('V0', 'soft'), C('V0'), C('V0', 'hard'), C('V1')]);
+    expect(gradeChoices('V18', null)).toEqual([C('V17'), C('V18', 'soft'), C('V18'), C('V18', 'hard')]);
   });
-  it('adds a saved vote that falls outside the three, in grade order', () => {
-    expect(gradeChoices('V3', 'V5')).toEqual(['V2', 'V3', 'V4', 'V5']);
-    expect(gradeChoices('V5', 'V5')).toEqual(['V4', 'V5', 'V6']);
+  it('adds a saved vote that falls outside the five, in grade order', () => {
+    expect(gradeChoices('V3', C('V5', 'hard'))).toEqual([C('V2'), C('V3', 'soft'), C('V3'), C('V3', 'hard'), C('V4'), C('V5', 'hard')]);
+  });
+  it("doesn't duplicate a saved vote that is already among the five", () => {
+    expect(gradeChoices('V5', C('V5', 'hard'))).toEqual([C('V4'), C('V5', 'soft'), C('V5'), C('V5', 'hard'), C('V6')]);
+    expect(gradeChoices('V5', { grade: 'V5' })).toHaveLength(5);
+  });
+  it('adds nothing for a star-only vote', () => {
+    expect(gradeChoices('V5', { grade: null, stars: 4 })).toHaveLength(5);
   });
   it('offers nothing for an ungraded or free-text grade', () => {
-    expect(gradeChoices(null, null)).toEqual([]);
-    expect(gradeChoices('6a', 'V4')).toEqual([]);
+    expect(gradeChoices(null, C('V4'))).toEqual([]);
+    expect(gradeChoices('6a', C('V4'))).toEqual([]);
   });
 });
 

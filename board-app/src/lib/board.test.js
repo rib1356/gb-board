@@ -513,14 +513,14 @@ describe('deleteWarmupSession', () => {
 });
 
 describe('listBoardVotes', () => {
-  const vote = (n) => ({ id: `v${n}`, problem_id: 'p1', climber: 'Rob', grade: 'V5', stars: 4, created_at: '2026-10-22T10:00:00Z' });
+  const vote = (n) => ({ id: `v${n}`, problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: null, stars: 4, created_at: '2026-10-22T10:00:00Z' });
 
   it("lists every vote on the board's problems, through the problem each one is on", async () => {
     const first = chain({ data: [vote(1)], error: null });
     mocks.supabase.from.mockReturnValueOnce(first).mockReturnValueOnce(chain({ data: [], error: null }));
     expect(await listBoardVotes('b1')).toEqual([vote(1)]);
     expect(mocks.supabase.from).toHaveBeenCalledWith('votes');
-    expect(first.select).toHaveBeenCalledWith('id, problem_id, climber, grade, stars, created_at, problems!inner(board_id)');
+    expect(first.select).toHaveBeenCalledWith('id, problem_id, climber, grade, feel, stars, created_at, problems!inner(board_id)');
     expect(first.eq).toHaveBeenCalledWith('problems.board_id', 'b1');
     expect(first.order).toHaveBeenCalledWith('created_at', { ascending: true });
     expect(first.order).toHaveBeenCalledWith('id', { ascending: true });
@@ -547,12 +547,21 @@ describe('listBoardVotes', () => {
 
 describe('saveVote', () => {
   it("upserts the climber's vote on the problem and returns the row", async () => {
-    const row = { id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V5', stars: null };
+    const row = { id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: 'hard', stars: null };
     const c = chain({ data: row, error: null });
     mocks.supabase.from.mockReturnValue(c);
-    expect(await saveVote('p1', 'Rob', { grade: 'V5', stars: null })).toEqual(row);
+    expect(await saveVote('p1', 'Rob', { grade: 'V5', feel: 'hard', stars: null })).toEqual(row);
     expect(mocks.supabase.from).toHaveBeenCalledWith('votes');
-    expect(c.upsert).toHaveBeenCalledWith({ problem_id: 'p1', climber: 'Rob', grade: 'V5', stars: null }, { onConflict: 'problem_id,climber' });
+    expect(c.upsert).toHaveBeenCalledWith({ problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: 'hard', stars: null }, { onConflict: 'problem_id,climber' });
+  });
+
+  it('saves a missing feel as null, and never keeps a feel without a grade', async () => {
+    const c = chain({ data: {}, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    await saveVote('p1', 'Rob', { grade: 'V5', stars: 2 });
+    expect(c.upsert).toHaveBeenLastCalledWith({ problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: null, stars: 2 }, { onConflict: 'problem_id,climber' });
+    await saveVote('p1', 'Rob', { grade: null, feel: 'hard', stars: 3 });
+    expect(c.upsert).toHaveBeenLastCalledWith({ problem_id: 'p1', climber: 'Rob', grade: null, feel: null, stars: 3 }, { onConflict: 'problem_id,climber' });
   });
 
   it('deletes the row when both the grade and the stars are cleared', async () => {

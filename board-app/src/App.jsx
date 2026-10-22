@@ -8,7 +8,7 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
-import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, voteFor, replaceVote } from './lib/votes';
+import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote } from './lib/votes';
 import VotePicker from './votes/VotePicker';
 import { inputStyle, sectionHeading, formatShortDate } from './ui';
 import { firstAscents } from './lib/boardStats';
@@ -197,7 +197,7 @@ export default function App() {
   const [tickDate, setTickDate] = useState('');
   const [tickNotes, setTickNotes] = useState('');
   const [tickIsFlash, setTickIsFlash] = useState(false);
-  const [tickVote, setTickVote] = useState({ grade: null, stars: null });
+  const [tickVote, setTickVote] = useState({ grade: null, feel: null, stars: null });
   const [loggingTick, setLoggingTick] = useState(false);
 
   const [climbers, setClimbers] = useState([]);
@@ -655,7 +655,7 @@ export default function App() {
     setTickDate(new Date().toISOString().slice(0, 10));
     setTickNotes('');
     setTickIsFlash(false);
-    setTickVote({ grade: null, stars: null });
+    setTickVote({ grade: null, feel: null, stars: null });
     setShowLogForm(true);
   };
 
@@ -680,8 +680,11 @@ export default function App() {
       const name = currentClimber?.name;
       try {
         const existing = voteFor(boardVotes, problemId, name);
+        // A grade and its feel travel together: a picked chip wins whole, even with a null feel.
+        const picked = tickVote.grade != null;
         const row = await saveVote(problemId, name, {
-          grade: tickVote.grade ?? existing?.grade ?? null,
+          grade: picked ? tickVote.grade : existing?.grade ?? null,
+          feel: picked ? tickVote.feel ?? null : existing?.feel ?? null,
           stars: tickVote.stars ?? existing?.stars ?? null,
         });
         setBoardVotes((prev) => replaceVote(prev, problemId, name, row));
@@ -1220,15 +1223,16 @@ export default function App() {
             </div>
             {selectedGradeVotes.length > 0 && (
               <p style={{ margin: '8px 0 0', fontSize: 13, fontFamily: "'Inter', sans-serif", color: '#8b8d91' }}>
-                {`Grade votes: ${selectedGradeVotes.map((g) => `${g.grade} ×${g.count}`).join(' · ')}`}
+                {`Grade votes: ${selectedGradeVotes.map((g) => `${gradeVoteLabel(g)} ×${g.count}`).join(' · ')}`}
               </p>
             )}
             {currentClimber && ticks.some((t) => t.sent_by === currentClimber.name) && (
               <div style={{ marginTop: 14 }}>
                 <h3 style={sectionHeading}>Your vote</h3>
                 <VotePicker
-                  choices={gradeChoices(selected.grade, myVote?.grade ?? null)}
+                  choices={gradeChoices(selected.grade, myVote)}
                   grade={myVote?.grade ?? null}
+                  feel={myVote?.feel ?? null}
                   stars={myVote?.stars ?? null}
                   disabled={savingVote || loggingTick}
                   onChange={(next) => handleVote(selected.id, next)}
@@ -1279,7 +1283,7 @@ export default function App() {
                         <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
                         <Zap size={14} color="#C9A227" /> Flashed it
                       </label>
-                      <VotePicker choices={gradeChoices(selected.grade, null)} grade={tickVote.grade} stars={tickVote.stars} disabled={loggingTick} onChange={setTickVote} />
+                      <VotePicker choices={gradeChoices(selected.grade, null)} grade={tickVote.grade} feel={tickVote.feel} stars={tickVote.stars} disabled={loggingTick} onChange={setTickVote} />
                     </>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>

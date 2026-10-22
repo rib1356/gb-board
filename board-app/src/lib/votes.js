@@ -21,26 +21,46 @@ export function starSummary(problem, counted) {
   return null;
 }
 
-// How many counted votes each grade has on a problem, easiest first.
+// A grade vote as the crew says it: "soft V5", "V5" or "hard V5".
+export function gradeVoteLabel({ grade, feel }) {
+  return feel === 'soft' || feel === 'hard' ? `${feel} ${grade}` : grade;
+}
+
+const FEEL_OFFSET = { soft: -0.25, hard: 0.25 };
+
+function rank({ grade, feel }) {
+  return gradeNumber(grade) + (FEEL_OFFSET[feel] ?? 0);
+}
+
+// How many counted votes each grade and feel has on a problem, easiest first.
 export function gradeVoteCounts(problemId, counted) {
   const tally = new Map();
   for (const v of counted) {
     if (v.problem_id !== problemId || gradeNumber(v.grade) === null) continue;
-    tally.set(v.grade, (tally.get(v.grade) || 0) + 1);
+    const feel = v.feel ?? null;
+    const key = `${v.grade}|${feel}`;
+    const row = tally.get(key) || { grade: v.grade, feel, count: 0 };
+    row.count += 1;
+    tally.set(key, row);
   }
-  return [...tally.entries()]
-    .map(([grade, count]) => ({ grade, count }))
-    .sort((a, b) => gradeNumber(a.grade) - gradeNumber(b.grade));
+  return [...tally.values()].sort((a, b) => rank(a) - rank(b));
 }
 
-// The grades a climber can vote for: one either side of the current grade,
-// plus their saved vote if it sits outside those.
-export function gradeChoices(currentGrade, myGrade) {
+// What a climber can vote for: the grade either side of the current one, and
+// soft, plain and hard of the current grade, plus their saved vote if it sits
+// outside those.
+export function gradeChoices(currentGrade, myVote) {
   const n = gradeNumber(currentGrade);
   if (n === null) return [];
-  const choices = new Set([n - 1, n, n + 1].filter((i) => i >= 0 && i < GRADES.length).map((i) => GRADES[i]));
-  if (gradeNumber(myGrade) !== null) choices.add(myGrade);
-  return [...choices].sort((a, b) => gradeNumber(a) - gradeNumber(b));
+  const choices = [];
+  if (n - 1 >= 0) choices.push({ grade: GRADES[n - 1], feel: null });
+  choices.push({ grade: GRADES[n], feel: 'soft' }, { grade: GRADES[n], feel: null }, { grade: GRADES[n], feel: 'hard' });
+  if (n + 1 < GRADES.length) choices.push({ grade: GRADES[n + 1], feel: null });
+  if (myVote && gradeNumber(myVote.grade) !== null) {
+    const mine = { grade: myVote.grade, feel: myVote.feel ?? null };
+    if (!choices.some((c) => c.grade === mine.grade && c.feel === mine.feel)) choices.push(mine);
+  }
+  return choices.sort((a, b) => rank(a) - rank(b));
 }
 
 // A climber's vote on a problem, or null. A missing name never matches.

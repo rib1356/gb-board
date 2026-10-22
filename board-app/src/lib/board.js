@@ -177,7 +177,7 @@ export async function listBoardVotes(boardId) {
   for (;;) {
     const { data, error } = await supabase
       .from('votes')
-      .select('id, problem_id, climber, grade, stars, created_at, problems!inner(board_id)')
+      .select('id, problem_id, climber, grade, feel, stars, created_at, problems!inner(board_id)')
       .eq('problems.board_id', boardId)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
@@ -189,7 +189,7 @@ export async function listBoardVotes(boardId) {
 }
 
 // A climber's one vote on a problem: a grade, stars, or both. Clearing both removes the row.
-export async function saveVote(problemId, climber, { grade, stars }) {
+export async function saveVote(problemId, climber, { grade, feel, stars }) {
   if (grade == null && stars == null) {
     const { error } = await supabase.from('votes').delete().eq('problem_id', problemId).eq('climber', climber);
     if (error) throw error;
@@ -197,7 +197,7 @@ export async function saveVote(problemId, climber, { grade, stars }) {
   }
   const { data, error } = await supabase
     .from('votes')
-    .upsert({ problem_id: problemId, climber, grade, stars }, { onConflict: 'problem_id,climber' })
+    .upsert({ problem_id: problemId, climber, grade, feel: grade == null ? null : (feel ?? null), stars }, { onConflict: 'problem_id,climber' })
     .select()
     .single();
   if (error) throw error;
