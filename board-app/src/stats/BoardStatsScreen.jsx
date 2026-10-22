@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import {
   crewBoard, latestFAs, faTally, classics, popularLately, openProjects, leastClimbedLately, daysAgoLabel, openLabel,
 } from '../lib/boardStats';
+import { problemsOnPhoto } from '../lib/heatmap';
+import Heatmap from './Heatmap';
 import { monthOf, previousMonth, nextMonth, monthName } from '../lib/dates';
 import { formatShortDate, sectionHeading } from '../ui';
 
@@ -77,7 +79,7 @@ function CrewBoard({ rows }) {
   );
 }
 
-export default function BoardStatsScreen({ problems, ticks, climberCount, today, votes, onOpenProblem }) {
+export default function BoardStatsScreen({ problems, ticks, climberCount, today, votes, photoUrl, onOpenProblem }) {
   const month = monthOf(today);
   const stats = useMemo(() => ({
     crew: crewBoard(problems, ticks, month),
@@ -157,6 +159,12 @@ export default function BoardStatsScreen({ problems, ticks, climberCount, today,
           {stats.dusty.map((p, i) => (
             <ProblemRow key={p.id} problem={p} first={i === 0} onOpen={onOpenProblem} meta={daysAgoLabel(p.daysAgo)} />
           ))}
+        </Section>
+      )}
+
+      {problemsOnPhoto(problems, photoUrl).length > 0 && (
+        <Section title="Heatmap" note="no glow = free to set on">
+          <Heatmap key={photoUrl} problems={problems} photoUrl={photoUrl} />
         </Section>
       )}
     </div>

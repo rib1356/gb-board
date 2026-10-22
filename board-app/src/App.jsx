@@ -1402,6 +1402,7 @@ export default function App() {
             climberCount={climbers.length}
             today={localDate()}
             votes={boardVotes}
+            photoUrl={board?.photo_url ?? null}
             onOpenProblem={(problemId) => openProblem(problemId, 'stats')}
           />
         )}
