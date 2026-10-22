@@ -1244,6 +1244,25 @@ describe('App (climber picker)', () => {
     expect(prompt).not.toHaveStyle({ textOverflow: 'ellipsis' });
   });
 
+  // Too wide for the row beside the filters, the group drops a line. Sized to
+  // its content, it then starts on the left under the filters instead of being
+  // stretched across and pushed to the right.
+  it("drops the buttons under the filters on the left when Who's climbing? doesn't fit", async () => {
+    render(<App />);
+    await screen.findByText("Who's climbing?");
+    const group = screen.getByRole('button', { name: 'Logbook' }).parentElement;
+    expect(group).toHaveStyle({ flexGrow: '0', flexShrink: '0', flexBasis: 'auto' });
+  });
+
+  it('keeps a picked climber beside the filters, the group taking the rest of the row', async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    render(<App />);
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    const group = screen.getByRole('button', { name: 'Logbook' }).parentElement;
+    expect(group).toHaveStyle({ flexGrow: '1', flexShrink: '1', flexBasis: '0px' });
+  });
+
   it('cuts off only a long climber name, which gives way before the row would wrap', async () => {
     localStorage.setItem('board-app:currentClimberId', 'c1');
     listClimbers.mockResolvedValue([{ id: 'c1', name: 'Bartholomew-Smythe' }]);

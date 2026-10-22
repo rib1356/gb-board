@@ -1071,8 +1071,17 @@ export default function App() {
                   wraps the title on phones narrower than ~390px. Slim buttons
                   and a name-only pill keep the row on one line at 360px. The group
                   takes the rest of the row and the pill gives way with … before
-                  the row would wrap; only below ~330px does it drop a line. */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: '1 1 0', minWidth: currentClimber ? 120 : 'auto' }}>
+                  the row would wrap; only below ~330px does it drop a line.
+                  "Who's climbing?" never gives way, so with nobody picked the
+                  group is just its own width: when it doesn't fit it drops under
+                  the filters and starts on the left, rather than stretching
+                  across and sitting off to the right. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6,
+                ...(currentClimber
+                  ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 120 }
+                  : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }),
+              }}>
               <button onClick={() => leaveFor('logbook')} aria-label="Logbook" title="Logbook" style={iconButton}>
                 <CalendarDays size={14} />
               </button>
