@@ -98,10 +98,22 @@ describe('classics', () => {
       P('p3', 'Mid', 'V3', { rating: 4 }), P('p4', 'Unrated', 'V2'),
     ];
     const ticks = [T('t1', 'p1', 'Rob', '2026-09-01'), T('t2', 'p1', 'Rob', '2026-09-02'), T('t3', 'p1', 'Shawn', '2026-09-03'), T('t4', 'p4', 'Rob', '2026-09-03')];
-    expect(classics(PROBLEMS, ticks)).toEqual([
-      { id: 'p1', name: 'Zed', grade: 'V5', rating: 5, ascents: 2 },
-      { id: 'p2', name: 'Alpha', grade: 'V4', rating: 5, ascents: 0 },
-      { id: 'p3', name: 'Mid', grade: 'V3', rating: 4, ascents: 0 },
+    expect(classics(PROBLEMS, ticks, [])).toEqual([
+      { id: 'p1', name: 'Zed', grade: 'V5', rating: 5, legacy: true, ascents: 2 },
+      { id: 'p2', name: 'Alpha', grade: 'V4', rating: 5, legacy: true, ascents: 0 },
+      { id: 'p3', name: 'Mid', grade: 'V3', rating: 4, legacy: true, ascents: 0 },
+    ]);
+  });
+
+  it('ranks by the average of counted votes, falling back to the old rating', () => {
+    const PROBLEMS = [P('p1', 'Old Five', 'V5', { rating: 5 }), P('p2', 'Voted Up', 'V4'), P('p3', 'Voted Down', 'V3', { rating: 5 })];
+    const ticks = [T('t1', 'p2', 'Rob', '2026-10-01'), T('t2', 'p2', 'Shawn', '2026-10-02'), T('t3', 'p3', 'Rob', '2026-10-03')];
+    const vote = (problemId, climber, stars) => ({ id: `${problemId}${climber}`, problem_id: problemId, climber, grade: null, stars });
+    const votes = [vote('p2', 'Rob', 4), vote('p2', 'Shawn', 5), vote('p3', 'Rob', 3), vote('p1', 'Nobody', 1)];
+    expect(classics(PROBLEMS, ticks, votes)).toEqual([
+      { id: 'p1', name: 'Old Five', grade: 'V5', rating: 5, legacy: true, ascents: 0 },
+      { id: 'p2', name: 'Voted Up', grade: 'V4', rating: 4.5, legacy: false, ascents: 2 },
+      { id: 'p3', name: 'Voted Down', grade: 'V3', rating: 3, legacy: false, ascents: 1 },
     ]);
   });
 });

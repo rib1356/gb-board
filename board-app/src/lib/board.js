@@ -172,6 +172,38 @@ export async function listBoardTicks(boardId) {
   }
 }
 
+export async function listBoardVotes(boardId) {
+  const all = [];
+  for (;;) {
+    const { data, error } = await supabase
+      .from('votes')
+      .select('id, problem_id, climber, grade, feel, stars, created_at, problems!inner(board_id)')
+      .eq('problems.board_id', boardId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(all.length, all.length + TICK_PAGE - 1);
+    if (error) throw error;
+    if (data.length === 0) return all;
+    all.push(...data);
+  }
+}
+
+// A climber's one vote on a problem: a grade, stars, or both. Clearing both removes the row.
+export async function saveVote(problemId, climber, { grade, feel, stars }) {
+  if (grade == null && stars == null) {
+    const { error } = await supabase.from('votes').delete().eq('problem_id', problemId).eq('climber', climber);
+    if (error) throw error;
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('votes')
+    .upsert({ problem_id: problemId, climber, grade, feel: grade == null ? null : (feel ?? null), stars }, { onConflict: 'problem_id,climber' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function createTick(problemId, { sentOn, notes, sentBy, flash = false }) {
   const { data, error } = await supabase
     .from('ticks')
@@ -185,17 +217,6 @@ export async function createTick(problemId, { sentOn, notes, sentBy, flash = fal
 export async function deleteTick(id) {
   const { error } = await supabase.from('ticks').delete().eq('id', id);
   if (error) throw error;
-}
-
-export async function rateProblem(id, rating) {
-  const { data, error } = await supabase
-    .from('problems')
-    .update({ rating })
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
 }
 
 export async function deleteProblem(id) {

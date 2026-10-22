@@ -79,18 +79,18 @@ function CrewBoard({ rows }) {
   );
 }
 
-export default function BoardStatsScreen({ problems, ticks, climberCount, today, photoUrl, onOpenProblem }) {
+export default function BoardStatsScreen({ problems, ticks, climberCount, today, votes, photoUrl, onOpenProblem }) {
   const month = monthOf(today);
   const stats = useMemo(() => ({
     crew: crewBoard(problems, ticks, month),
     lastMonthTop: crewBoard(problems, ticks, previousMonth(month)).find((r) => r.newTicks > 0) || null,
     fas: latestFAs(problems, ticks),
     tally: faTally(problems, ticks),
-    classics: classics(problems, ticks),
+    classics: classics(problems, ticks, votes),
     popular: popularLately(problems, ticks, today),
     open: openProjects(problems, ticks, today),
     dusty: leastClimbedLately(problems, ticks, today),
-  }), [problems, ticks, month, today]);
+  }), [problems, ticks, votes, month, today]);
 
   return (
     <div style={{ marginTop: 18 }}>
@@ -129,7 +129,7 @@ export default function BoardStatsScreen({ problems, ticks, climberCount, today,
           {stats.classics.map((p, i) => (
             <ProblemRow
               key={p.id} problem={p} first={i === 0} onOpen={onOpenProblem} meta={count(p.ascents, 'ascent')}
-              extra={<span aria-label={`${p.rating} stars`} style={{ color: '#C9A227', fontSize: 11, letterSpacing: -1, whiteSpace: 'nowrap' }}>{'★'.repeat(p.rating)}</span>}
+              extra={<span aria-label={`${p.legacy ? p.rating : p.rating.toFixed(1)} stars`} style={{ color: '#C9A227', fontSize: 11, whiteSpace: 'nowrap' }}>{`★ ${p.legacy ? p.rating : p.rating.toFixed(1)}`}</span>}
             />
           ))}
         </Section>

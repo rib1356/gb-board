@@ -62,7 +62,7 @@ describe('Heatmap', () => {
   });
 
   it('redraws from scratch when the board photo changes', () => {
-    const props = { ticks: [], climberCount: 1, today: '2026-10-22', onOpenProblem: () => {} };
+    const props = { ticks: [], votes: [], climberCount: 1, today: '2026-10-22', onOpenProblem: () => {} };
     const old = [P('1', [H(0.5, 0.5)], 'photo-1')];
     const next = [P('2', [H(0.5, 0.5)], 'photo-2')];
     const { rerender } = render(<BoardStatsScreen {...props} problems={old} photoUrl="photo-1" />);
