@@ -63,14 +63,16 @@ Rob didn't specify these, so they're worth checking:
 - A vote only counts while the voter still has a send of that problem
   logged. If they delete their only send, the vote stops counting. It comes
   back if they log it again.
-- Grade votes are offered as three chips: one grade easier, the current
-  grade, and one grade harder. If your saved vote is outside those three
-  (because the problem has since been regraded), your vote shows as a fourth
-  chip so you can see it and change it.
+- Grade votes are offered as five chips: one grade easier, soft, the
+  current grade, hard, and one grade harder (on a V5: V4 · soft V5 · V5 ·
+  hard V5 · V6). Neighbouring grades get no soft or hard. If your saved vote
+  is outside those five (because the problem has since been regraded), it
+  shows as an extra chip so you can see it and change it. *(Changed
+  2026-10-22 after Rob tried it: see the end of the spec.)*
 - Ungraded problems (2 today) get a star vote only. Set a grade by hand
   first to open grade voting.
-- Grade votes read as "Grade votes: V4 ×1 · V5 ×3" in small grey body text,
-  never in the mono orange grade style.
+- Grade votes read as "Grade votes: soft V5 ×1 · V5 ×2 · hard V5 ×3" in
+  small grey body text, never in the mono orange grade style.
 - The stars show the average rounded to the nearest half star. The problem
   page also shows the exact average and the number of votes ("4.3 · 5
   votes").
@@ -94,7 +96,7 @@ Rob didn't specify these, so they're worth checking:
 | When you're asked | On the send form, only for your first send of that problem (the same rule as "Flashed it") |
 | Sends logged before this change | Anyone with a send logged can vote or change their vote from the problem page |
 | Who can vote | Only climbers with a named send of that problem |
-| What a grade vote stores | An actual grade ("V5"), so it still makes sense after a regrade |
+| What a grade vote stores | An actual grade ("V5"), plus "soft" or "hard" when picked, so it still makes sense after a regrade |
 | Existing star ratings | A problem keeps its current `rating` until its first star vote. From then on, it shows the average of the votes |
 | Heatmap audience | Everyone, on the trophy (board stats) screen |
 | What the heatmap shows | A glow over every hold that live problems on the current photo use, warmer the more problems use it. Bare holds are the unused ones |
@@ -129,6 +131,13 @@ grant select, insert, update, delete on public.votes to anon, authenticated, ser
 - `grade` and `stars` are each optional, but a row always has at least one.
   When both are cleared, the app deletes the row.
 - The grade check matches `GRADES` in `src/lib/grades.js` (V0–V18).
+- Added 2026-10-22: a `feel` column, `soft` / `hard` / null, which only goes
+  with a grade:
+
+  ```sql
+  alter table votes add column feel text check (feel in ('soft', 'hard'));
+  alter table votes add constraint votes_feel_needs_grade check (feel is null or grade is not null);
+  ```
 - `problems.rating` stays as it is. The app stops writing it and only reads
   it as the fallback described below. Nothing is dropped.
 
@@ -138,8 +147,8 @@ grant select, insert, update, delete on public.votes to anon, authenticated, ser
   pages, the same way `listBoardTicks` does: ordered by `created_at, id`, with
   `problems!inner(board_id)`, and reading pages until one comes back empty
   (the project's row cap may be under 1,000). It selects `id, problem_id,
-  climber, grade, stars, created_at`.
-- `saveVote(problemId, climber, { grade, stars })`:
+  climber, grade, feel, stars, created_at`.
+- `saveVote(problemId, climber, { grade, feel, stars })`:
   - If either is set, it upserts on `(problem_id, climber)` and returns the
     row.
   - If both are `null`, it deletes the row and returns `null`.
@@ -173,12 +182,14 @@ them by hand.
   there are star votes, with `stars` rounded to the nearest 0.5. It returns
   `{ average: rating, count: 0, stars: rating, legacy: true }` when the
   problem only has an old `rating`. Otherwise it returns `null`.
-- `gradeVoteCounts(counted)` returns `[{ grade, count }]` for one problem,
-  easiest first. Ungraded or unparseable values are left out.
-- `gradeChoices(currentGrade, myVote)` returns the chips to show: the grade
-  below, the current grade and the grade above, clamped to V0–V18, plus
-  `myVote` if it isn't one of those, in grade order. For an ungraded problem
-  it returns `[]`.
+- `gradeVoteCounts(counted)` returns `[{ grade, feel, count }]` for one
+  problem, easiest first (soft V5 before V5 before hard V5). Ungraded or
+  unparseable values are left out.
+- `gradeChoices(currentGrade, myVote)` returns the chips to show, each a
+  `{ grade, feel }`: the grade below, soft, the current grade, hard, and the
+  grade above, clamped to V0–V18, plus `myVote` if it isn't one of those,
+  easiest first. For an ungraded problem it returns `[]`.
+- A grade vote reads "soft V5", "V5" or "hard V5" everywhere it's shown.
 - `voteFor(votes, problemId, climber)` returns that climber's vote row, or
   `null`.
 
@@ -196,7 +207,9 @@ send of this problem yet):
 On **Save entry**, the send is created first, exactly as now. If a grade or
 stars were picked, `saveVote` runs next. It only overwrites what was picked:
 someone who deleted their only send and is logging it again may still have a
-saved vote, and picking stars alone must not wipe their grade vote. If the send saves but the vote
+saved vote, and picking stars alone must not wipe their grade vote. A grade
+and its soft/hard always travel together: picking plain V5 replaces an old
+"hard V4" with V5, never "hard V5". If the send saves but the vote
 doesn't, the form still closes, and the app shows: "Your send is logged, but
 your vote didn't save. You can add it from the problem page."
 
@@ -207,7 +220,7 @@ your vote didn't save. You can add it from the problem page."
   "4.3 · 5 votes" in muted grey ("1 vote" when there's one). An old rating
   shows its stars with no text. The "Sent ×N" text stays where it is.
 - **Grade votes line:** under the stars row, in 13px muted grey body text
-  (Inter, `#8b8d91`): "Grade votes: V4 ×1 · V5 ×3". It's hidden when there
+  (Inter, `#8b8d91`): "Grade votes: soft V5 ×1 · V5 ×2 · hard V5 ×3". It's hidden when there
   are none. It never uses the mono font or the orange grade colour.
 - **Your vote:** shown only when the picked climber has a named send of this
   problem. It's a small block under the grade votes line with the same Grade
@@ -331,7 +344,7 @@ Until then it draws the photo without glows.
     vote doesn't replace it;
   - grade counts come out easiest first;
   - `gradeChoices` at V0, at V18, for an ungraded problem, and with a saved
-    vote outside the three chips.
+    vote outside the five chips.
 - **`heatmap.test.js`:**
   - marks within the radius merge, and marks outside it don't;
   - the aspect ratio scales vertical distance;
@@ -395,3 +408,13 @@ it, so whichever merges second will need a small conflict fixed.
 - A full-size heatmap view.
 - Mapping every hold on the board.
 - Flash grade vs send grade.
+
+## Changes after trying it (2026-10-22)
+
+- **Soft and hard grade votes.** Whole-grade chips couldn't say "hard V5":
+  the jump from V5 to V6 is big enough that a stiff V5 almost never earns a
+  V6 vote. The grade row now offers V4 · soft V5 · V5 · hard V5 · V6, in the
+  words the crew already uses. A vote stores its grade plus `feel` (`soft` /
+  `hard` / null), so "hard V5" still means hard V5 after a regrade. The chips
+  sit on their own line under the "Grade" label, so five fit on a narrow
+  phone. Rob's two test votes from before the change keep `feel` empty.
