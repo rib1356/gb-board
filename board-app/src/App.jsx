@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
@@ -8,7 +8,8 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
-import { countedVotes, starSummary } from './lib/votes';
+import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, voteFor, replaceVote } from './lib/votes';
+import VotePicker from './votes/VotePicker';
 import { inputStyle, sectionHeading, formatShortDate } from './ui';
 import { firstAscents } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
@@ -65,36 +66,19 @@ const fontImport = `
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 `;
 
-function StarRating({ rating, onRate, readOnly = false }) {
-  if (readOnly) {
-    if (rating == null) return null;
-    return (
-      <div aria-label={`Rating: ${rating} out of 5`} style={{ display: 'flex', gap: 2 }}>
-        {[1, 2, 3, 4, 5].map((n) => (
-          n - 0.5 === rating ? (
-            <span key={n} style={{ position: 'relative', display: 'inline-flex' }}>
-              <Star size={14} fill="none" color="#3a3b3e" />
-              <StarHalf size={14} fill="#D9552B" color="#D9552B" style={{ position: 'absolute', left: 0, top: 0 }} />
-            </span>
-          ) : (
-            <Star key={n} size={14} fill={n <= rating ? '#D9552B' : 'none'} color={n <= rating ? '#D9552B' : '#3a3b3e'} />
-          )
-        ))}
-      </div>
-    );
-  }
+function StarRating({ rating }) {
+  if (rating == null) return null;
   return (
-    <div style={{ display: 'flex', gap: 2 }}>
+    <div aria-label={`Rating: ${rating} out of 5`} style={{ display: 'flex', gap: 2 }}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          aria-label={`Rate ${n} star${n > 1 ? 's' : ''}`}
-          onClick={() => onRate(n === rating ? null : n)}
-          style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer' }}
-        >
-          <Star size={22} fill={rating != null && n <= rating ? '#D9552B' : 'none'} color={rating != null && n <= rating ? '#D9552B' : '#8b8d91'} />
-        </button>
+        n - 0.5 === rating ? (
+          <span key={n} style={{ position: 'relative', display: 'inline-flex' }}>
+            <Star size={14} fill="none" color="#3a3b3e" />
+            <StarHalf size={14} fill="#D9552B" color="#D9552B" style={{ position: 'absolute', left: 0, top: 0 }} />
+          </span>
+        ) : (
+          <Star key={n} size={14} fill={n <= rating ? '#D9552B' : 'none'} color={n <= rating ? '#D9552B' : '#3a3b3e'} />
+        )
       ))}
     </div>
   );
@@ -205,6 +189,7 @@ export default function App() {
   const [savingVolumes, setSavingVolumes] = useState(false);
 
   const [ticks, setTicks] = useState([]);
+  const [savingVote, setSavingVote] = useState(false);
   // Every send on the board, so the list knows who has sent what.
   const [boardTicks, setBoardTicks] = useState([]);
   const [boardVotes, setBoardVotes] = useState([]);
@@ -652,14 +637,17 @@ export default function App() {
     setSaving(false);
   };
 
-  const handleRate = async (id, rating) => {
+  const handleVote = async (problemId, next) => {
+    setSavingVote(true);
+    setError('');
     try {
-      const updated = await rateProblem(id, rating);
-      setProblems((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      const row = await saveVote(problemId, currentClimber.name, next);
+      setBoardVotes((prev) => replaceVote(prev, problemId, currentClimber.name, row));
     } catch (err) {
       console.error(err);
-      setError('Could not save that rating — check your connection and try again.');
+      setError('Could not save your vote — check your connection and try again.');
     }
+    setSavingVote(false);
   };
 
   const startLogTick = () => {
@@ -809,6 +797,9 @@ export default function App() {
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
   const selected = problems.find((p) => p.id === selectedId);
+  const selectedStars = selected ? starSummary(selected, counted) : null;
+  const selectedGradeVotes = selected ? gradeVoteCounts(selected.id, counted) : [];
+  const myVote = selected && currentClimber ? voteFor(boardVotes, selected.id, currentClimber.name) : null;
   const currentInjury = tweaks.injuries.find((i) => i.id === injuryId) || null;
   const sheetInjury = checkinSheet ? tweaks.injuries.find((i) => i.id === checkinSheet.injuryId) || null : null;
   // The hub and the injury screens, none of which shows the board photo.
@@ -1148,7 +1139,7 @@ export default function App() {
                   <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: '#8b8d91', marginTop: 2 }}>{p.setter ? `Set by ${p.setter}` : 'Unknown setter'}</div>
                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StarRating rating={starSummary(p, counted)?.stars ?? null} readOnly />
+                    <StarRating rating={starSummary(p, counted)?.stars ?? null} />
                     {p.send_count > 0 && (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#5C8A66', textTransform: 'uppercase' }}>
                         <CheckCircle2 size={12} /> Sent ×{p.send_count}
@@ -1194,7 +1185,12 @@ export default function App() {
               </p>
             )}
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 14 }}>
-              <StarRating rating={selected.rating} onRate={(r) => handleRate(selected.id, r)} />
+              <StarRating rating={selectedStars?.stars ?? null} />
+              {selectedStars && !selectedStars.legacy && (
+                <span style={{ fontSize: 13, color: '#8b8d91' }}>
+                  {`${selectedStars.average.toFixed(1)} · ${selectedStars.count} ${selectedStars.count === 1 ? 'vote' : 'votes'}`}
+                </span>
+              )}
               <span style={{
                 display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700,
                 color: selected.send_count > 0 ? '#5C8A66' : '#8b8d91',
@@ -1203,6 +1199,23 @@ export default function App() {
                 {selected.send_count > 0 ? `Sent ×${selected.send_count}` : 'Not sent yet'}
               </span>
             </div>
+            {selectedGradeVotes.length > 0 && (
+              <p style={{ margin: '8px 0 0', fontSize: 13, fontFamily: "'Inter', sans-serif", color: '#8b8d91' }}>
+                {`Grade votes: ${selectedGradeVotes.map((g) => `${g.grade} ×${g.count}`).join(' · ')}`}
+              </p>
+            )}
+            {currentClimber && ticks.some((t) => t.sent_by === currentClimber.name) && (
+              <div style={{ marginTop: 14 }}>
+                <h3 style={sectionHeading}>Your vote</h3>
+                <VotePicker
+                  choices={gradeChoices(selected.grade, myVote?.grade ?? null)}
+                  grade={myVote?.grade ?? null}
+                  stars={myVote?.stars ?? null}
+                  disabled={savingVote}
+                  onChange={(next) => handleVote(selected.id, next)}
+                />
+              </div>
+            )}
             {faceListLines(selected.holds, volumes).length > 0 && (
               <div style={{ marginTop: 14 }}>
                 <h3 style={sectionHeading}>Volumes</h3>

@@ -9,7 +9,6 @@ vi.mock('./lib/board', () => ({
   uploadProblemMask: vi.fn(),
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
-  rateProblem: vi.fn(),
   updateProblem: vi.fn(),
   restoreProblem: vi.fn(),
   listTicks: vi.fn(),
@@ -52,7 +51,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCheckins, createInjury, updateInjury, createCheckin } from './lib/tweaks';
@@ -1143,38 +1142,6 @@ describe('App (tick log flow)', () => {
 });
 
 describe('App (rating flow)', () => {
-  it('sets a rating from the detail view', async () => {
-    listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: null },
-    ]);
-    rateProblem.mockResolvedValue({
-      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: 3,
-    });
-    render(<App />);
-    const user = userEvent.setup();
-
-    await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Rate 3 stars' }));
-
-    await waitFor(() => expect(rateProblem).toHaveBeenCalledWith('p1', 3));
-  });
-
-  it('clears a rating when tapping the already-selected star', async () => {
-    listProblems.mockResolvedValue([
-      { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: 3 },
-    ]);
-    rateProblem.mockResolvedValue({
-      id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: null,
-    });
-    render(<App />);
-    const user = userEvent.setup();
-
-    await user.click(await screen.findByText('Gaston Traverse'));
-    await user.click(await screen.findByRole('button', { name: 'Rate 3 stars' }));
-
-    await waitFor(() => expect(rateProblem).toHaveBeenCalledWith('p1', null));
-  });
-
   it('shows a saved rating in the problem list', async () => {
     listProblems.mockResolvedValue([
       { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: 4 },
@@ -1195,6 +1162,89 @@ describe('App (votes)', () => {
     localStorage.setItem('board-app:currentClimberId', 'c1');
     listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
   };
+
+  const openGaston = async ({ ticks = [ROB_SEND, SHAWN_SEND], votes = [ROB_VOTE, SHAWN_VOTE] } = {}) => {
+    asRob();
+    listProblems.mockResolvedValue([GASTON]);
+    listBoardTicks.mockResolvedValue(ticks);
+    listTicks.mockResolvedValue(ticks);
+    listBoardVotes.mockResolvedValue(votes);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    await user.click(await screen.findByText('Gaston Traverse'));
+    await screen.findByText('Log a send');
+    return user;
+  };
+
+  it('shows the average and how many votes, with the grade votes beside the grade', async () => {
+    await openGaston();
+    expect(screen.getByText('4.5 · 2 votes')).toBeInTheDocument();
+    expect(screen.getByText('Grade votes: V4 ×1 · V5 ×1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Rate \d star/ })).not.toBeInTheDocument();
+  });
+
+  it('shows an old rating with no vote count', async () => {
+    listProblems.mockResolvedValue([{ ...GASTON, rating: 3 }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Gaston Traverse'));
+    expect(await screen.findAllByLabelText('Rating: 3 out of 5')).not.toHaveLength(0);
+    expect(screen.queryByText(/votes?$/)).not.toBeInTheDocument();
+  });
+
+  it("doesn't offer Your vote to a climber who hasn't sent it", async () => {
+    await openGaston({ ticks: [SHAWN_SEND] });
+    expect(screen.queryByRole('heading', { name: 'Your vote' })).not.toBeInTheDocument();
+  });
+
+  it('saves a vote change straight away and updates the grade votes', async () => {
+    const user = await openGaston();
+    expect(screen.getByRole('heading', { name: 'Your vote' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'V4' })).toHaveAttribute('aria-pressed', 'true');
+    saveVote.mockResolvedValue({ ...ROB_VOTE, grade: 'V5' });
+    await user.click(screen.getByRole('button', { name: 'V5' }));
+    expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', stars: 4 });
+    expect(await screen.findByText('Grade votes: V5 ×2')).toBeInTheDocument();
+  });
+
+  it('removes the vote when both are unpicked', async () => {
+    const user = await openGaston({ votes: [{ ...ROB_VOTE, stars: null }, SHAWN_VOTE] });
+    saveVote.mockResolvedValue(null);
+    await user.click(screen.getByRole('button', { name: 'V4' }));
+    expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: null, stars: null });
+    expect(await screen.findByText('Grade votes: V5 ×1')).toBeInTheDocument();
+  });
+
+  it('disables the vote while a save is in flight, so a double tap sends one save', async () => {
+    const user = await openGaston();
+    let finish;
+    saveVote.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await user.click(screen.getByRole('button', { name: 'V6' }));
+    expect(screen.getByRole('button', { name: 'V5' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'V5' }));
+    expect(saveVote).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ ...ROB_VOTE, grade: 'V6' }));
+    expect(screen.getByRole('button', { name: 'V5' })).toBeEnabled();
+  });
+
+  it('says so when a vote fails to save', async () => {
+    const user = await openGaston();
+    saveVote.mockRejectedValue(new Error('down'));
+    await user.click(screen.getByRole('button', { name: '1 star' }));
+    expect(await screen.findByText('Could not save your vote — check your connection and try again.')).toBeInTheDocument();
+  });
+
+  it('stops counting your vote as soon as you delete your only send', async () => {
+    const user = await openGaston();
+    deleteTick.mockResolvedValue();
+    let robEntry = screen.getByText(/^Rob · /);
+    while (!within(robEntry).queryByRole('button', { name: 'Delete entry' })) robEntry = robEntry.parentElement;
+    await user.click(within(robEntry).getByRole('button', { name: 'Delete entry' }));
+    expect(await screen.findByText('5.0 · 1 vote')).toBeInTheDocument();
+    expect(screen.getByText('Grade votes: V5 ×1')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Your vote' })).not.toBeInTheDocument();
+  });
 
   it('shows the average of the votes in the list, to the nearest half star', async () => {
     listProblems.mockResolvedValue([GASTON]);

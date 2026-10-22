@@ -12,7 +12,6 @@ import {
   uploadProblemMask,
   createProblem,
   deleteProblem,
-  rateProblem,
   updateProblem,
   restoreProblem,
   listTicks,
@@ -289,27 +288,6 @@ describe('deleteTick', () => {
     expect(mocks.supabase.from).toHaveBeenCalledWith('ticks');
     expect(c.delete).toHaveBeenCalled();
     expect(c.eq).toHaveBeenCalledWith('id', 't1');
-  });
-});
-
-describe('rateProblem', () => {
-  it('updates the rating for a problem', async () => {
-    const updated = { id: 'p1', rating: 3 };
-    const c = chain({ data: updated, error: null });
-    mocks.supabase.from.mockReturnValue(c);
-    const result = await rateProblem('p1', 3);
-    expect(result).toEqual(updated);
-    expect(c.update).toHaveBeenCalledWith({ rating: 3 });
-    expect(c.eq).toHaveBeenCalledWith('id', 'p1');
-  });
-
-  it('clears the rating when passed null', async () => {
-    const updated = { id: 'p1', rating: null };
-    const c = chain({ data: updated, error: null });
-    mocks.supabase.from.mockReturnValue(c);
-    const result = await rateProblem('p1', null);
-    expect(result).toEqual(updated);
-    expect(c.update).toHaveBeenCalledWith({ rating: null });
   });
 });
 
