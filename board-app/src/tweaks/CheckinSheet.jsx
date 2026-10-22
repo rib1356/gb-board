@@ -77,14 +77,6 @@ export default function CheckinSheet({ injury, checkins, boardDays, today, editi
     if (touched) saveDraft(injury.id, { draft, editingId });
   }, [injury.id, touched, draft, editingId]);
 
-  // Editing goes straight to the end of the notes, ready to add to them.
-  useEffect(() => {
-    if (!editingId) return;
-    const notes = notesRef.current;
-    notes.focus();
-    notes.setSelectionRange(notes.value.length, notes.value.length);
-  }, [editingId]);
-
   // rows grows with each line typed; a long line that wraps is caught here.
   useLayoutEffect(() => {
     const notes = notesRef.current;

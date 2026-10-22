@@ -134,8 +134,7 @@ describe('CheckinSheet', () => {
       it('opens it, ready to add to the notes', async () => {
         const { onSave } = renderSheet(withToday);
         expect(notes()).toHaveValue('Fine this morning');
-        expect(notes()).toHaveFocus();
-        expect(notes().selectionStart).toBe('Fine this morning'.length);
+        expect(notes()).not.toHaveFocus();
         expect(button('Delete')).toBeInTheDocument();
         expect(screen.queryByText(/There's already a check-in/)).not.toBeInTheDocument();
 
@@ -185,11 +184,11 @@ describe('CheckinSheet', () => {
   });
 
   describe('editing', () => {
-    it('puts the cursor at the end of the notes', () => {
+    // Focusing the notes on a phone throws the keyboard up over the slider.
+    it("leaves the keyboard down until you tap the notes", () => {
       renderSheet({ editing: oct13 });
-      expect(notes()).toHaveFocus();
-      expect(notes().selectionStart).toBe('Bit stiff in the morning'.length);
-      expect(notes().selectionEnd).toBe('Bit stiff in the morning'.length);
+      expect(notes()).toHaveValue('Bit stiff in the morning');
+      expect(notes()).not.toHaveFocus();
     });
 
     it('asks before deleting, and Keep backs out', () => {
