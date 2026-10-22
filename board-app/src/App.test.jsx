@@ -1579,6 +1579,25 @@ describe('App (board stats)', () => {
     const rows = within(screen.getByRole('table')).getAllByRole('row');
     expect(rows.map((r) => r.textContent)).toEqual(['ClimberProblemsNewFlashesTop', 'Shawn221V5', 'Rob110V5']);
     expect(screen.queryByText('No board photo yet')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Heatmap' })).not.toBeInTheDocument();
+  });
+
+  it('shows the heatmap last, when problems are set on the current photo', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, photo_url: 'photo-1' });
+    listProblems.mockResolvedValue(PROBLEMS.map((p) => ({ ...p, photo_url: 'photo-1', holds: [{ x: 0.4, y: 0.4, type: 'hold' }] })));
+    await openStats();
+    expect(screen.getByRole('heading', { name: 'Heatmap' })).toBeInTheDocument();
+    expect(screen.getByText('no glow = free to set on')).toBeInTheDocument();
+    const h3s = screen.getAllByRole('heading', { level: 3 });
+    expect(h3s[h3s.length - 1]).toHaveTextContent('Heatmap');
+  });
+
+  it('hides the heatmap when the board has been re-shot since every problem was set', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, photo_url: 'photo-2' });
+    listProblems.mockResolvedValue(PROBLEMS.map((p) => ({ ...p, photo_url: 'photo-1', holds: [{ x: 0.4, y: 0.4, type: 'hold' }] })));
+    await openStats();
+    expect(screen.getByRole('heading', { name: 'Board stats' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Heatmap' })).toBeNull();
   });
 
   it('shows the latest FAs, classics, popular lately and every open project with how long it has been open', async () => {
