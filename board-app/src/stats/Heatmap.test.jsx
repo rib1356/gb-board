@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import Heatmap from './Heatmap';
 import BoardStatsScreen from './BoardStatsScreen';
 
 const P = (id, holds, photo_url = 'photo-1') => ({ id, created_at: `2026-10-0${id}T00:00:00Z`, photo_url, holds });
 const H = (x, y, type = 'hold') => ({ x, y, type });
+
+const bands = () => within(screen.getByTestId('heat-legend')).getAllByTestId('heat-band').map((b) => b.textContent);
 
 const loadPhoto = (width = 1000, height = 1000) => {
   const img = screen.getByRole('img', { name: 'Board heatmap' });
@@ -23,8 +25,8 @@ describe('Heatmap', () => {
     expect(screen.queryAllByTestId('heat-spot')).toHaveLength(0);
     loadPhoto();
     expect(screen.queryAllByTestId('heat-spot')).toHaveLength(3);
-    expect(screen.getByText('1 problem')).toBeInTheDocument();
-    expect(screen.getByText('2 problems')).toBeInTheDocument();
+    expect(bands()).toEqual(['1', '2']);
+    expect(screen.getByTestId('heat-legend')).toHaveTextContent(/^Used by.*problems$/);
     expect(screen.getByText('No glow: never used as a handhold')).toBeInTheDocument();
   });
 
@@ -32,8 +34,23 @@ describe('Heatmap', () => {
     render(<Heatmap problems={[P('1', [H(0.1, 0.1), H(0.9, 0.9)])]} photoUrl="photo-1" />);
     loadPhoto();
     expect(screen.getAllByTestId('heat-spot')).toHaveLength(2);
-    expect(screen.getByText('1 problem')).toBeInTheDocument();
-    expect(screen.queryByText(/problems$/)).toBeNull();
+    expect(bands()).toEqual(['1']);
+    expect(screen.getByTestId('heat-legend')).toHaveTextContent(/problem$/);
+  });
+
+  it('colours holds by band, so 3 and 4 match but 2 and 3 differ', () => {
+    // Four problems share the first hold, three the second, two the third.
+    const problems = ['1', '2', '3', '4'].map((id, i) => P(id, [
+      H(0.2, 0.2),
+      ...(i < 3 ? [H(0.5, 0.5)] : []),
+      ...(i < 2 ? [H(0.8, 0.8)] : []),
+    ]));
+    render(<Heatmap problems={problems} photoUrl="photo-1" />);
+    loadPhoto();
+    const [four, three, two] = screen.getAllByTestId('heat-spot').map((c) => c.getAttribute('fill'));
+    expect(four).toBe(three);
+    expect(three).not.toBe(two);
+    expect(bands()).toEqual(['1', '2', '3–4']);
   });
 
   it('shows the bare photo when every hold is a foot', () => {
@@ -41,7 +58,7 @@ describe('Heatmap', () => {
     loadPhoto();
     expect(screen.getByRole('img', { name: 'Board heatmap' })).toBeInTheDocument();
     expect(screen.queryAllByTestId('heat-spot')).toHaveLength(0);
-    expect(screen.queryByText(/^1 problem/)).toBeNull();
+    expect(screen.queryByTestId('heat-legend')).toBeNull();
     expect(screen.getByText('No glow: never used as a handhold')).toBeInTheDocument();
   });
 

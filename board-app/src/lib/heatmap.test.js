@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { heatSpots, problemsOnPhoto } from './heatmap';
+import { heatSpots, problemsOnPhoto, heatBand, HEAT_BANDS } from './heatmap';
 
 const P = (id, created_at, holds, photo_url = 'photo-1') => ({ id, created_at, photo_url, holds });
 const H = (x, y, type = 'hold') => ({ x, y, type });
@@ -85,5 +85,12 @@ describe('problemsOnPhoto', () => {
     const b = P('b', '2026-10-01T00:00:00Z', [], 'photo-0');
     expect(problemsOnPhoto([a, b], 'photo-1')).toEqual([a]);
     expect(problemsOnPhoto([a, b], null)).toEqual([]);
+  });
+});
+
+describe('heatBand', () => {
+  it('gives the low end its own steps and lumps five and up together', () => {
+    expect([1, 2, 3, 4, 5, 13].map(heatBand)).toEqual([0, 1, 2, 2, 3, 3]);
+    expect(HEAT_BANDS.map((b) => b.label)).toEqual(['1', '2', '3–4', '5+']);
   });
 });

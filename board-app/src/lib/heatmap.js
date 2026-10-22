@@ -6,6 +6,21 @@
 
 export const MERGE_RADIUS = 0.02;
 
+// Bands of use for the heatmap's colours. Most holds are used by one or two
+// problems, so the low end gets a step each and everything from five up
+// shares the hottest one; a smooth fade to the busiest hold ran the middle
+// together.
+export const HEAT_BANDS = [
+  { min: 1, label: '1' },
+  { min: 2, label: '2' },
+  { min: 3, label: '3–4' },
+  { min: 5, label: '5+' },
+];
+
+export function heatBand(heat) {
+  return HEAT_BANDS.findLastIndex((b) => heat >= b.min);
+}
+
 const HAND_TYPES = new Set(['start', 'hold', 'finish']);
 
 const oldestFirst = (a, b) => (
