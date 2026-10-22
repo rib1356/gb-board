@@ -20,6 +20,17 @@ describe('heatSpots', () => {
     expect(spots[0].face).toBe(false);
   });
 
+  it('joins the nearest spot when two are in range, not the first', () => {
+    const problems = [
+      P('a', '2026-10-01T00:00:00Z', [H(0.5, 0.5)]),
+      P('b', '2026-10-02T00:00:00Z', [H(0.53, 0.5)]),
+      P('c', '2026-10-03T00:00:00Z', [H(0.518, 0.5)]),
+    ];
+    const spots = heatSpots(problems, 'photo-1', 1);
+    expect(spots).toHaveLength(2);
+    expect(spots.map((s) => s.heat)).toEqual([1, 2]);
+  });
+
   it('keeps holds further apart than the radius as separate spots', () => {
     const spots = heatSpots([P('a', '2026-10-01T00:00:00Z', [H(0.5, 0.5), H(0.53, 0.5)])], 'photo-1', 1);
     expect(spots.map((s) => s.heat)).toEqual([1, 1]);
