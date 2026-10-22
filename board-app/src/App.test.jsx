@@ -1189,7 +1189,7 @@ describe('App (votes)', () => {
     render(<App />);
     const user = userEvent.setup();
     await user.click(await screen.findByText('Gaston Traverse'));
-    expect(await screen.findAllByLabelText('Rating: 3 out of 5')).not.toHaveLength(0);
+    expect(await screen.findByLabelText('Rating: 3 out of 5')).toBeInTheDocument();
     expect(screen.queryByText(/votes?$/)).not.toBeInTheDocument();
   });
 
@@ -1357,6 +1357,26 @@ describe('App (votes on a first send)', () => {
     expect(await screen.findByText("Your send is logged, but your vote didn't save. You can add it from the problem page.")).toBeInTheDocument();
     expect(screen.getByText('Rob · 22 Oct 2026')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Your vote' })).toBeInTheDocument();
+  });
+
+  it('holds Your vote until the first-send vote has finished saving', async () => {
+    const user = await openForm();
+    let finish;
+    saveVote.mockReturnValue(new Promise((r) => { finish = r; }));
+    await user.click(screen.getByRole('button', { name: 'V6' }));
+    await user.click(screen.getByRole('button', { name: '5 stars' }));
+    await user.click(screen.getByText('Save entry'));
+    const heading = await screen.findByRole('heading', { name: 'Your vote' });
+    const block = heading.parentElement;
+    const grade = within(block).getByRole('button', { name: 'V6' });
+    const stars = within(block).getByRole('button', { name: '5 stars' });
+    expect(grade).toBeDisabled();
+    expect(stars).toBeDisabled();
+    await act(async () => finish({ id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V6', stars: 5 }));
+    await waitFor(() => expect(within(block).getByRole('button', { name: '5 stars' })).toBeEnabled());
+    expect(within(block).getByRole('button', { name: '5 stars' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(block).getByRole('button', { name: 'V6' })).toHaveAttribute('aria-pressed', 'true');
+    expect(saveVote).toHaveBeenCalledTimes(1);
   });
 });
 

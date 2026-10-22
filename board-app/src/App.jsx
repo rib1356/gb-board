@@ -1230,7 +1230,7 @@ export default function App() {
                   choices={gradeChoices(selected.grade, myVote?.grade ?? null)}
                   grade={myVote?.grade ?? null}
                   stars={myVote?.stars ?? null}
-                  disabled={savingVote}
+                  disabled={savingVote || loggingTick}
                   onChange={(next) => handleVote(selected.id, next)}
                 />
               </div>
@@ -1279,7 +1279,7 @@ export default function App() {
                         <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
                         <Zap size={14} color="#C9A227" /> Flashed it
                       </label>
-                      <VotePicker choices={gradeChoices(selected.grade, null)} grade={tickVote.grade} stars={tickVote.stars} onChange={setTickVote} />
+                      <VotePicker choices={gradeChoices(selected.grade, null)} grade={tickVote.grade} stars={tickVote.stars} disabled={loggingTick} onChange={setTickVote} />
                     </>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
