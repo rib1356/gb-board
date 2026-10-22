@@ -17,6 +17,8 @@ import {
   restoreProblem,
   listTicks,
   listBoardTicks,
+  listBoardVotes,
+  saveVote,
   createTick,
   deleteTick,
   listClimbers,
@@ -32,6 +34,7 @@ function chain(result) {
   const builder = {
     select: vi.fn(() => builder),
     insert: vi.fn(() => builder),
+    upsert: vi.fn(() => builder),
     update: vi.fn(() => builder),
     delete: vi.fn(() => builder),
     eq: vi.fn(() => builder),
@@ -528,5 +531,64 @@ describe('deleteWarmupSession', () => {
   it('throws when the delete fails', async () => {
     mocks.supabase.from.mockReturnValue(chain({ error: new Error('nope') }));
     await expect(deleteWarmupSession('s1')).rejects.toThrow('nope');
+  });
+});
+
+describe('listBoardVotes', () => {
+  const vote = (n) => ({ id: `v${n}`, problem_id: 'p1', climber: 'Rob', grade: 'V5', stars: 4, created_at: '2026-10-22T10:00:00Z' });
+
+  it("lists every vote on the board's problems, through the problem each one is on", async () => {
+    const first = chain({ data: [vote(1)], error: null });
+    mocks.supabase.from.mockReturnValueOnce(first).mockReturnValueOnce(chain({ data: [], error: null }));
+    expect(await listBoardVotes('b1')).toEqual([vote(1)]);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('votes');
+    expect(first.select).toHaveBeenCalledWith('id, problem_id, climber, grade, stars, created_at, problems!inner(board_id)');
+    expect(first.eq).toHaveBeenCalledWith('problems.board_id', 'b1');
+    expect(first.order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(first.order).toHaveBeenCalledWith('id', { ascending: true });
+    expect(first.range).toHaveBeenCalledWith(0, 999);
+  });
+
+  it('keeps reading pages until one comes back empty', async () => {
+    const second = chain({ data: [vote(1000)], error: null });
+    const third = chain({ data: [], error: null });
+    mocks.supabase.from
+      .mockReturnValueOnce(chain({ data: Array.from({ length: 1000 }, (_, i) => vote(i)), error: null }))
+      .mockReturnValueOnce(second)
+      .mockReturnValueOnce(third);
+    expect(await listBoardVotes('b1')).toHaveLength(1001);
+    expect(second.range).toHaveBeenCalledWith(1000, 1999);
+    expect(third.range).toHaveBeenCalledWith(1001, 2000);
+  });
+
+  it('throws when the query fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
+    await expect(listBoardVotes('b1')).rejects.toThrow('nope');
+  });
+});
+
+describe('saveVote', () => {
+  it("upserts the climber's vote on the problem and returns the row", async () => {
+    const row = { id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V5', stars: null };
+    const c = chain({ data: row, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    expect(await saveVote('p1', 'Rob', { grade: 'V5', stars: null })).toEqual(row);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('votes');
+    expect(c.upsert).toHaveBeenCalledWith({ problem_id: 'p1', climber: 'Rob', grade: 'V5', stars: null }, { onConflict: 'problem_id,climber' });
+  });
+
+  it('deletes the row when both the grade and the stars are cleared', async () => {
+    const c = chain({ data: null, error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    expect(await saveVote('p1', 'Rob', { grade: null, stars: null })).toBeNull();
+    expect(c.delete).toHaveBeenCalled();
+    expect(c.eq).toHaveBeenCalledWith('problem_id', 'p1');
+    expect(c.eq).toHaveBeenCalledWith('climber', 'Rob');
+    expect(c.upsert).not.toHaveBeenCalled();
+  });
+
+  it('throws when the save fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
+    await expect(saveVote('p1', 'Rob', { grade: 'V5', stars: null })).rejects.toThrow('nope');
   });
 });
