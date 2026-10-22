@@ -164,7 +164,7 @@ export default function BoardStatsScreen({ problems, ticks, climberCount, today,
 
       {problemsOnPhoto(problems, photoUrl).length > 0 && (
         <Section title="Heatmap" note="no glow = free to set on">
-          <Heatmap problems={problems} photoUrl={photoUrl} />
+          <Heatmap key={photoUrl} problems={problems} photoUrl={photoUrl} />
         </Section>
       )}
     </div>

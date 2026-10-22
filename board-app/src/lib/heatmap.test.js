@@ -71,6 +71,11 @@ describe('heatSpots', () => {
       P('c', '2026-10-03T00:00:00Z', [H(0.53, 0.5)]),
     ];
     expect(heatSpots([...problems].reverse(), 'photo-1', 1)).toEqual(heatSpots(problems, 'photo-1', 1));
+    // oldest first: a and b merge (mean x 0.5075), c is too far from that and starts its own spot
+    const spots = heatSpots(problems, 'photo-1', 1);
+    expect(spots.map((s) => s.heat)).toEqual([2, 1]);
+    expect(spots[0].x).toBeCloseTo(0.5075);
+    expect(spots[1].x).toBeCloseTo(0.53);
   });
 });
 

@@ -29,7 +29,7 @@ export default function Heatmap({ problems, photoUrl }) {
 
   return (
     <div style={{ padding: '10px 0 12px' }}>
-      <div style={{ position: 'relative', lineHeight: 0 }}>
+      <div style={{ position: 'relative', lineHeight: 0, borderRadius: 8, overflow: 'hidden' }}>
         <img
           src={photoUrl}
           alt="Board heatmap"
