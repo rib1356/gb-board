@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, Triangle, CalendarDays, Trophy, Zap } from 'lucide-react';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, CalendarDays, Trophy, Zap } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
@@ -20,6 +20,10 @@ import VolumesScreen from './volumes/VolumesScreen';
 import LogbookScreen from './logbook/LogbookScreen';
 import BoardStatsScreen from './stats/BoardStatsScreen';
 import FaceButtons from './volumes/FaceButtons';
+import TweaksHub from './tweaks/TweaksHub';
+import UnlockSheet from './tweaks/UnlockSheet';
+import { useTweaks } from './tweaks/useTweaks';
+import { useLongPress } from './tweaks/useLongPress';
 import { todayISO } from './lib/warmup';
 import { localDate } from './lib/dates';
 
@@ -83,8 +87,6 @@ function StarRating({ rating, onRate, readOnly = false }) {
   );
 }
 
-const BOARD_OWNER = 'Rob';
-
 // The logbook and board stats buttons beside the climber pill.
 const iconButton = {
   display: 'flex', alignItems: 'center', background: 'none', border: '1px solid #3a3b3e',
@@ -147,7 +149,9 @@ export default function App() {
   const [board, setBoard] = useState(null);
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('list'); // list | new | edit-details | detail
+  const tweaks = useTweaks();
+  const [unlocking, setUnlocking] = useState(false);
+  const [view, setView] = useState('list'); // list | new | edit-details | detail | tweaks | volumes | ...
   // Where Back on a problem goes -- the list, or the logbook it was opened from.
   const [backTo, setBackTo] = useState('list');
   // Logbook days stay open, and the tab stays picked, while you look at one
@@ -380,11 +384,14 @@ export default function App() {
       const blob = await resizeFileToBlob(file);
       const updated = await uploadBoardPhoto(board.id, blob);
       setBoard(updated);
+      setUploading(false);
+      return true;
     } catch (err) {
       console.error(err);
       setError('Could not upload that photo — try a different one.');
+      setUploading(false);
+      return false;
     }
-    setUploading(false);
   };
 
   const handleSelectClimber = (id) => {
@@ -471,6 +478,12 @@ export default function App() {
     holdPageHeight();
     setView(next);
   };
+
+  const openTweaks = () => {
+    if (tweaks.status === 'signed-in') leaveFor('tweaks');
+    else setUnlocking(true);
+  };
+  const titlePress = useLongPress(openTweaks);
 
   const openProblem = (problemId, from) => {
     setSelectedId(problemId); setConfirmingDelete(false); setShowLogForm(false); setTicks([]);
@@ -739,11 +752,11 @@ export default function App() {
   };
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
-  // Re-shooting the board and marking volumes are Rob's jobs, so the buttons
-  // stay out of everyone else's way. It's tidying, not a lock -- anyone can
-  // pick Rob. A board with no photo yet still asks anyone for one.
-  const canSetUpBoard = currentClimber?.name === BOARD_OWNER;
   const selected = problems.find((p) => p.id === selectedId);
+  const [backTarget, backLabel] = view === 'tweaks' ? ['list', 'Board']
+    : view === 'volumes' ? ['tweaks', 'Tweaks']
+    : view === 'detail' ? [backTo, backTo === 'logbook' ? 'Logbook' : backTo === 'stats' ? 'Stats' : 'Board']
+    : ['list', 'Board'];
   // With nobody picked, Unsent falls back to unsent by anyone.
   const visibleProblems = sortAndFilterProblems(problems, {
     sort, unsentOnly, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
@@ -779,15 +792,26 @@ export default function App() {
     <div style={{ background: '#17181A', minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: '#EDEAE3' }}>
       <style>{fontImport}</style>
 
+      {unlocking && (
+        <UnlockSheet
+          onUnlock={async (pw) => {
+            const ok = await tweaks.signIn(pw);
+            if (ok) { setUnlocking(false); leaveFor('tweaks'); }
+            return ok;
+          }}
+          onClose={() => setUnlocking(false)}
+        />
+      )}
+
       <div style={{ padding: '20px 20px 14px', borderBottom: '1px solid #2A2B2E', position: 'sticky', top: 0, background: '#17181Aee', backdropFilter: 'blur(6px)', zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {view === 'list' ? (
-            <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>THE BOARD</h1>
+            <h1 {...titlePress} style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>THE BOARD</h1>
           ) : view === 'warmup-run' ? (
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>WARM-UP</h1>
           ) : (
-            <button onClick={() => { setSelectedId(null); setEditingId(null); holdPageHeight(); setView(view === 'detail' ? backTo : 'list'); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
-              <ChevronLeft size={18} /> {view === 'detail' && backTo === 'logbook' ? 'Logbook' : view === 'detail' && backTo === 'stats' ? 'Stats' : 'Board'}
+            <button onClick={() => { setSelectedId(null); setEditingId(null); holdPageHeight(); setView(backTarget); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
+              <ChevronLeft size={18} /> {backLabel}
             </button>
           )}
           {view === 'list' && (
@@ -820,7 +844,7 @@ export default function App() {
       )}
 
       <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
-        {view !== 'logbook' && view !== 'stats' && (
+        {view !== 'logbook' && view !== 'stats' && view !== 'tweaks' && (
         <div
           ref={imgWrapRef}
           onClick={handleImageClick}
@@ -868,7 +892,7 @@ export default function App() {
         </div>
         )}
 
-        {view === 'list' && (canSetUpBoard || !board?.photo_url) && (
+        {view === 'list' && !board?.photo_url && (
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
             <label style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -876,17 +900,9 @@ export default function App() {
               color: '#a9abaf', cursor: 'pointer',
             }}>
               {uploading ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
-              {board?.photo_url ? 'Replace board photo' : 'Upload a photo of your board'}
+              Upload a photo of your board
               <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
             </label>
-            {board?.photo_url && (
-              <button onClick={() => { setMarking(null); leaveFor('volumes'); }} style={{
-                display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed #3a3b3e',
-                borderRadius: 10, padding: '10px 14px', fontSize: 13.5, color: '#a9abaf', cursor: 'pointer',
-              }}>
-                <Triangle size={15} /> Volumes
-              </button>
-            )}
           </div>
         )}
 
@@ -1284,6 +1300,16 @@ export default function App() {
             onSend={handleWarmupSend}
             onFinish={handleFinishWarmup}
             onDiscard={() => setView('warmup')}
+          />
+        )}
+
+        {view === 'tweaks' && (
+          <TweaksHub
+            hasPhoto={!!board?.photo_url}
+            uploading={uploading}
+            onPhotoUpload={async (e) => { if (await handlePhotoUpload(e)) setView('list'); }}
+            onVolumes={() => { setMarking(null); leaveFor('volumes'); }}
+            onSignOut={async () => { await tweaks.signOut(); setView('list'); }}
           />
         )}
 

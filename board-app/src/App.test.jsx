@@ -27,6 +27,12 @@ vi.mock('./lib/board', () => ({
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
 }));
+vi.mock('./lib/tweaks', () => ({
+  TWEAKS_EMAIL: 'tweaks@example.com',
+  getTweaksSession: vi.fn(),
+  signInToTweaks: vi.fn(),
+  signOutOfTweaks: vi.fn(),
+}));
 vi.mock('./lib/segment', () => ({
   loadSegmenter: vi.fn(),
   computeEmbedding: vi.fn(),
@@ -38,6 +44,8 @@ vi.mock('./lib/segment', () => ({
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
+import { getTweaksSession, signInToTweaks, signOutOfTweaks } from './lib/tweaks';
+import { LONG_PRESS_MS } from './tweaks/useLongPress';
 import App from './App';
 
 const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
@@ -51,8 +59,16 @@ beforeEach(() => {
   listBoardTicks.mockResolvedValue([]);
   listClimbers.mockResolvedValue([]);
   listWarmupSessions.mockResolvedValue([]);
+  getTweaksSession.mockResolvedValue(null);
   loadSegmenter.mockRejectedValue(new Error('segmentation unavailable in tests'));
 });
+
+async function holdTitle() {
+  const title = await screen.findByText('THE BOARD');
+  fireEvent.pointerDown(title, { clientX: 5, clientY: 5, pointerId: 1 });
+  await act(() => new Promise((resolve) => setTimeout(resolve, LONG_PRESS_MS + 20)));
+  fireEvent.pointerUp(title, { clientX: 5, clientY: 5, pointerId: 1 });
+}
 
 describe('App (read paths)', () => {
   it('loads the board and shows the empty state when there are no problems', async () => {
@@ -2261,35 +2277,54 @@ describe('App (volume faces on a problem)', () => {
   });
 });
 
-describe('App (board setup is just for Rob)', () => {
+describe('App (Tweaks door and board setup)', () => {
   const WITH_PHOTO = { ...BOARD, photo_url: 'https://cdn.example/b1.jpg' };
   const climbAs = (name) => {
     localStorage.setItem('board-app:currentClimberId', 'c1');
     listClimbers.mockResolvedValue([{ id: 'c1', name }]);
   };
+  const signedIn = () => getTweaksSession.mockResolvedValue({ user: { id: 'u1' } });
 
-  it('shows Replace board photo and Volumes when Rob is climbing', async () => {
+  it('asks for the password on a long press when signed out', async () => {
+    render(<App />);
+    await holdTitle();
+    expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
+  });
+
+  it('does nothing on a quick tap', async () => {
+    render(<App />);
+    const title = await screen.findByText('THE BOARD');
+    fireEvent.pointerDown(title, { clientX: 5, clientY: 5, pointerId: 1 });
+    fireEvent.pointerUp(title, { clientX: 5, clientY: 5, pointerId: 1 });
+    await act(() => new Promise((resolve) => setTimeout(resolve, LONG_PRESS_MS + 20)));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens Tweaks with the right password', async () => {
+    signInToTweaks.mockResolvedValue(true);
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.type(screen.getByLabelText('Password'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: 'Unlock' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('TWEAKS')).toBeInTheDocument();
+    expect(screen.getByText('Board setup')).toBeInTheDocument();
+  });
+
+  it('goes straight in when already signed in', async () => {
+    signedIn();
+    render(<App />);
+    await holdTitle();
+    expect(screen.getByText('TWEAKS')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('no longer shows the setup buttons on the board list, even for Rob', async () => {
     climbAs('Rob');
     getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
     render(<App />);
     await screen.findByRole('button', { name: 'Climbing as Rob' });
-    expect(screen.getByLabelText('Replace board photo')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Volumes' })).toBeInTheDocument();
-  });
-
-  it('hides them from anyone else', async () => {
-    climbAs('Shawn');
-    getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
-    render(<App />);
-    await screen.findByRole('button', { name: 'Climbing as Shawn' });
-    expect(screen.queryByLabelText('Replace board photo')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
-  });
-
-  it('hides them when nobody is picked', async () => {
-    getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
-    render(<App />);
-    await screen.findByAltText('Climbing board');
     expect(screen.queryByLabelText('Replace board photo')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
   });
@@ -2299,6 +2334,53 @@ describe('App (board setup is just for Rob)', () => {
     render(<App />);
     await screen.findByRole('button', { name: 'Climbing as Shawn' });
     expect(screen.getByLabelText('Upload a photo of your board')).toBeInTheDocument();
+  });
+
+  it('opens Volumes from Tweaks, and its back link returns to Tweaks', async () => {
+    signedIn();
+    getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(screen.getByRole('button', { name: 'Volumes' }));
+    expect(await screen.findByText(/No volumes yet/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /tweaks/i }));
+    expect(screen.getByText('TWEAKS')).toBeInTheDocument();
+  });
+
+  it('goes back to the board after a new photo from Tweaks', async () => {
+    signedIn();
+    getOrCreateBoard.mockResolvedValue(WITH_PHOTO);
+    resizeFileToBlob.mockResolvedValue(new Blob(['x']));
+    uploadBoardPhoto.mockResolvedValue({ ...WITH_PHOTO, photo_url: 'https://cdn.example/new.jpg' });
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.upload(screen.getByLabelText('New photo'), new File(['x'], 'b.jpg', { type: 'image/jpeg' }));
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+    expect(uploadBoardPhoto).toHaveBeenCalledWith('b1', expect.anything());
+  });
+
+  it('signs out back to the board, and the next long press asks again', async () => {
+    signedIn();
+    signOutOfTweaks.mockResolvedValue();
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
+    expect(signOutOfTweaks).toHaveBeenCalled();
+    await holdTitle();
+    expect(screen.getByRole('dialog', { name: 'Tweaks' })).toBeInTheDocument();
+  });
+
+  it('goes from Tweaks back to the board', async () => {
+    signedIn();
+    render(<App />);
+    const user = userEvent.setup();
+    await holdTitle();
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    expect(await screen.findByText('THE BOARD')).toBeInTheDocument();
   });
 });
 
@@ -2312,12 +2394,12 @@ describe('App (volumes setup)', () => {
   const upgraded = (id, name, faces) => ({ id, name, sidesListed: true, faces });
 
   beforeEach(() => {
-    localStorage.setItem('board-app:currentClimberId', 'c1');
-    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    getTweaksSession.mockResolvedValue({ user: { id: 'u1' } });
     saveVolumes.mockImplementation(async (id, volumes) => boardWith(volumes));
   });
 
   async function openVolumes(user) {
+    await holdTitle();
     await user.click(await screen.findByRole('button', { name: 'Volumes' }));
     const photo = await screen.findByAltText('Climbing board');
     vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
@@ -2328,7 +2410,8 @@ describe('App (volumes setup)', () => {
 
   it('has no Volumes button until the board has a photo', async () => {
     render(<App />);
-    await screen.findByText('THE BOARD');
+    await holdTitle();
+    expect(screen.getByText('TWEAKS')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Volumes' })).not.toBeInTheDocument();
   });
 
