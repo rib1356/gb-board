@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, CalendarDays, Trophy, Zap } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
@@ -8,6 +8,7 @@ import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
 import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
+import { countedVotes, starSummary } from './lib/votes';
 import { inputStyle, sectionHeading, formatShortDate } from './ui';
 import { firstAscents } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
@@ -70,7 +71,14 @@ function StarRating({ rating, onRate, readOnly = false }) {
     return (
       <div aria-label={`Rating: ${rating} out of 5`} style={{ display: 'flex', gap: 2 }}>
         {[1, 2, 3, 4, 5].map((n) => (
-          <Star key={n} size={14} fill={n <= rating ? '#D9552B' : 'none'} color={n <= rating ? '#D9552B' : '#3a3b3e'} />
+          n - 0.5 === rating ? (
+            <span key={n} style={{ position: 'relative', display: 'inline-flex' }}>
+              <Star size={14} fill="none" color="#3a3b3e" />
+              <StarHalf size={14} fill="#D9552B" color="#D9552B" style={{ position: 'absolute', left: 0, top: 0 }} />
+            </span>
+          ) : (
+            <Star key={n} size={14} fill={n <= rating ? '#D9552B' : 'none'} color={n <= rating ? '#D9552B' : '#3a3b3e'} />
+          )
         ))}
       </div>
     );
@@ -199,6 +207,7 @@ export default function App() {
   const [ticks, setTicks] = useState([]);
   // Every send on the board, so the list knows who has sent what.
   const [boardTicks, setBoardTicks] = useState([]);
+  const [boardVotes, setBoardVotes] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
   const [tickDate, setTickDate] = useState('');
   const [tickNotes, setTickNotes] = useState('');
@@ -299,9 +308,10 @@ export default function App() {
       try {
         const b = await getOrCreateBoard();
         setBoard(b);
-        const [p, bt] = await Promise.all([listProblems(b.id), listBoardTicks(b.id)]);
+        const [p, bt, bv] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id)]);
         setProblems(p);
         setBoardTicks(bt);
+        setBoardVotes(bv);
         const c = await listClimbers();
         setClimbers(c);
         const storedId = getStoredClimberId();
@@ -366,6 +376,7 @@ export default function App() {
     if (view === 'tweaks' && tweaks.status === 'signed-in') refreshTweaks();
   }, [view, tweaks.status, refreshTweaks]);
 
+  const counted = useMemo(() => countedVotes(boardVotes, boardTicks), [boardVotes, boardTicks]);
   const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER), [boardTicks]);
 
   // Added to the home screen, the app sits suspended in memory between visits,
@@ -373,10 +384,11 @@ export default function App() {
   const refreshList = async ({ quiet = false } = {}) => {
     try {
       const b = await getOrCreateBoard();
-      const [p, bt, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listClimbers()]);
+      const [p, bt, bv, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listClimbers()]);
       setBoard(b);
       setProblems(p);
       setBoardTicks(bt);
+      setBoardVotes(bv);
       setClimbers(c);
     } catch (err) {
       console.error(err);
@@ -1136,7 +1148,7 @@ export default function App() {
                   <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: '#8b8d91', marginTop: 2 }}>{p.setter ? `Set by ${p.setter}` : 'Unknown setter'}</div>
                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StarRating rating={p.rating} readOnly />
+                    <StarRating rating={starSummary(p, counted)?.stars ?? null} readOnly />
                     {p.send_count > 0 && (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#5C8A66', textTransform: 'uppercase' }}>
                         <CheckCircle2 size={12} /> Sent ×{p.send_count}

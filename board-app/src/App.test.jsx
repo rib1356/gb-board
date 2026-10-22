@@ -14,6 +14,8 @@ vi.mock('./lib/board', () => ({
   restoreProblem: vi.fn(),
   listTicks: vi.fn(),
   listBoardTicks: vi.fn(),
+  listBoardVotes: vi.fn(),
+  saveVote: vi.fn(),
   createTick: vi.fn(),
   deleteTick: vi.fn(),
   listClimbers: vi.fn(),
@@ -50,7 +52,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, rateProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCheckins, createInjury, updateInjury, createCheckin } from './lib/tweaks';
@@ -67,6 +69,7 @@ beforeEach(() => {
   listProblems.mockResolvedValue([]);
   listTicks.mockResolvedValue([]);
   listBoardTicks.mockResolvedValue([]);
+  listBoardVotes.mockResolvedValue([]);
   listClimbers.mockResolvedValue([]);
   listWarmupSessions.mockResolvedValue([]);
   getTweaksSession.mockResolvedValue(null);
@@ -1179,6 +1182,56 @@ describe('App (rating flow)', () => {
     render(<App />);
 
     expect(await screen.findByLabelText('Rating: 4 out of 5')).toBeInTheDocument();
+  });
+});
+
+describe('App (votes)', () => {
+  const GASTON = { id: 'p1', name: 'Gaston Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], rating: null, send_count: 2, last_sent_on: '2026-10-02' };
+  const ROB_SEND = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-10-01', notes: '', created_at: '2026-10-01T18:00:00Z', flash: false };
+  const SHAWN_SEND = { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-10-02', notes: '', created_at: '2026-10-02T18:00:00Z', flash: false };
+  const ROB_VOTE = { id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V4', stars: 4, created_at: '2026-10-01T18:00:00Z' };
+  const SHAWN_VOTE = { id: 'v2', problem_id: 'p1', climber: 'Shawn', grade: 'V5', stars: 5, created_at: '2026-10-02T18:00:00Z' };
+  const asRob = () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
+  };
+
+  it('shows the average of the votes in the list, to the nearest half star', async () => {
+    listProblems.mockResolvedValue([GASTON]);
+    listBoardTicks.mockResolvedValue([ROB_SEND, SHAWN_SEND]);
+    listBoardVotes.mockResolvedValue([ROB_VOTE, SHAWN_VOTE]);
+    render(<App />);
+    expect(await screen.findByLabelText('Rating: 4.5 out of 5')).toBeInTheDocument();
+  });
+
+  it('ignores a vote from someone with no send logged, keeping the old rating', async () => {
+    listProblems.mockResolvedValue([{ ...GASTON, rating: 2 }]);
+    listBoardTicks.mockResolvedValue([ROB_SEND]);
+    listBoardVotes.mockResolvedValue([SHAWN_VOTE]);
+    render(<App />);
+    expect(await screen.findByLabelText('Rating: 2 out of 5')).toBeInTheDocument();
+  });
+
+  it("fails the load when the votes can't be read", async () => {
+    listBoardVotes.mockRejectedValue(new Error('down'));
+    render(<App />);
+    expect(await screen.findByText('Could not load the board — check your connection and try again.')).toBeInTheDocument();
+  });
+
+  it('picks up votes cast on another phone when the list refreshes', async () => {
+    asRob();
+    listProblems.mockResolvedValue([GASTON]);
+    listBoardTicks.mockResolvedValue([ROB_SEND, SHAWN_SEND]);
+    listBoardVotes.mockResolvedValueOnce([]).mockResolvedValue([SHAWN_VOTE]);
+    render(<App />);
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    expect(screen.queryByLabelText(/^Rating:/)).not.toBeInTheDocument();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(await screen.findByLabelText('Rating: 5 out of 5')).toBeInTheDocument();
+    delete document.visibilityState;
   });
 });
 
