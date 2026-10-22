@@ -56,6 +56,31 @@ function nearestSpot(spots, hold, aspect, radius) {
   return best;
 }
 
+const spotDistance = (a, b, aspect) => Math.hypot(
+  a.sumX / a.marks - b.sumX / b.marks,
+  (a.sumY / a.marks - b.sumY / b.marks) * aspect,
+);
+
+// A group's centre moves as marks join it, so two groups of the same hold can
+// end up within the radius of each other. Fold the later into the earlier
+// until no two plain-hold groups are that close.
+function mergeDrifted(spots, aspect, radius) {
+  for (let i = 0; i < spots.length; i++) {
+    if (spots[i].face) continue;
+    for (let j = i + 1; j < spots.length; j++) {
+      if (spots[j].face || spotDistance(spots[i], spots[j], aspect) > radius) continue;
+      const [gone] = spots.splice(j, 1);
+      spots[i].sumX += gone.sumX;
+      spots[i].sumY += gone.sumY;
+      spots[i].marks += gone.marks;
+      gone.ids.forEach((id) => spots[i].ids.add(id));
+      // The merged centre has moved, so look again from the start.
+      i = -1;
+      break;
+    }
+  }
+}
+
 export function heatSpots(problems, photoUrl, aspect, radius = MERGE_RADIUS) {
   const spots = [];
   const sides = new Map();
@@ -81,5 +106,6 @@ export function heatSpots(problems, photoUrl, aspect, radius = MERGE_RADIUS) {
       addMark(spot, hold, problem.id);
     }
   }
+  mergeDrifted(spots, aspect, radius);
   return spots.map((s) => ({ x: s.sumX / s.marks, y: s.sumY / s.marks, heat: s.ids.size, face: s.face }));
 }

@@ -8,6 +8,20 @@ const F = (volumeId, faceId, x, y, type = 'hold') => ({
 });
 
 describe('heatSpots', () => {
+  it('merges two groups of one hold whose centres drift together', () => {
+    // b starts its own group (0.025 from a), then c joins a and pulls a's
+    // centre to 0.506, which is within the radius of b's.
+    const problems = [
+      P('a', '2026-10-01T00:00:00Z', [H(0.5, 0.5)]),
+      P('b', '2026-10-02T00:00:00Z', [H(0.525, 0.5)]),
+      P('c', '2026-10-03T00:00:00Z', [H(0.512, 0.5)]),
+    ];
+    const spots = heatSpots(problems, 'photo-1', 1);
+    expect(spots).toHaveLength(1);
+    expect(spots[0].heat).toBe(3);
+    expect(spots[0].x).toBeCloseTo((0.5 + 0.525 + 0.512) / 3);
+  });
+
   it('merges marks of the same hold from different problems, and counts each problem once', () => {
     const problems = [
       P('a', '2026-10-01T00:00:00Z', [H(0.5, 0.5, 'start'), H(0.505, 0.5)]),
