@@ -11,7 +11,7 @@ const made = (id, extra) => ({
 const open = made('i1');
 const wrist = made('i8', { side: 'left', area: 'wrist', finger: null, what: 'Sprain', started_on: '2025-03-04', closed_on: '2025-04-10' });
 const shoulder = made('i9', { area: 'shoulder', finger: null, what: null, started_on: '2024-11-10', closed_on: '2025-01-05' });
-const elbow = made('i7', { area: 'elbow', finger: null, what: 'Tendon ache', started_on: '2026-07-01', closed_on: '2026-08-01' });
+const elbow = made('i7', { area: 'elbow', finger: null, what: 'Tendon ache', started_on: '2026-06-12', closed_on: '2026-08-01' });
 const C = (id, checked_on) => ({
   id, injury_id: 'i1', checked_on, created_at: `${checked_on}T09:00:00Z`,
   pain_low: 1, pain_high: 2, pain_peak: null, activities: [], notes: null,
@@ -60,7 +60,7 @@ describe('TweaksHub', () => {
     const { onOpenInjury } = renderHub({ injuries: [wrist, open, shoulder, elbow] });
     expect(screen.getByText('Injury log')).toBeInTheDocument();
     const rows = [/R elbow · Tendon ache/, /L wrist · Sprain/, /R shoulder/].map((name) => screen.getByRole('button', { name }));
-    expect(rows.map((row) => row.textContent)).toEqual(['R elbow · Tendon acheJul 26', 'L wrist · SprainMar 25', 'R shoulderNov 24']);
+    expect(rows.map((row) => row.textContent)).toEqual(['R elbow · Tendon acheJun 26', 'L wrist · SprainMar 25', 'R shoulderNov 24']);
     expect(rows[0].compareDocumentPosition(rows[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(rows[1].compareDocumentPosition(rows[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(rows[1]);

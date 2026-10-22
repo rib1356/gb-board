@@ -42,7 +42,7 @@ it('labels dates', () => {
   expect(sheetDateLabel('2026-10-21', today)).toBe('Today, Wed 21 Oct');
   expect(sheetDateLabel('2026-10-20', today)).toBe('Yesterday, Tue 20 Oct');
   expect(sheetDateLabel('2026-10-13', today)).toBe('Tue 13 Oct');
-  expect(monthYear('2025-03-30')).toBe('Mar 25');
+  expect(monthYear('2025-05-17')).toBe('May 25');
   expect(shortDate('2026-10-03', today)).toBe('3 Oct');
   expect(shortDate('2025-10-03', today)).toBe('3 Oct 2025');
 });
