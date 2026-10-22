@@ -2,13 +2,13 @@ import { useId, useMemo, useState } from 'react';
 import { heatSpots } from '../lib/heatmap';
 
 const muted = '#8b8d91';
-const R = 25; // glow radius in viewBox units (the viewBox is 1000 wide): about one hold
+const R = 28; // glow radius in viewBox units (the viewBox is 1000 wide): about one hold
 
 // Warm ramp, pale amber (little used) to hot red-orange (most used). Heat
 // also drives the glow's opacity, so the ramp still reads for colour-blind
 // viewers. The glow is translucent and fades to nothing at its edge so the
 // hold underneath stays visible; the photo itself is never darkened.
-const LOW = [242, 201, 76];
+const LOW = [255, 176, 0];
 const HIGH = [255, 69, 24];
 const mix = (t) => `rgb(${LOW.map((c, i) => Math.round(c + (HIGH[i] - c) * t)).join(',')})`;
 const strength = (heat, max) => (max > 1 ? (heat - 1) / (max - 1) : 0);
@@ -48,8 +48,8 @@ export default function Heatmap({ problems, photoUrl }) {
                 const color = mix(t);
                 return (
                   <radialGradient key={heat} id={`${uid}-g${heat}`}>
-                    <stop offset="0" stopColor={color} stopOpacity={0.45 + 0.4 * t} />
-                    <stop offset="0.55" stopColor={color} stopOpacity={0.25 + 0.3 * t} />
+                    <stop offset="0" stopColor={color} stopOpacity={0.8 + 0.2 * t} />
+                    <stop offset="0.55" stopColor={color} stopOpacity={0.55 + 0.3 * t} />
                     <stop offset="1" stopColor={color} stopOpacity="0" />
                   </radialGradient>
                 );
