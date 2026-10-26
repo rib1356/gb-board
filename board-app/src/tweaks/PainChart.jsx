@@ -14,7 +14,7 @@ export default function PainChart({ checkins, endDate, boardDays }) {
   if (!g) return null;
   const { W, H, LEFT, TOP, BASE, DOTS } = CHART;
   const yAt = (v) => BASE - (v / g.yMax) * (BASE - TOP);
-  const grid = [g.yMax, g.yMax / 2];
+  const grid = [g.yMax, g.yMax / 2, 0];
   const band = [
     ...g.points.map((p) => `${p.x},${p.yHigh}`),
     ...[...g.points].reverse().map((p) => `${p.x},${p.yLow}`),
