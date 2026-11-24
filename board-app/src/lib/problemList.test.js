@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortAndFilterProblems, applySend } from './problemList';
+import { sortAndFilterProblems, applySend, gradeOf, gradeLabel } from './problemList';
 
 // Input order mirrors listProblems(): newest first.
 const PROBLEMS = [
@@ -59,5 +59,15 @@ describe('applySend', () => {
     ]);
     expect(applySend(list, 'a', '2026-09-01')[0].last_sent_on).toBe('2026-09-20');
     expect(applySend(list, 'b', '2026-09-29')[1]).toEqual({ id: 'b', send_count: 1, last_sent_on: '2026-09-29' });
+  });
+});
+
+describe('gradeOf and gradeLabel', () => {
+  it('prefers the shown grade and marks a provisional one', () => {
+    expect(gradeOf({ grade: '', shownGrade: 'V5' })).toBe('V5');
+    expect(gradeOf({ grade: 'V3' })).toBe('V3');
+    expect(gradeLabel({ grade: '', shownGrade: 'V5', gradeProvisional: true })).toBe('V5?');
+    expect(gradeLabel({ grade: 'V3', shownGrade: 'V3', gradeProvisional: false })).toBe('V3');
+    expect(gradeLabel({ grade: null })).toBe('');
   });
 });

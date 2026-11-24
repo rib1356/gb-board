@@ -10,6 +10,21 @@ export function gradeNumber(grade) {
   return match ? Number(match[1]) : null;
 }
 
+// The grade a problem shows: its real grade, or the one its votes give it when
+// it has none (see withShownGrades). Problems that never went through
+// withShownGrades just have their real grade.
+export function gradeOf(p) {
+  return p.shownGrade ?? p.grade;
+}
+
+// The grade as printed next to a problem: "V5", "V5?" when it only comes from
+// votes, or '' when there's none.
+export function gradeLabel(p) {
+  const grade = gradeOf(p);
+  if (!grade) return '';
+  return p.gradeProvisional ? `${grade}?` : grade;
+}
+
 // Input is expected newest-first (as listProblems returns it); Array.prototype.sort
 // is stable, so problems at the same grade stay newest-first.
 // sentIds, when given, is one climber's sent problems -- unsentOnly then means

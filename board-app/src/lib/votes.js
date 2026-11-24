@@ -75,3 +75,26 @@ export function replaceVote(votes, problemId, climber, row) {
   const rest = votes.filter((v) => !(v.problem_id === problemId && v.climber === climber));
   return row ? [...rest, row] : rest;
 }
+
+// What the crew's grade votes say an ungraded problem is: the middle vote,
+// taking the easier of the two middle votes on an even split. Soft and hard
+// are ignored -- this is about which grade, not how it sits in it.
+export function provisionalGrade(problemId, counted) {
+  const grades = counted
+    .filter((v) => v.problem_id === problemId && gradeNumber(v.grade) !== null)
+    .map((v) => v.grade)
+    .sort((a, b) => gradeNumber(a) - gradeNumber(b));
+  return grades.length ? grades[Math.floor((grades.length - 1) / 2)] : null;
+}
+
+// Each problem with the grade it shows. A real grade always wins; an ungraded
+// problem shows its provisional grade if it has votes. `grade` itself is
+// never touched, so the edit form can't save a provisional grade by accident.
+export function withShownGrades(problems, counted) {
+  return problems.map((p) => {
+    const provisional = gradeNumber(p.grade) === null ? provisionalGrade(p.id, counted) : null;
+    return provisional
+      ? { ...p, shownGrade: provisional, gradeProvisional: true }
+      : { ...p, shownGrade: p.grade, gradeProvisional: false };
+  });
+}
