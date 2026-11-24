@@ -51,3 +51,27 @@ describe('VotePicker', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('VotePicker for an ungraded problem', () => {
+  const dropdown = () => screen.getByRole('combobox', { name: 'Grade vote' });
+  it('shows a grade dropdown starting on No vote when anyGrade', () => {
+    render(<VotePicker anyGrade choices={[]} grade={null} feel={null} stars={null} onChange={vi.fn()} />);
+    expect(dropdown()).toHaveValue('');
+    expect(within(dropdown()).getAllByRole('option')[0]).toHaveTextContent('No vote');
+    expect(within(dropdown()).getAllByRole('option')).toHaveLength(20);
+    expect(screen.queryByRole('group', { name: 'Grade vote' })).not.toBeInTheDocument();
+  });
+  it('picking from the dropdown reports a whole grade and keeps the stars', async () => {
+    const onChange = vi.fn();
+    render(<VotePicker anyGrade choices={[]} grade={null} feel={null} stars={4} onChange={onChange} />);
+    await userEvent.selectOptions(dropdown(), 'V6');
+    expect(onChange).toHaveBeenCalledWith({ grade: 'V6', feel: null, stars: 4 });
+  });
+  it('No vote clears just the grade', async () => {
+    const onChange = vi.fn();
+    render(<VotePicker anyGrade choices={[]} grade="V6" feel={null} stars={4} onChange={onChange} />);
+    expect(dropdown()).toHaveValue('V6');
+    await userEvent.selectOptions(dropdown(), '');
+    expect(onChange).toHaveBeenCalledWith({ grade: null, feel: null, stars: 4 });
+  });
+});
