@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { weeklyProgress, progressTiles, ticklist, mostClimbed } from '../lib/progress';
 import { formatShortDate, sectionHeading } from '../ui';
 import WeekCharts from './WeekCharts';
+import { gradeLabel } from '../lib/problemList';
 
 const mono = "'JetBrains Mono', monospace";
 const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -91,7 +92,7 @@ export default function ProgressTab({ problems, ticks, climber, today, onOpenPro
               borderTop: i ? '1px solid #2A2B2E' : 'none', color: '#EDEAE3', padding: '8px 2px', fontSize: 13,
               cursor: 'pointer', textAlign: 'left', fontFamily: "'Inter'",
             }}>
-              <span style={{ width: 24, flexShrink: 0, fontFamily: mono, fontSize: 12, fontWeight: 700, color: '#D9552B' }}>{p.grade || '–'}</span>
+              <span style={{ minWidth: 24, flexShrink: 0, fontFamily: mono, fontSize: 12, fontWeight: 700, color: p.gradeProvisional ? '#8b8d91' : '#D9552B' }}>{gradeLabel(p) || '–'}</span>
               <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
               <span style={{ fontSize: 12, color: '#8b8d91' }}>×{p.sessions}</span>
             </button>

@@ -6,9 +6,9 @@ import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
 import { GRADES } from './lib/grades';
-import { SORTS, sortAndFilterProblems, applySend } from './lib/problemList';
+import { SORTS, sortAndFilterProblems, applySend, gradeNumber, gradeOf, gradeLabel } from './lib/problemList';
 import { sentProblemIds, firstSendIds } from './lib/sends';
-import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote } from './lib/votes';
+import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote, withShownGrades, provisionalGrade } from './lib/votes';
 import VotePicker from './votes/VotePicker';
 import { inputStyle, sectionHeading, formatShortDate } from './ui';
 import { firstAscents } from './lib/boardStats';
@@ -369,6 +369,9 @@ export default function App() {
   }, [view, tweaks.status, refreshTweaks]);
 
   const counted = useMemo(() => countedVotes(boardVotes, boardTicks), [boardVotes, boardTicks]);
+  // Problems with the grade they show: an ungraded one takes its votes'
+  // provisional grade. Raw `problems` stays the source for edits and saves.
+  const shownProblems = useMemo(() => withShownGrades(problems, counted), [problems, counted]);
   const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER), [boardTicks]);
 
   // Added to the home screen, the app sits suspended in memory between visits,
@@ -824,7 +827,7 @@ export default function App() {
   };
 
   const currentClimber = climbers.find((c) => c.id === currentClimberId) || null;
-  const selected = problems.find((p) => p.id === selectedId);
+  const selected = shownProblems.find((p) => p.id === selectedId);
   const selectedStars = selected ? starSummary(selected, counted) : null;
   const selectedGradeVotes = selected ? gradeVoteCounts(selected.id, counted) : [];
   const myVote = selected && currentClimber ? voteFor(boardVotes, selected.id, currentClimber.name) : null;
@@ -840,7 +843,7 @@ export default function App() {
     : view === 'detail' ? [backTo, backTo === 'logbook' ? 'Logbook' : backTo === 'stats' ? 'Stats' : 'Board']
     : ['list', 'Board'];
   // With nobody picked, Unsent falls back to unsent by anyone.
-  const visibleProblems = sortAndFilterProblems(problems, {
+  const visibleProblems = sortAndFilterProblems(shownProblems, {
     sort, unsentOnly, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
   });
   const isWarmupView = view.startsWith('warmup');
@@ -1063,6 +1066,9 @@ export default function App() {
                       <option value="">No grade</option>
                       {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
                     </select>
+                    {editingId && grade === '' && provisionalGrade(editingId, counted) && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#8b8d91' }}>{`Votes say ${provisionalGrade(editingId, counted)}`}</p>
+                    )}
                   </Field></div>
                   <div style={{ flex: 1 }}><Field label="Set by"><input value={setter} onChange={(e) => setSetter(e.target.value)} placeholder="Your name" style={inputStyle} /></Field></div>
                 </div>
@@ -1175,8 +1181,8 @@ export default function App() {
                     )}
                   </div>
                 </div>
-                {p.grade && (
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#17181A', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 13, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>{p.grade}</span>
+                {gradeOf(p) && (
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#17181A', border: `1px ${p.gradeProvisional ? 'dashed' : 'solid'} #3a3b3e`, color: p.gradeProvisional ? '#8b8d91' : '#D9552B', fontSize: 13, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>{gradeLabel(p)}</span>
                 )}
               </button>
             ))}
@@ -1195,8 +1201,8 @@ export default function App() {
                   </p>
                 )}
               </div>
-              {selected.grade && (
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#232427', border: '1px solid #3a3b3e', color: '#D9552B', fontSize: 14, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{selected.grade}</span>
+              {gradeOf(selected) && (
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", background: '#232427', border: `1px ${selected.gradeProvisional ? 'dashed' : 'solid'} #3a3b3e`, color: selected.gradeProvisional ? '#8b8d91' : '#D9552B', fontSize: 14, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{gradeLabel(selected)}</span>
               )}
             </div>
             {/* The photo above is this problem's own snapshot, which may not be
@@ -1237,6 +1243,7 @@ export default function App() {
                 <h3 style={sectionHeading}>Your vote</h3>
                 <VotePicker
                   choices={gradeChoices(selected.grade, myVote)}
+                  anyGrade={gradeNumber(selected.grade) === null}
                   grade={myVote?.grade ?? null}
                   feel={myVote?.feel ?? null}
                   stars={myVote?.stars ?? null}
@@ -1289,7 +1296,7 @@ export default function App() {
                         <input type="checkbox" checked={tickIsFlash} onChange={(e) => setTickIsFlash(e.target.checked)} style={{ accentColor: '#C9A227', width: 16, height: 16, margin: 0 }} />
                         <Zap size={14} color="#C9A227" /> Flashed it
                       </label>
-                      <VotePicker choices={gradeChoices(selected.grade, null)} grade={tickVote.grade} feel={tickVote.feel} stars={tickVote.stars} disabled={loggingTick} onChange={setTickVote} />
+                      <VotePicker choices={gradeChoices(selected.grade, null)} anyGrade={gradeNumber(selected.grade) === null} grade={tickVote.grade} feel={tickVote.feel} stars={tickVote.stars} disabled={loggingTick} onChange={setTickVote} />
                     </>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -1388,7 +1395,7 @@ export default function App() {
 
         {view === 'logbook' && (
           <LogbookScreen
-            problems={problems}
+            problems={shownProblems}
             ticks={boardTicks}
             climber={currentClimber}
             today={localDate()}
@@ -1403,7 +1410,7 @@ export default function App() {
 
         {view === 'stats' && (
           <BoardStatsScreen
-            problems={problems}
+            problems={shownProblems}
             ticks={boardTicks}
             climberCount={climbers.length}
             today={localDate()}
@@ -1416,7 +1423,7 @@ export default function App() {
         {view === 'warmup' && (
           <WarmupScreen
             rungs={warmupRungs}
-            problems={problems}
+            problems={shownProblems}
             sessions={warmupSessions}
             climber={currentClimber}
             onFocus={setWarmupFocusId}
@@ -1429,7 +1436,7 @@ export default function App() {
         {view === 'warmup-edit' && (
           <WarmupEditor
             initialRungs={warmupRungs}
-            problems={problems}
+            problems={shownProblems}
             saving={savingWarmup}
             onSave={handleSaveWarmup}
             onCancel={() => setView('warmup')}
@@ -1439,7 +1446,7 @@ export default function App() {
         {view === 'warmup-run' && (
           <WarmupRun
             rungs={warmupRungs}
-            problems={problems}
+            problems={shownProblems}
             climberName={currentClimber?.name || ''}
             onFocus={setWarmupFocusId}
             onSend={handleWarmupSend}

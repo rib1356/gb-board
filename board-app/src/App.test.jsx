@@ -3303,3 +3303,87 @@ describe('App (faces and tags in the hold editor)', () => {
     expect(screen.queryByRole('button', { name: 'Vol1 Top' })).not.toBeInTheDocument();
   });
 });
+
+describe('App (provisional grades)', () => {
+  const CRIMP = { id: 'p1', name: 'Crimp Line', grade: '', setter: 'Rob', notes: '', holds: [], rating: null, send_count: 2, last_sent_on: '2026-10-02' };
+  const ROB_SEND = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-10-01', notes: '', created_at: '2026-10-01T18:00:00Z', flash: false };
+  const SHAWN_SEND = { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-10-02', notes: '', created_at: '2026-10-02T18:00:00Z', flash: false };
+  const ROB_VOTE = { id: 'v1', problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: null, stars: null, created_at: '2026-10-01T18:00:00Z' };
+  const SHAWN_VOTE = { id: 'v2', problem_id: 'p1', climber: 'Shawn', grade: 'V6', feel: null, stars: null, created_at: '2026-10-02T18:00:00Z' };
+
+  const load = async ({ problem = CRIMP, ticks = [ROB_SEND, SHAWN_SEND], votes = [ROB_VOTE, SHAWN_VOTE] } = {}) => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
+    listProblems.mockResolvedValue([problem]);
+    listBoardTicks.mockResolvedValue(ticks);
+    listTicks.mockResolvedValue(ticks);
+    listBoardVotes.mockResolvedValue(votes);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    return user;
+  };
+  const open = async (user, name = 'Crimp Line') => {
+    await user.click(await screen.findByText(name));
+    await screen.findByText('Log a send');
+  };
+
+  it('shows the provisional grade with a ? in the list and on the problem page', async () => {
+    const user = await load();
+    expect(await screen.findByText('V5?')).toBeInTheDocument();
+    await open(user);
+    expect(screen.getByText('V5?')).toBeInTheDocument();
+    expect(screen.getByText('Grade votes: V5 ×1 · V6 ×1')).toBeInTheDocument();
+  });
+
+  it('offers a grade dropdown, not chips, on an ungraded problem', async () => {
+    const user = await load({ ticks: [SHAWN_SEND], votes: [SHAWN_VOTE] });
+    await open(user);
+    await user.click(screen.getByText('Log a send'));
+    expect(screen.getByRole('combobox', { name: 'Grade vote' })).toHaveValue('');
+    expect(screen.queryByRole('group', { name: 'Grade vote' })).not.toBeInTheDocument();
+  });
+
+  it('saves a dropdown grade vote with the send', async () => {
+    createTick.mockImplementation(async (problemId, { sentOn, notes, sentBy, flash }) => ({
+      id: 't9', problem_id: problemId, sent_on: sentOn, notes, sent_by: sentBy, flash, created_at: '2026-10-22T10:00:00Z',
+    }));
+    saveVote.mockResolvedValue({ id: 'v9', problem_id: 'p1', climber: 'Rob', grade: 'V6', feel: null, stars: null });
+    const user = await load({ ticks: [SHAWN_SEND], votes: [SHAWN_VOTE] });
+    await open(user);
+    await user.click(screen.getByText('Log a send'));
+    fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-10-22' } });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Grade vote' }), 'V6');
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V6', feel: null, stars: null }));
+  });
+
+  it('hints at the votes in the edit form but saves the problem ungraded', async () => {
+    updateProblem.mockResolvedValue({ ...CRIMP, name: 'Crimp Line v2' });
+    const user = await load();
+    await open(user);
+    await user.click(screen.getByRole('button', { name: 'Edit details' }));
+    expect(await screen.findByText('Votes say V5')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Grade' })).toHaveValue('');
+    const nameInput = screen.getByDisplayValue('Crimp Line');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Crimp Line v2');
+    await user.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(updateProblem).toHaveBeenCalledWith('p1', expect.objectContaining({ grade: '' })));
+  });
+
+  it('a graded problem with grade votes shows no ? and keeps its chips', async () => {
+    const user = await load({ problem: { ...CRIMP, name: 'Gaston Traverse', grade: 'V5' } });
+    await open(user, 'Gaston Traverse');
+    expect(screen.queryByText('V5?')).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Grade vote' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Grade vote' })).not.toBeInTheDocument();
+  });
+
+  it('counts a provisional send in the logbook', async () => {
+    const user = await load();
+    await user.click(screen.getByRole('button', { name: 'Logbook' }));
+    await user.click(screen.getByRole('button', { name: /1 problem/ }));
+    expect(screen.getByText('V5?')).toBeInTheDocument();
+  });
+});

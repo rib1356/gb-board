@@ -6,6 +6,7 @@ import { problemsOnPhoto } from '../lib/heatmap';
 import Heatmap from './Heatmap';
 import { monthOf, previousMonth, nextMonth, monthName } from '../lib/dates';
 import { formatShortDate, sectionHeading } from '../ui';
+import { gradeLabel } from '../lib/problemList';
 
 const mono = "'JetBrains Mono', monospace";
 const muted = '#8b8d91';
@@ -33,7 +34,7 @@ function ProblemRow({ problem, meta, sub, extra, first, onOpen }) {
       borderTop: first ? 'none' : '1px solid #2A2B2E', color: '#EDEAE3', padding: '10px 0', cursor: 'pointer',
       textAlign: 'left', fontFamily: "'Inter'", fontSize: 13.5,
     }}>
-      <span style={{ width: 24, flexShrink: 0, fontFamily: mono, fontSize: 12, fontWeight: 700, color: '#D9552B' }}>{problem.grade || '–'}</span>
+      <span style={{ minWidth: 24, flexShrink: 0, fontFamily: mono, fontSize: 12, fontWeight: 700, color: problem.gradeProvisional ? '#8b8d91' : '#D9552B' }}>{gradeLabel(problem) || '–'}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{problem.name}</span>
         {sub && <span style={{ display: 'block', marginTop: 2, fontSize: 12, color: muted }}>{sub}</span>}

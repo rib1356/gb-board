@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronUp, ChevronDown, X, RefreshCw } from 'lucide-react';
 import { GRADES } from '../lib/grades';
-import { sortAndFilterProblems } from '../lib/problemList';
+import { sortAndFilterProblems, gradeOf, gradeLabel } from '../lib/problemList';
 import { inputStyle, gradeBadgeStyle, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
 
 // picker: null | { mode: 'problem', index: number|null } | { mode: 'grade' }
@@ -90,8 +90,8 @@ export default function WarmupEditor({ initialRungs, problems, saving, onSave, o
           )}
           <div style={{ maxHeight: 280, overflowY: 'auto', marginTop: 8 }}>
             {pickable.map((p) => (
-              <button key={p.id} disabled={!p.grade} onClick={() => place(picker.index, { grade: p.grade, problemId: p.id })} style={rungRow(false, !p.grade)}>
-                <span style={gradeBadgeStyle}>{p.grade || '—'}</span>
+              <button key={p.id} disabled={!gradeOf(p)} onClick={() => place(picker.index, { grade: gradeOf(p), problemId: p.id })} style={rungRow(false, !gradeOf(p))}>
+                <span style={p.gradeProvisional ? { ...gradeBadgeStyle, color: '#8b8d91', border: '1px dashed #3a3b3e' } : gradeBadgeStyle}>{gradeLabel(p) || '—'}</span>
                 <span style={{ flex: 1, textAlign: 'left' }}>{p.name}</span>
               </button>
             ))}
