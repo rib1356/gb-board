@@ -1,4 +1,4 @@
-import { gradeNumber } from './problemList';
+import { gradeNumber, gradeOf } from './problemList';
 import { firstSendIds } from './sends';
 import { countedVotes, starSummary } from './votes';
 import { addDays, daysBetween, localDate } from './dates';
@@ -12,7 +12,7 @@ const earliestFirst = (a, b) => (
   a.sent_on < b.sent_on ? -1 : a.sent_on > b.sent_on ? 1 : a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0
 );
 const newestFirst = (a, b) => (a < b ? 1 : a > b ? -1 : 0);
-const summary = ({ id, name, grade }) => ({ id, name, grade });
+const summary = (p) => ({ id: p.id, name: p.name, grade: gradeOf(p), gradeProvisional: p.gradeProvisional });
 const latestSend = (list) => list.reduce((max, t) => (t.sent_on > max ? t.sent_on : max), '');
 const climbersOn = (list) => new Set(list.filter((t) => t.sent_by).map((t) => t.sent_by));
 
@@ -51,7 +51,7 @@ export function crewBoard(problems, ticks, month) {
       row.newTicks += 1;
       if (t.flash) row.flashes += 1;
     }
-    const grade = gradeNumber(byId.get(t.problem_id).grade);
+    const grade = gradeNumber(gradeOf(byId.get(t.problem_id)));
     if (grade !== null && (row.top === null || grade > row.top)) row.top = grade;
   }
   return [...rows.values()].sort((a, b) => b.newTicks - a.newTicks || b.problems - a.problems || a.name.localeCompare(b.name));

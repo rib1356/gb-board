@@ -181,3 +181,18 @@ describe('labels', () => {
     expect([0, 1, 34].map(openLabel)).toEqual(['set today', 'open 1 day', 'open 34 days']);
   });
 });
+
+describe('provisional grades', () => {
+  const PROBLEMS = [
+    P('p1', 'Voted Five', '', { shownGrade: 'V5', gradeProvisional: true }),
+    P('p2', 'Real Five', 'V5', { shownGrade: 'V5', gradeProvisional: false }),
+    P('p3', 'Real Three', 'V3', { shownGrade: 'V3', gradeProvisional: false }),
+  ];
+  it('counts a provisional grade as the crew board top and in summaries', () => {
+    const [row] = crewBoard(PROBLEMS, [T('t1', 'p1', 'Rob', '2026-10-02'), T('t2', 'p3', 'Rob', '2026-10-03')], '2026-10');
+    expect(row.top).toBe(5);
+    const open = openProjects(PROBLEMS, [], '2026-10-21');
+    expect(open.map((p) => p.name).indexOf('Real Three')).toBe(2);
+    expect(open.find((p) => p.id === 'p1')).toMatchObject({ grade: 'V5', gradeProvisional: true });
+  });
+});

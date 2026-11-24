@@ -35,8 +35,8 @@ export function sortAndFilterProblems(problems, { sort = 'newest', unsentOnly = 
   if (sort === 'newest') return list;
   const direction = sort === 'grade-desc' ? -1 : 1;
   return list.sort((a, b) => {
-    const ga = gradeNumber(a.grade);
-    const gb = gradeNumber(b.grade);
+    const ga = gradeNumber(gradeOf(a));
+    const gb = gradeNumber(gradeOf(b));
     if (ga === null || gb === null) return (ga === null) - (gb === null);
     return (ga - gb) * direction;
   });

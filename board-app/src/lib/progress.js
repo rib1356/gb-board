@@ -1,5 +1,5 @@
 import { buildLogbook } from './sends';
-import { gradeNumber } from './problemList';
+import { gradeNumber, gradeOf } from './problemList';
 import { addDays, weekStartOf } from './dates';
 
 // The week charts show up to a year, rolling after that.
@@ -73,7 +73,7 @@ export function progressTiles(problems, ticks, climberName, today) {
 // A row for each grade that has problems on the board, easiest first.
 export function ticklist(problems, ticks, climberName) {
   const sent = sentIds(buildLogbook(problems, ticks, climberName));
-  const graded = problems.map((p) => ({ id: p.id, grade: gradeNumber(p.grade) })).filter((p) => p.grade !== null);
+  const graded = problems.map((p) => ({ id: p.id, grade: gradeNumber(gradeOf(p)) })).filter((p) => p.grade !== null);
   return [...new Set(graded.map((p) => p.grade))].sort((a, b) => a - b).map((grade) => {
     const atGrade = graded.filter((p) => p.grade === grade);
     return { grade, ticked: atGrade.filter((p) => sent.has(p.id)).length, total: atGrade.length };
@@ -87,7 +87,7 @@ export function mostClimbed(problems, ticks, climberName, limit = 5) {
   // Newest day first, so the first time a problem turns up is its latest session.
   for (const day of buildLogbook(problems, ticks, climberName)) {
     for (const p of day.problems) {
-      const entry = counts.get(p.id) || { id: p.id, name: p.name, grade: p.grade, sessions: 0, last: day.date };
+      const entry = counts.get(p.id) || { id: p.id, name: p.name, grade: p.grade, gradeProvisional: p.gradeProvisional, sessions: 0, last: day.date };
       entry.sessions += 1;
       counts.set(p.id, entry);
     }
@@ -95,5 +95,5 @@ export function mostClimbed(problems, ticks, climberName, limit = 5) {
   return [...counts.values()]
     .sort((a, b) => b.sessions - a.sessions || (a.last < b.last ? 1 : a.last > b.last ? -1 : 0))
     .slice(0, limit)
-    .map(({ id, name, grade, sessions }) => ({ id, name, grade, sessions }));
+    .map(({ id, name, grade, gradeProvisional, sessions }) => ({ id, name, grade, gradeProvisional, sessions }));
 }

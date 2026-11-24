@@ -71,3 +71,15 @@ describe('gradeOf and gradeLabel', () => {
     expect(gradeLabel({ grade: null })).toBe('');
   });
 });
+
+describe('sorting with provisional grades', () => {
+  it('sorts a provisional problem at its provisional grade, and an ungraded one with no votes last', () => {
+    const list = [
+      { id: 'none', grade: '', shownGrade: '', gradeProvisional: false },
+      { id: 'v7', grade: 'V7', shownGrade: 'V7', gradeProvisional: false },
+      { id: 'v5?', grade: '', shownGrade: 'V5', gradeProvisional: true },
+      { id: 'v3', grade: 'V3', shownGrade: 'V3', gradeProvisional: false },
+    ];
+    expect(ids(sortAndFilterProblems(list, { sort: 'grade-asc' }))).toEqual(['v3', 'v5?', 'v7', 'none']);
+  });
+});
