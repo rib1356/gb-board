@@ -133,3 +133,11 @@ describe('buildLogbook', () => {
     expect(names(buildLogbook(PROBLEMS, ticks, 'Rob'))).toEqual([['2026-09-01', ['Gaston Traverse']]]);
   });
 });
+
+describe('buildLogbook with provisional grades', () => {
+  it('carries the shown grade and the provisional flag into logbook rows', () => {
+    const problems = [{ id: 'p1', name: 'Voted Five', grade: '', shownGrade: 'V5', gradeProvisional: true }];
+    const ticks = [{ id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-09-01', created_at: '2026-09-01T18:00:00Z', flash: false }];
+    expect(buildLogbook(problems, ticks, 'Rob')[0].problems[0]).toMatchObject({ grade: 'V5', gradeProvisional: true });
+  });
+});

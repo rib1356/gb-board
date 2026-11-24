@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { FEELS } from '../lib/warmup';
-import { formatShortDate, gradeBadgeStyle, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
+import { formatShortDate, rungBadge, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
 
 const FEELS_BY_VALUE = Object.fromEntries(FEELS.map((f) => [f.value, f]));
 
@@ -33,10 +33,11 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
       {rungs.map((rung, i) => {
         const problem = rung.problemId ? byId.get(rung.problemId) : null;
         const removed = rung.problemId && !problem;
+        const badge = rungBadge(rung.grade, problem);
         return (
           <button key={i} onClick={() => setSelectedIndex(i)} style={rungRow(i === selectedIndex, removed)}>
             <span style={{ color: '#8b8d91', width: 18 }}>{i + 1}</span>
-            <span style={gradeBadgeStyle}>{rung.grade}</span>
+            <span style={badge.style}>{badge.text}</span>
             <span style={{ flex: 1, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
               {!rung.problemId && <><RefreshCw size={13} /><span>random {rung.grade}</span></>}
               {problem && problem.name}

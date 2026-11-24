@@ -136,3 +136,11 @@ describe('FEELS', () => {
     ]);
   });
 });
+
+describe('provisional grades', () => {
+  it('draws a provisional problem for a random rung of its grade', () => {
+    const voted = { ...P('voted', ''), shownGrade: 'V5', gradeProvisional: true };
+    const rolled = rollLadder([{ grade: 'V5', problemId: null }], [P('v4', 'V4'), voted], { rng: seq(0), today: TODAY });
+    expect(rolled[0].problem?.id).toBe('voted');
+  });
+});

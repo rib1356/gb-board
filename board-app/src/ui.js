@@ -8,6 +8,18 @@ export const gradeBadgeStyle = {
   color: '#D9552B', fontSize: 13, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
 };
 
+// A grade that only comes from votes: grey and dashed, so it never passes for
+// a real one.
+export const provisionalBadgeStyle = { ...gradeBadgeStyle, color: '#8b8d91', border: '1px dashed #3a3b3e' };
+
+// A warm-up rung's grade badge, marked "?" when its problem's grade is only
+// provisional.
+export function rungBadge(grade, problem) {
+  return problem?.gradeProvisional
+    ? { style: provisionalBadgeStyle, text: `${grade}?` }
+    : { style: gradeBadgeStyle, text: grade };
+}
+
 export function formatShortDate(dateStr) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }

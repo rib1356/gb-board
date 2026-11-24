@@ -1,5 +1,7 @@
 import { Star } from 'lucide-react';
 import { gradeVoteLabel } from '../lib/votes';
+import { GRADES } from '../lib/grades';
+import { inputStyle } from '../ui';
 
 const labelStyle = { width: '100%', fontSize: 12.5, fontWeight: 700, color: '#8b8d91' };
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 };
@@ -14,10 +16,27 @@ function chipStyle(picked) {
 
 // A climber's grade and star vote. Presentational: it reports both values on
 // every change, and tapping the picked value again clears just that one.
-export default function VotePicker({ choices, grade, feel, stars, onChange, disabled = false }) {
+// anyGrade swaps the chips for a V0-V18 dropdown, for a problem with no grade
+// to build the chips around; it votes whole grades only.
+export default function VotePicker({ choices, grade, feel, stars, onChange, anyGrade = false, disabled = false }) {
   return (
     <div>
-      {choices.length > 0 && (
+      {anyGrade && (
+        <div style={rowStyle}>
+          <span style={labelStyle}>Grade</span>
+          <select
+            aria-label="Grade vote"
+            value={grade ?? ''}
+            disabled={disabled}
+            onChange={(e) => onChange({ grade: e.target.value || null, feel: null, stars })}
+            style={{ ...inputStyle, marginTop: 0 }}
+          >
+            <option value="">No vote</option>
+            {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </div>
+      )}
+      {!anyGrade && choices.length > 0 && (
         <div role="group" aria-label="Grade vote" style={rowStyle}>
           <span style={labelStyle}>Grade</span>
           {choices.map((c) => {

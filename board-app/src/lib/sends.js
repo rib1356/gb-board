@@ -1,3 +1,5 @@
+import { gradeOf } from './problemList';
+
 // Sends logged before climber profiles carry no sent_by, so they belong to
 // nobody -- a missing name never matches.
 export function sentProblemIds(ticks, climberName) {
@@ -38,9 +40,11 @@ export function buildLogbook(problems, ticks, climberName) {
     if (!days.has(t.sent_on)) days.set(t.sent_on, new Map());
     const day = days.get(t.sent_on);
     if (day.has(t.problem_id)) continue;
-    const { id, name, grade } = byId.get(t.problem_id);
+    const p = byId.get(t.problem_id);
     const firstSend = firsts.has(t.id);
-    day.set(t.problem_id, { id, name, grade, firstSend, flashed: firstSend && Boolean(t.flash) });
+    day.set(t.problem_id, {
+      id: p.id, name: p.name, grade: gradeOf(p), gradeProvisional: p.gradeProvisional, firstSend, flashed: firstSend && Boolean(t.flash),
+    });
   }
   return [...days.entries()]
     .sort(([a], [b]) => (a < b ? 1 : -1))

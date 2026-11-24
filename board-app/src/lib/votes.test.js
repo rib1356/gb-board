@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote } from './votes';
+import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote, provisionalGrade, withShownGrades } from './votes';
 
 const V = (problem_id, climber, grade, stars) => ({ id: `${problem_id}-${climber}`, problem_id, climber, grade, stars });
 const T = (problem_id, sent_by) => ({ id: `${problem_id}-${sent_by}`, problem_id, sent_by });
@@ -98,5 +98,41 @@ describe('voteFor and replaceVote', () => {
     const next = V('p1', 'Rob', 'V4', 2);
     expect(replaceVote(votes, 'p1', 'Rob', next)).toEqual([votes[1], next]);
     expect(replaceVote(votes, 'p1', 'Rob', null)).toEqual([votes[1]]);
+  });
+});
+
+describe('provisionalGrade', () => {
+  it('takes the middle vote', () => {
+    expect(provisionalGrade('p1', [V('p1', 'A', 'V4', null), V('p1', 'B', 'V6', null), V('p1', 'C', 'V5', null)])).toBe('V5');
+  });
+  it('takes the easier of the two middle votes on an even split', () => {
+    expect(provisionalGrade('p1', [V('p1', 'A', 'V4', null), V('p1', 'B', 'V5', null)])).toBe('V4');
+    expect(provisionalGrade('p1', [V('p1', 'A', 'V3', null), V('p1', 'B', 'V4', null), V('p1', 'C', 'V6', null), V('p1', 'D', 'V7', null)])).toBe('V4');
+  });
+  it('ignores soft/hard, star-only votes, unparseable grades and other problems', () => {
+    expect(provisionalGrade('p1', [{ ...V('p1', 'A', 'V5', null), feel: 'hard' }, V('p1', 'B', null, 4), V('p1', 'C', '5+', null), V('p2', 'D', 'V9', null)])).toBe('V5');
+  });
+  it('is null with no grade votes', () => {
+    expect(provisionalGrade('p1', [V('p1', 'A', null, 4)])).toBeNull();
+  });
+});
+
+describe('withShownGrades', () => {
+  it('keeps a real grade even when the votes disagree', () => {
+    const [p] = withShownGrades([{ id: 'p1', grade: 'V5' }], [V('p1', 'A', 'V7', null)]);
+    expect(p).toMatchObject({ grade: 'V5', shownGrade: 'V5', gradeProvisional: false });
+  });
+  it('gives an ungraded problem its provisional grade without touching grade', () => {
+    const [p] = withShownGrades([{ id: 'p1', grade: '' }], [V('p1', 'A', 'V5', null)]);
+    expect(p).toMatchObject({ grade: '', shownGrade: 'V5', gradeProvisional: true });
+  });
+  it('leaves an ungraded problem with no votes ungraded', () => {
+    const [p] = withShownGrades([{ id: 'p1', grade: null }], []);
+    expect(p).toMatchObject({ shownGrade: null, gradeProvisional: false });
+  });
+  it("drops the provisional grade when its voter's send is deleted", () => {
+    const votes = [V('p1', 'Rob', 'V5', null)];
+    expect(withShownGrades([{ id: 'p1', grade: '' }], countedVotes(votes, [T('p1', 'Rob')]))[0].shownGrade).toBe('V5');
+    expect(withShownGrades([{ id: 'p1', grade: '' }], countedVotes(votes, []))[0].gradeProvisional).toBe(false);
   });
 });

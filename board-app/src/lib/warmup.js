@@ -1,3 +1,5 @@
+import { gradeOf } from './problemList';
+
 // Stored values stay heavy/normal/strong (the warmup_sessions check
 // constraint); only the wording and colours shown in the app changed.
 export const FEELS = [
@@ -33,7 +35,7 @@ function pickWeighted(pool, today, rng) {
 
 // Sent problems first (you know they go); unsent only once those run out.
 function poolFor(grade, problems, excludeIds) {
-  const candidates = problems.filter((p) => p.grade === grade && !excludeIds.has(p.id));
+  const candidates = problems.filter((p) => gradeOf(p) === grade && !excludeIds.has(p.id));
   const sent = candidates.filter((p) => p.send_count > 0);
   if (sent.length) return { pool: sent, status: 'ok' };
   if (candidates.length) return { pool: candidates, status: 'unsent-fallback' };

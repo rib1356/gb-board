@@ -115,3 +115,16 @@ describe('mostClimbed', () => {
     expect(mostClimbed(PROBLEMS, ticks, 'Rob', 1)).toHaveLength(1);
   });
 });
+
+describe('provisional grades', () => {
+  it('puts a provisional problem in the ticklist and the hardest tile', () => {
+    const problems = [
+      { id: 'p1', name: 'Voted Five', grade: '', shownGrade: 'V5', gradeProvisional: true },
+      { id: 'p2', name: 'Crimpy Corner', grade: 'V3', shownGrade: 'V3', gradeProvisional: false },
+    ];
+    const ticks = [tick('t1', 'p1', '2026-09-15')];
+    expect(ticklist(problems, ticks, 'Rob')).toEqual([{ grade: 3, ticked: 0, total: 1 }, { grade: 5, ticked: 1, total: 1 }]);
+    expect(progressTiles(problems, ticks, 'Rob', '2026-09-17').hardest).toBe(5);
+    expect(mostClimbed(problems, ticks, 'Rob')[0]).toMatchObject({ grade: 'V5', gradeProvisional: true });
+  });
+});

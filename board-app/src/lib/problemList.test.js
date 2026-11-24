@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortAndFilterProblems, applySend } from './problemList';
+import { sortAndFilterProblems, applySend, gradeOf, gradeLabel } from './problemList';
 
 // Input order mirrors listProblems(): newest first.
 const PROBLEMS = [
@@ -59,5 +59,27 @@ describe('applySend', () => {
     ]);
     expect(applySend(list, 'a', '2026-09-01')[0].last_sent_on).toBe('2026-09-20');
     expect(applySend(list, 'b', '2026-09-29')[1]).toEqual({ id: 'b', send_count: 1, last_sent_on: '2026-09-29' });
+  });
+});
+
+describe('gradeOf and gradeLabel', () => {
+  it('prefers the shown grade and marks a provisional one', () => {
+    expect(gradeOf({ grade: '', shownGrade: 'V5' })).toBe('V5');
+    expect(gradeOf({ grade: 'V3' })).toBe('V3');
+    expect(gradeLabel({ grade: '', shownGrade: 'V5', gradeProvisional: true })).toBe('V5?');
+    expect(gradeLabel({ grade: 'V3', shownGrade: 'V3', gradeProvisional: false })).toBe('V3');
+    expect(gradeLabel({ grade: null })).toBe('');
+  });
+});
+
+describe('sorting with provisional grades', () => {
+  it('sorts a provisional problem at its provisional grade, and an ungraded one with no votes last', () => {
+    const list = [
+      { id: 'none', grade: '', shownGrade: '', gradeProvisional: false },
+      { id: 'v7', grade: 'V7', shownGrade: 'V7', gradeProvisional: false },
+      { id: 'v5?', grade: '', shownGrade: 'V5', gradeProvisional: true },
+      { id: 'v3', grade: 'V3', shownGrade: 'V3', gradeProvisional: false },
+    ];
+    expect(ids(sortAndFilterProblems(list, { sort: 'grade-asc' }))).toEqual(['v3', 'v5?', 'v7', 'none']);
   });
 });

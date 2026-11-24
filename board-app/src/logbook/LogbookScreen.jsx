@@ -3,6 +3,7 @@ import { buildLogbook } from '../lib/sends';
 import { monthOf } from '../lib/dates';
 import { sectionHeading, visuallyHidden } from '../ui';
 import ProgressTab from './ProgressTab';
+import { gradeLabel } from '../lib/problemList';
 
 const mono = "'JetBrains Mono', monospace";
 
@@ -58,7 +59,7 @@ function Day({ day, open, onToggle, onOpenProblem }) {
                 width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none',
                 borderTop: '1px solid #2A2B2E', color: '#EDEAE3', padding: '10px 8px', cursor: 'pointer', textAlign: 'left',
               }}>
-                <span style={{ width: 34, flexShrink: 0, fontFamily: mono, fontSize: 13, fontWeight: 700, color: '#D9552B' }}>{p.grade}</span>
+                <span style={{ width: 34, flexShrink: 0, fontFamily: mono, fontSize: 13, fontWeight: 700, color: p.gradeProvisional ? '#8b8d91' : '#D9552B' }}>{gradeLabel(p)}</span>
                 <span style={{ flex: 1, fontSize: 14 }}>{p.name}</span>
                 {p.firstSend && <span style={{ ...badge, background: '#5C8A66', color: '#17181A' }}>New</span>}
                 {p.flashed && (

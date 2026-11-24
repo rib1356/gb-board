@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle2, Circle, Play, RefreshCw } from 'lucide-react';
 import { FEELS, rollLadder, rerollRung, canReroll, nextUnsentIndex, sessionPayload } from '../lib/warmup';
-import { gradeBadgeStyle, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
+import { rungBadge, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
 
 const SKIP_LABELS = { removed: 'Problem removed' };
 
@@ -76,6 +76,7 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
         const sent = entry.problem && sentIds.includes(entry.problem.id);
         const isCurrent = i === currentIndex && !finishing;
         const skipped = !entry.problem;
+        const badge = rungBadge(entry.grade, entry.problem);
         const label = entry.problem
           ? entry.problem.name
           : SKIP_LABELS[entry.status] || `No ${entry.grade}s on the board`;
@@ -83,7 +84,7 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
           <div key={i} style={{ ...rungRow(isCurrent, skipped), cursor: skipped ? 'default' : 'pointer' }}
             onClick={() => { if (!skipped && !finishing && !sending) { setCurrentIndex(i); setSendFailed(false); } }}>
             {sent ? <CheckCircle2 size={16} color="#5C8A66" /> : isCurrent ? <Play size={16} color="#D9552B" /> : <Circle size={16} color="#6d6f73" />}
-            <span style={gradeBadgeStyle}>{entry.grade}</span>
+            <span style={badge.style}>{badge.text}</span>
             <span style={{ flex: 1 }}>
               {label}
               {entry.status === 'unsent-fallback' && <span style={{ fontSize: 11, color: '#8b8d91', marginLeft: 6 }}>not sent yet</span>}
