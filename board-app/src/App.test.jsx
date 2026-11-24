@@ -3387,3 +3387,34 @@ describe('App (provisional grades)', () => {
     expect(screen.getByText('V5?')).toBeInTheDocument();
   });
 });
+
+describe('App (warm-up with provisional grades)', () => {
+  const CRIMP = { id: 'p1', name: 'Crimp Line', grade: '', setter: 'Rob', notes: '', holds: [], rating: null, send_count: 1, last_sent_on: '2026-10-01' };
+  const SEND = { id: 't1', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-10-01', notes: '', created_at: '2026-10-01T18:00:00Z', flash: false };
+  const VOTE = { id: 'v1', problem_id: 'p1', climber: 'Shawn', grade: 'V5', feel: null, stars: null, created_at: '2026-10-01T18:00:00Z' };
+  const openWarmup = async () => {
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V5', problemId: 'p1' }] });
+    listProblems.mockResolvedValue([CRIMP]);
+    listBoardTicks.mockResolvedValue([SEND]);
+    listBoardVotes.mockResolvedValue([VOTE]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    return user;
+  };
+
+  it('marks a rung on a provisional problem as V5? on the ladder and in the session', async () => {
+    const user = await openWarmup();
+    expect(await screen.findByText('V5?')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Start warm-up' }));
+    expect(await screen.findByText('V5?')).toBeInTheDocument();
+  });
+
+  it('marks it in the editor too', async () => {
+    const user = await openWarmup();
+    await user.click(await screen.findByRole('button', { name: /edit/i }));
+    expect(await screen.findByText('V5?')).toBeInTheDocument();
+  });
+});

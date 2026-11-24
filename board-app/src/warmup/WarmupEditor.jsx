@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ChevronUp, ChevronDown, X, RefreshCw } from 'lucide-react';
 import { GRADES } from '../lib/grades';
 import { sortAndFilterProblems, gradeOf, gradeLabel } from '../lib/problemList';
-import { inputStyle, gradeBadgeStyle, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
+import { inputStyle, gradeBadgeStyle, provisionalBadgeStyle, rungBadge, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
 
 // picker: null | { mode: 'problem', index: number|null } | { mode: 'grade' }
 // index null = append a new rung; a number = replace that rung.
@@ -41,6 +41,7 @@ export default function WarmupEditor({ initialRungs, problems, saving, onSave, o
 
       {rungs.map((rung, i) => {
         const problem = rung.problemId ? byId.get(rung.problemId) : null;
+        const badge = rungBadge(rung.grade, problem);
         const n = i + 1;
         return (
           <div key={i} style={{ ...rungRow(false, rung.problemId && !problem), cursor: 'default' }}>
@@ -48,7 +49,7 @@ export default function WarmupEditor({ initialRungs, problems, saving, onSave, o
               <button aria-label={`Move rung ${n} up`} disabled={i === 0} onClick={() => move(i, -1)} style={iconButton}><ChevronUp size={14} /></button>
               <button aria-label={`Move rung ${n} down`} disabled={i === rungs.length - 1} onClick={() => move(i, 1)} style={iconButton}><ChevronDown size={14} /></button>
             </span>
-            <span style={gradeBadgeStyle}>{rung.grade}</span>
+            <span style={badge.style}>{badge.text}</span>
             <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
               {!rung.problemId && <><RefreshCw size={13} /> random</>}
               {problem && problem.name}
@@ -91,7 +92,7 @@ export default function WarmupEditor({ initialRungs, problems, saving, onSave, o
           <div style={{ maxHeight: 280, overflowY: 'auto', marginTop: 8 }}>
             {pickable.map((p) => (
               <button key={p.id} disabled={!gradeOf(p)} onClick={() => place(picker.index, { grade: gradeOf(p), problemId: p.id })} style={rungRow(false, !gradeOf(p))}>
-                <span style={p.gradeProvisional ? { ...gradeBadgeStyle, color: '#8b8d91', border: '1px dashed #3a3b3e' } : gradeBadgeStyle}>{gradeLabel(p) || '—'}</span>
+                <span style={p.gradeProvisional ? provisionalBadgeStyle : gradeBadgeStyle}>{gradeLabel(p) || '—'}</span>
                 <span style={{ flex: 1, textAlign: 'left' }}>{p.name}</span>
               </button>
             ))}
