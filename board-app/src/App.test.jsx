@@ -3536,7 +3536,10 @@ describe('App (projects)', () => {
   const SLAB = { id: 'p3', name: 'Slab', grade: 'V3', setter: 'Rob', notes: '', holds: [] };
   const daysAgo = (n) => addDays(today, -n);
   const yourProjects = () => screen.findByRole('region', { name: 'Your projects' });
-  const rowNames = (section) => within(section).getAllByRole('button').map((b) => b.textContent);
+  // Project rows and Gone cold, not the Your projects heading that folds the section.
+  const rowNames = (section) => within(section).getAllByRole('button')
+    .map((b) => b.textContent)
+    .filter((text) => !text.startsWith('Your projects'));
 
   it('lists your projects at the top of the list, newest first', async () => {
     asRob();
@@ -3590,7 +3593,7 @@ describe('App (projects)', () => {
     listBoardProjectSessions.mockResolvedValue([session('p3', 'Rob', daysAgo(40))]);
     render(<App />);
     const section = await yourProjects();
-    expect(within(section).getByText('Your projects')).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: 'Your projects (1)' })).toBeInTheDocument();
     expect(rowNames(section)).toEqual(['Gone cold (1)']);
   });
 
@@ -3621,6 +3624,37 @@ describe('App (projects)', () => {
     await user.selectOptions(screen.getByLabelText('Sort problems'), 'grade-desc');
     await user.click(screen.getByRole('button', { name: /unsent/i }));
     expect(rowNames(await yourProjects())).toEqual(before);
+  });
+
+  it('folds Your projects down to its heading, and opens it again', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(2)), session('p2', 'Rob', daysAgo(1))]);
+    render(<App />);
+    const user = userEvent.setup();
+    const section = await yourProjects();
+    const heading = within(section).getByRole('button', { name: 'Your projects (2)' });
+    expect(heading).toHaveAttribute('aria-expanded', 'true');
+    await user.click(heading);
+    expect(heading).toHaveAttribute('aria-expanded', 'false');
+    expect(within(section).queryByText('Hyperbole')).not.toBeInTheDocument();
+    expect(screen.getByText('Hyperbole')).toBeInTheDocument();
+    await user.click(heading);
+    expect(within(section).getByText('Hyperbole')).toBeInTheDocument();
+  });
+
+  it('keeps Your projects folded on this phone after a reload', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1))]);
+    const { unmount } = render(<App />);
+    const user = userEvent.setup();
+    await user.click(within(await yourProjects()).getByRole('button', { name: 'Your projects (1)' }));
+    unmount();
+    render(<App />);
+    const section = await yourProjects();
+    expect(within(section).getByRole('button', { name: 'Your projects (1)' })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(section).queryByText('Hyperbole')).not.toBeInTheDocument();
   });
 
   it('still lists a project in the main list below', async () => {

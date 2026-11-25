@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { gradeOf, gradeLabel } from '../lib/problemList';
 import { sessionsLabel } from '../lib/projects';
 import { dayLabel } from '../lib/injuries';
@@ -26,14 +26,24 @@ function ProjectRow({ project, today, onOpen }) {
 }
 
 // The picked climber's projects, a shortcut above the main list: active ones
-// newest-worked first, then any that have gone cold, folded away.
-export default function YourProjects({ active, cold, coldOpen, onToggleCold, onOpenProblem, today }) {
+// newest-worked first, then any that have gone cold, folded away. The heading
+// folds the whole section, for when the list gets long.
+export default function YourProjects({ active, cold, collapsed, onToggleCollapsed, coldOpen, onToggleCold, onOpenProblem, today }) {
   if (active.length === 0 && cold.length === 0) return null;
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
   return (
     <section aria-label="Your projects" style={{ marginBottom: 18 }}>
-      <h2 style={sectionHeading}>Your projects</h2>
-      {active.map((p) => <ProjectRow key={p.problem.id} project={p} today={today} onOpen={onOpenProblem} />)}
-      {cold.length > 0 && (
+      <h2 style={{ ...sectionHeading, margin: collapsed ? 0 : sectionHeading.margin }}>
+        <button aria-expanded={!collapsed} onClick={onToggleCollapsed} style={{
+          display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', padding: '4px 0',
+          color: 'inherit', font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', cursor: 'pointer',
+        }}>
+          <Chevron size={14} aria-hidden="true" />
+          {`Your projects (${active.length + cold.length})`}
+        </button>
+      </h2>
+      {!collapsed && active.map((p) => <ProjectRow key={p.problem.id} project={p} today={today} onOpen={onOpenProblem} />)}
+      {!collapsed && cold.length > 0 && (
         <>
           <button aria-expanded={coldOpen} onClick={onToggleCold} style={{
             display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#8b8d91',

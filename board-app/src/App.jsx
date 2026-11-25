@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
+import { getProjectsCollapsed, setProjectsCollapsed } from './lib/projectsStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
@@ -167,6 +168,13 @@ export default function App() {
   // Here rather than in Your projects, so it survives a trip to a problem and
   // Back (keeping the list's scroll spot right), and resets only on load.
   const [coldOpen, setColdOpen] = useState(false);
+  // Folding Your projects away is remembered on this phone.
+  const [projectsCollapsed, setProjectsCollapsedState] = useState(getProjectsCollapsed);
+  const toggleProjectsCollapsed = () => {
+    const next = !projectsCollapsed;
+    setProjectsCollapsedState(next);
+    setProjectsCollapsed(next);
+  };
   const [logbookTab, setLogbookTab] = useState('sessions');
   const [selectedId, setSelectedId] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -1206,6 +1214,8 @@ export default function App() {
               <YourProjects
                 active={myProjects.active}
                 cold={myProjects.cold}
+                collapsed={projectsCollapsed}
+                onToggleCollapsed={toggleProjectsCollapsed}
                 coldOpen={coldOpen}
                 onToggleCold={() => setColdOpen((prev) => !prev)}
                 onOpenProblem={(id) => openProblem(id, 'list')}
