@@ -74,4 +74,51 @@ describe('VotePicker for an ungraded problem', () => {
     await userEvent.selectOptions(dropdown(), '');
     expect(onChange).toHaveBeenCalledWith({ grade: null, feel: null, stars: 4 });
   });
+
+  const feelRow = () => within(screen.getByRole('group', { name: 'Grade feel' }));
+  it('shows no feel chips until a grade is picked', () => {
+    render(<VotePicker anyGrade choices={[]} grade={null} feel={null} stars={null} onChange={vi.fn()} />);
+    expect(screen.queryByRole('group', { name: 'Grade feel' })).not.toBeInTheDocument();
+  });
+  it('shows soft, plain and hard of the picked grade, plain pressed by default', () => {
+    render(<VotePicker anyGrade choices={[]} grade="V5" feel={undefined} stars={null} onChange={vi.fn()} />);
+    expect(feelRow().getAllByRole('button').map((b) => b.textContent)).toEqual(['soft V5', 'V5', 'hard V5']);
+    expect(feelRow().getByRole('button', { name: 'V5' })).toHaveAttribute('aria-pressed', 'true');
+    expect(feelRow().getByRole('button', { name: 'hard V5' })).toHaveAttribute('aria-pressed', 'false');
+  });
+  it('shows the saved feel as pressed', () => {
+    render(<VotePicker anyGrade choices={[]} grade="V5" feel="hard" stars={null} onChange={vi.fn()} />);
+    expect(feelRow().getByRole('button', { name: 'hard V5' })).toHaveAttribute('aria-pressed', 'true');
+    expect(feelRow().getByRole('button', { name: 'V5' })).toHaveAttribute('aria-pressed', 'false');
+  });
+  it('picking soft or hard reports the feel and keeps the stars', async () => {
+    const onChange = vi.fn();
+    render(<VotePicker anyGrade choices={[]} grade="V5" feel={null} stars={4} onChange={onChange} />);
+    await userEvent.click(feelRow().getByRole('button', { name: 'hard V5' }));
+    expect(onChange).toHaveBeenCalledWith({ grade: 'V5', feel: 'hard', stars: 4 });
+  });
+  it('tapping the picked soft or hard goes back to plain', async () => {
+    const onChange = vi.fn();
+    render(<VotePicker anyGrade choices={[]} grade="V5" feel="soft" stars={4} onChange={onChange} />);
+    await userEvent.click(feelRow().getByRole('button', { name: 'soft V5' }));
+    expect(onChange).toHaveBeenCalledWith({ grade: 'V5', feel: null, stars: 4 });
+  });
+  it('tapping plain when plain is picked does nothing', async () => {
+    const onChange = vi.fn();
+    render(<VotePicker anyGrade choices={[]} grade="V5" feel={null} stars={4} onChange={onChange} />);
+    await userEvent.click(feelRow().getByRole('button', { name: 'V5' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+  it('changing the grade after picking hard resets the feel', async () => {
+    const onChange = vi.fn();
+    render(<VotePicker anyGrade choices={[]} grade="V5" feel="hard" stars={4} onChange={onChange} />);
+    await userEvent.selectOptions(dropdown(), 'V6');
+    expect(onChange).toHaveBeenCalledWith({ grade: 'V6', feel: null, stars: 4 });
+  });
+  it('feel chips ignore taps while disabled', async () => {
+    const onChange = vi.fn();
+    render(<VotePicker anyGrade disabled choices={[]} grade="V5" feel={null} stars={4} onChange={onChange} />);
+    await userEvent.click(feelRow().getByRole('button', { name: 'hard V5' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

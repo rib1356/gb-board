@@ -5,6 +5,7 @@ import { inputStyle } from '../ui';
 
 const labelStyle = { width: '100%', fontSize: 12.5, fontWeight: 700, color: '#8b8d91' };
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 };
+const FEELS = ['soft', null, 'hard'];
 
 function chipStyle(picked) {
   return {
@@ -17,7 +18,8 @@ function chipStyle(picked) {
 // A climber's grade and star vote. Presentational: it reports both values on
 // every change, and tapping the picked value again clears just that one.
 // anyGrade swaps the chips for a V0-V18 dropdown, for a problem with no grade
-// to build the chips around; it votes whole grades only.
+// to build the chips around. Once a grade is picked, soft / plain / hard chips
+// for it appear underneath; changing the grade goes back to plain.
 export default function VotePicker({ choices, grade, feel, stars, onChange, anyGrade = false, disabled = false }) {
   return (
     <div>
@@ -34,6 +36,28 @@ export default function VotePicker({ choices, grade, feel, stars, onChange, anyG
             <option value="">No vote</option>
             {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
+        </div>
+      )}
+      {anyGrade && grade && (
+        <div role="group" aria-label="Grade feel" style={rowStyle}>
+          {FEELS.map((f) => {
+            const picked = f === (feel ?? null);
+            return (
+              <button
+                key={f ?? 'plain'}
+                type="button"
+                aria-pressed={picked}
+                disabled={disabled}
+                onClick={() => {
+                  if (picked && f === null) return;
+                  onChange({ grade, feel: picked ? null : f, stars });
+                }}
+                style={chipStyle(picked)}
+              >
+                {gradeVoteLabel({ grade, feel: f })}
+              </button>
+            );
+          })}
         </div>
       )}
       {!anyGrade && choices.length > 0 && (
