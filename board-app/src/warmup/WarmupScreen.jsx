@@ -57,11 +57,16 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
           {sessions.map((s) => {
             const feel = FEELS_BY_VALUE[s.feel];
             return (
-              <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#c7c8cb', padding: '2px 0', borderBottom: '1px solid #2A2B2E' }}>
-                <span>
+              <li key={s.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', fontSize: 13.5, color: '#c7c8cb', padding: '2px 0', borderBottom: '1px solid #2A2B2E' }}>
+                {/* The notes wrap under the row; the delete button stays level
+                    with the first line. */}
+                <span style={{ padding: `9px 0 ${s.notes ? 8 : 9}px`, minWidth: 0 }}>
                   {[formatShortDate(s.done_on), s.climbed_by].filter(Boolean).join(' · ')}
                   {feel && <> · <span style={{ color: feel.color, fontWeight: 700 }}>{feel.label}</span></>}
                   {` · ${s.sent_ids.length}/${s.problem_ids.length}`}
+                  {s.notes && (
+                    <span style={{ display: 'block', marginTop: 2, fontSize: 13, color: '#8b8d91', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{s.notes}</span>
+                  )}
                 </span>
                 <button
                   aria-label={`Delete session from ${formatShortDate(s.done_on)}${s.climbed_by ? ` by ${s.climbed_by}` : ''}`}

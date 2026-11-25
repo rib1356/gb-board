@@ -486,12 +486,12 @@ describe('createWarmupSession', () => {
     const c = chain({ data: created, error: null });
     mocks.supabase.from.mockReturnValue(c);
     const result = await createWarmupSession('b1', {
-      doneOn: '2026-09-29', climbedBy: 'Rob', feel: 'strong', problemIds: ['a', 'b'], sentIds: ['a'],
+      doneOn: '2026-09-29', climbedBy: 'Rob', feel: 'strong', problemIds: ['a', 'b'], sentIds: ['a'], notes: 'skin thin',
     });
     expect(result).toEqual(created);
     expect(mocks.supabase.from).toHaveBeenCalledWith('warmup_sessions');
     expect(c.insert).toHaveBeenCalledWith({
-      board_id: 'b1', done_on: '2026-09-29', climbed_by: 'Rob', feel: 'strong', problem_ids: ['a', 'b'], sent_ids: ['a'],
+      board_id: 'b1', done_on: '2026-09-29', climbed_by: 'Rob', feel: 'strong', problem_ids: ['a', 'b'], sent_ids: ['a'], notes: 'skin thin',
     });
   });
 });

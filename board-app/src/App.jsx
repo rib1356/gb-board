@@ -773,11 +773,11 @@ export default function App() {
     }
   };
 
-  const handleFinishWarmup = async ({ feel, problemIds, sentIds }) => {
+  const handleFinishWarmup = async ({ feel, notes, problemIds, sentIds }) => {
     setError('');
     try {
       const session = await createWarmupSession(board.id, {
-        doneOn: todayISO(), climbedBy: currentClimber?.name, feel, problemIds, sentIds,
+        doneOn: todayISO(), climbedBy: currentClimber?.name, feel, problemIds, sentIds, notes,
       });
       setWarmupSessions((prev) => [session, ...prev].slice(0, 10));
       setView('warmup');

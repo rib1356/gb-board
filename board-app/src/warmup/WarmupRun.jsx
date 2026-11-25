@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle2, Circle, Play, RefreshCw } from 'lucide-react';
 import { FEELS, rollLadder, rerollRung, canReroll, nextUnsentIndex, sessionPayload } from '../lib/warmup';
-import { rungBadge, sectionHeading, linkButton, primaryButton, rungRow } from '../ui';
+import { rungBadge, sectionHeading, linkButton, primaryButton, rungRow, inputStyle } from '../ui';
 
 const SKIP_LABELS = { removed: 'Problem removed' };
 
@@ -13,6 +13,8 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
   const [finishing, setFinishing] = useState(currentIndex === -1);
   const [savingSession, setSavingSession] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
+  // Lives here, not in the finish card, so Keep going doesn't lose it.
+  const [notes, setNotes] = useState('');
 
   const climbable = rolled.filter((e) => e.problem).length;
   const current = rolled[currentIndex];
@@ -39,7 +41,7 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
 
   const handleFeel = async (feel) => {
     setSavingSession(true);
-    const ok = await onFinish({ feel, ...sessionPayload(rolled, sentIds) });
+    const ok = await onFinish({ feel, notes: notes.trim() || null, ...sessionPayload(rolled, sentIds) });
     if (!ok) setSavingSession(false);
   };
 
@@ -55,6 +57,17 @@ export default function WarmupRun({ rungs, problems, climberName, onFocus, onSen
       {finishing && (
         <div style={{ background: '#232427', border: '1px solid #3a3b3e', borderRadius: 12, padding: 16, marginBottom: 14 }}>
           <p style={{ margin: '0 0 4px', fontWeight: 700 }}>{`Warm-up done · ${sentIds.length} / ${climbable}`}</p>
+          {/* Optional, and never focused for you: the keyboard stays down
+              unless you tap the box, so a feel is still one tap. */}
+          <textarea
+            aria-label="Warm-up notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Anything worth remembering?"
+            rows={2}
+            disabled={savingSession}
+            style={{ ...inputStyle, resize: 'vertical', margin: '8px 0 12px' }}
+          />
           <p style={{ margin: '0 0 12px', fontSize: 13.5, color: '#8b8d91' }}>How did it feel?</p>
           <div style={{ display: 'flex', gap: 8 }}>
             {FEELS.map((f) => (

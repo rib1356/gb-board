@@ -2086,7 +2086,7 @@ describe('App (warm-up session)', () => {
     // Model the table: the Warm-up screen refetches sessions when it reopens.
     const saved = [];
     createWarmupSession.mockImplementation(async (boardId, s) => {
-      const row = { id: `s${saved.length + 1}`, done_on: s.doneOn, climbed_by: s.climbedBy, feel: s.feel, problem_ids: s.problemIds, sent_ids: s.sentIds };
+      const row = { id: `s${saved.length + 1}`, done_on: s.doneOn, climbed_by: s.climbedBy, feel: s.feel, problem_ids: s.problemIds, sent_ids: s.sentIds, notes: s.notes };
       saved.unshift(row);
       return row;
     });
@@ -2137,6 +2137,38 @@ describe('App (warm-up session)', () => {
     await waitFor(() => expect(createWarmupSession).toHaveBeenCalledWith('b1', expect.objectContaining({
       feel: 'heavy', problemIds: ['p1', 'p2'], sentIds: [],
     })));
+  });
+
+  it('saves typed notes with the feel', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    await user.click(screen.getByRole('button', { name: 'Sent Jug Haul' }));
+    await user.type(await screen.findByRole('textbox', { name: 'Warm-up notes' }), '  skin thin  ');
+    await user.click(screen.getByRole('button', { name: 'Good' }));
+    await waitFor(() => expect(createWarmupSession).toHaveBeenCalledWith('b1', expect.objectContaining({ feel: 'strong', notes: 'skin thin' })));
+    expect(await screen.findByText('skin thin')).toBeInTheDocument();
+  });
+
+  it('saves null notes when the box is empty or blank', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    await user.click(screen.getByRole('button', { name: 'End' }));
+    await user.type(screen.getByRole('textbox', { name: 'Warm-up notes' }), '   ');
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(createWarmupSession).toHaveBeenCalledWith('b1', expect.objectContaining({ notes: null })));
+  });
+
+  it('keeps typed notes through Keep going', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }, { grade: 'V2', problemId: 'p2' }]);
+    await user.click(screen.getByRole('button', { name: 'End' }));
+    await user.type(screen.getByRole('textbox', { name: 'Warm-up notes' }), 'cold board');
+    await user.click(screen.getByRole('button', { name: 'Keep going' }));
+    await user.click(screen.getByRole('button', { name: 'End' }));
+    expect(screen.getByRole('textbox', { name: 'Warm-up notes' })).toHaveValue('cold board');
+  });
+
+  it('does not focus the notes box when the card opens', async () => {
+    const user = await startSession([{ grade: 'V1', problemId: 'p1' }]);
+    await user.click(screen.getByRole('button', { name: 'End' }));
+    expect(screen.getByRole('textbox', { name: 'Warm-up notes' })).not.toHaveFocus();
   });
 
   it('discarding saves no session', async () => {

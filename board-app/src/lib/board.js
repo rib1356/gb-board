@@ -271,10 +271,10 @@ export async function listWarmupSessions(boardId) {
   return data;
 }
 
-export async function createWarmupSession(boardId, { doneOn, climbedBy, feel, problemIds, sentIds }) {
+export async function createWarmupSession(boardId, { doneOn, climbedBy, feel, problemIds, sentIds, notes }) {
   const { data, error } = await supabase
     .from('warmup_sessions')
-    .insert({ board_id: boardId, done_on: doneOn, climbed_by: climbedBy, feel, problem_ids: problemIds, sent_ids: sentIds })
+    .insert({ board_id: boardId, done_on: doneOn, climbed_by: climbedBy, feel, problem_ids: problemIds, sent_ids: sentIds, notes })
     .select()
     .single();
   if (error) throw error;
