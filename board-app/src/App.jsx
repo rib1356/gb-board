@@ -1,7 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
+import { getProjectsCollapsed, setProjectsCollapsed } from './lib/projectsStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
 import { photoStatus } from './lib/photoStatus';
@@ -10,7 +11,7 @@ import { SORTS, sortAndFilterProblems, applySend, gradeNumber, gradeOf, gradeLab
 import { sentProblemIds, firstSendIds } from './lib/sends';
 import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote, withShownGrades, provisionalGrade } from './lib/votes';
 import VotePicker from './votes/VotePicker';
-import { inputStyle, sectionHeading, formatShortDate } from './ui';
+import { inputStyle, sectionHeading, formatShortDate, projectBlue } from './ui';
 import { firstAscents } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
 import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
@@ -31,7 +32,10 @@ import { useTweaks } from './tweaks/useTweaks';
 import { useLongPress } from './tweaks/useLongPress';
 import { todayISO } from './lib/warmup';
 import { localDate } from './lib/dates';
-import { boardDays, injuryTitle } from './lib/injuries';
+import { boardDays, injuryTitle, shortDate } from './lib/injuries';
+import { workedOn, yourProjects, sessionsToSend, sessionsLabel, sendTagLabel } from './lib/projects';
+import WorkedButton from './projects/WorkedButton';
+import YourProjects from './projects/YourProjects';
 import { checkinsFor } from './lib/checkins';
 
 // Dynamically imported so the segmentation library (and its model weights)
@@ -161,6 +165,16 @@ export default function App() {
   // Logbook days stay open, and the tab stays picked, while you look at one
   // of their problems and come back.
   const [openLogbookDays, setOpenLogbookDays] = useState(() => new Set());
+  // Here rather than in Your projects, so it survives a trip to a problem and
+  // Back (keeping the list's scroll spot right), and resets only on load.
+  const [coldOpen, setColdOpen] = useState(false);
+  // Folding Your projects away is remembered on this phone.
+  const [projectsCollapsed, setProjectsCollapsedState] = useState(getProjectsCollapsed);
+  const toggleProjectsCollapsed = () => {
+    const next = !projectsCollapsed;
+    setProjectsCollapsedState(next);
+    setProjectsCollapsed(next);
+  };
   const [logbookTab, setLogbookTab] = useState('sessions');
   const [selectedId, setSelectedId] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -192,6 +206,12 @@ export default function App() {
   const [savingVote, setSavingVote] = useState(false);
   // Every send on the board, so the list knows who has sent what.
   const [boardTicks, setBoardTicks] = useState([]);
+  // Every climber's project sessions; each view filters to whoever is picked.
+  const [projectSessions, setProjectSessions] = useState([]);
+  // Problems with a Worked save in flight. A ref, not state, so a fast double
+  // tap can't slip in before a re-render; per problem, so a stalled save on one
+  // doesn't swallow taps on another.
+  const savingWorkedRef = useRef(new Set());
   const [boardVotes, setBoardVotes] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
   const [tickDate, setTickDate] = useState('');
@@ -294,10 +314,11 @@ export default function App() {
       try {
         const b = await getOrCreateBoard();
         setBoard(b);
-        const [p, bt, bv] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id)]);
+        const [p, bt, bv, ps] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listBoardProjectSessions(b.id)]);
         setProblems(p);
         setBoardTicks(bt);
         setBoardVotes(bv);
+        setProjectSessions(ps);
         const c = await listClimbers();
         setClimbers(c);
         const storedId = getStoredClimberId();
@@ -380,18 +401,19 @@ export default function App() {
   // Problems with the grade they show: an ungraded one takes its votes'
   // provisional grade. Raw `problems` stays the source for edits and saves.
   const shownProblems = useMemo(() => withShownGrades(problems, counted), [problems, counted]);
-  const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER), [boardTicks]);
+  const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER, projectSessions), [boardTicks, projectSessions]);
 
   // Added to the home screen, the app sits suspended in memory between visits,
   // so the list never sees problems someone else has set unless it re-reads.
   const refreshList = async ({ quiet = false } = {}) => {
     try {
       const b = await getOrCreateBoard();
-      const [p, bt, bv, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listClimbers()]);
+      const [p, bt, bv, ps, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listBoardProjectSessions(b.id), listClimbers()]);
       setBoard(b);
       setProblems(p);
       setBoardTicks(bt);
       setBoardVotes(bv);
+      setProjectSessions(ps);
       setClimbers(c);
     } catch (err) {
       console.error(err);
@@ -668,6 +690,28 @@ export default function App() {
     setSavingVote(false);
   };
 
+  // Flips straight away and saves in the background; a failed save flips back.
+  const handleToggleWorked = async (problemId) => {
+    if (!currentClimber || savingWorkedRef.current.has(problemId)) return;
+    const name = currentClimber.name;
+    const date = todayISO();
+    const row = { problem_id: problemId, climber: name, worked_on: date };
+    const isRow = (s) => s.problem_id === problemId && s.climber === name && s.worked_on === date;
+    const undoing = workedOn(projectSessions, problemId, name, date);
+    savingWorkedRef.current.add(problemId);
+    setError('');
+    setProjectSessions((prev) => (undoing ? prev.filter((s) => !isRow(s)) : [...prev, row]));
+    try {
+      if (undoing) await removeProjectSession(problemId, name, date);
+      else await addProjectSession(problemId, name, date);
+    } catch (err) {
+      console.error(err);
+      setProjectSessions((prev) => (undoing ? [...prev, row] : prev.filter((s) => !isRow(s))));
+      setError('Could not save that — check your connection and try again.');
+    }
+    savingWorkedRef.current.delete(problemId);
+  };
+
   const startLogTick = () => {
     setTickDate(new Date().toISOString().slice(0, 10));
     setTickNotes('');
@@ -854,6 +898,11 @@ export default function App() {
   const visibleProblems = sortAndFilterProblems(shownProblems, {
     sort, unsentOnly, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
   });
+  // Projects are the picked climber's own; with nobody picked there are none.
+  // Dated by the same clock as sends, so sessions to send always line up.
+  const projectToday = todayISO();
+  const myProjects = yourProjects(shownProblems, projectSessions, boardTicks, currentClimber?.name ?? null, projectToday);
+  const mySessionsToSend = sessionsToSend(projectSessions, boardTicks, currentClimber?.name ?? null);
   const isWarmupView = view.startsWith('warmup');
   const warmupRungs = board?.warmup || [];
   const warmupFocus = isWarmupView && warmupFocusId ? problems.find((p) => p.id === warmupFocusId) || null : null;
@@ -1160,6 +1209,19 @@ export default function App() {
                 adding={addingClimber}
               />
             )}
+            {/* Ignores the sort and Unsent: a shortcut, not a filter. */}
+            {currentClimber && (
+              <YourProjects
+                active={myProjects.active}
+                cold={myProjects.cold}
+                collapsed={projectsCollapsed}
+                onToggleCollapsed={toggleProjectsCollapsed}
+                coldOpen={coldOpen}
+                onToggleCold={() => setColdOpen((prev) => !prev)}
+                onOpenProblem={(id) => openProblem(id, 'list')}
+                today={projectToday}
+              />
+            )}
             {problems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
                 <CircleDot size={26} style={{ marginBottom: 8, opacity: 0.5 }} />
@@ -1279,12 +1341,31 @@ export default function App() {
                     color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
                   }}>Pick a climber</button>
                 </div>
-              ) : !showLogForm ? (
-                <button onClick={startLogTick} style={{
-                  display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
-                  color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                }}><Plus size={14} /> Log a send</button>
-              ) : (
+              ) : !showLogForm ? (() => {
+                const sentByMe = sentProblemIds(boardTicks, currentClimber.name).has(selected.id);
+                const project = [...myProjects.active, ...myProjects.cold].find((p) => p.problem.id === selected.id);
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {!sentByMe && (
+                        <WorkedButton
+                          worked={workedOn(projectSessions, selected.id, currentClimber.name, projectToday)}
+                          onClick={() => handleToggleWorked(selected.id)}
+                        />
+                      )}
+                      <button onClick={startLogTick} style={{
+                        display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #3a3b3e',
+                        color: '#8b8d91', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                      }}><Plus size={14} /> Log a send</button>
+                    </div>
+                    {project && (
+                      <p style={{ margin: '8px 0 0', fontSize: 13, color: '#8b8d91' }}>
+                        {`${sessionsLabel(project.sessions)} · since ${shortDate(project.firstWorked, projectToday)}`}
+                      </p>
+                    )}
+                  </>
+                );
+              })() : (
                 <div style={{ background: '#232427', border: '1px solid #2A2B2E', borderRadius: 10, padding: 12 }}>
                   <Field label="Date">
                     {/* iOS draws a date input natively unless appearance is none, and
@@ -1350,6 +1431,12 @@ export default function App() {
                               fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
                               color: t.id === firstSendId ? '#5C8A66' : '#8b8d91',
                             }}>{t.id === firstSendId ? 'First send' : 'Repeat'}</span>
+                            {/* Only on your own first send: projects are yours alone. */}
+                            {currentClimber && t.sent_by === currentClimber.name && flashableIds.has(t.id) && mySessionsToSend.has(selected.id) && (
+                              <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: projectBlue }}>
+                                {sendTagLabel(mySessionsToSend.get(selected.id))}
+                              </span>
+                            )}
                             {t.flash && flashableIds.has(t.id) && (
                               <span style={{
                                 display: 'flex', alignItems: 'center', gap: 3, borderRadius: 999, padding: '2px 8px',
@@ -1407,6 +1494,7 @@ export default function App() {
             ticks={boardTicks}
             climber={currentClimber}
             today={localDate()}
+            sessionsToSend={mySessionsToSend}
             tab={logbookTab}
             onTabChange={setLogbookTab}
             openDays={openLogbookDays}

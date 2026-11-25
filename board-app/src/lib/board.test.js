@@ -17,6 +17,9 @@ import {
   listTicks,
   listBoardTicks,
   listBoardVotes,
+  listBoardProjectSessions,
+  addProjectSession,
+  removeProjectSession,
   saveVote,
   createTick,
   deleteTick,
@@ -578,5 +581,72 @@ describe('saveVote', () => {
   it('throws when the save fails', async () => {
     mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
     await expect(saveVote('p1', 'Rob', { grade: 'V5', stars: null })).rejects.toThrow('nope');
+  });
+});
+
+describe('listBoardProjectSessions', () => {
+  const session = (n) => ({ id: `ps${n}`, problem_id: 'p1', climber: 'Rob', worked_on: '2026-11-25', created_at: '2026-11-25T18:00:00Z' });
+
+  it("lists every project session on the board's problems, through the problem each one is on", async () => {
+    const first = chain({ data: [session(1)], error: null });
+    mocks.supabase.from.mockReturnValueOnce(first).mockReturnValueOnce(chain({ data: [], error: null }));
+    expect(await listBoardProjectSessions('b1')).toEqual([session(1)]);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('project_sessions');
+    expect(first.select).toHaveBeenCalledWith('id, problem_id, climber, worked_on, created_at, problems!inner(board_id)');
+    expect(first.eq).toHaveBeenCalledWith('problems.board_id', 'b1');
+    expect(first.order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(first.order).toHaveBeenCalledWith('id', { ascending: true });
+    expect(first.range).toHaveBeenCalledWith(0, 999);
+  });
+
+  it('keeps reading pages until one comes back empty', async () => {
+    const second = chain({ data: [session(1000)], error: null });
+    mocks.supabase.from
+      .mockReturnValueOnce(chain({ data: Array.from({ length: 1000 }, (_, i) => session(i)), error: null }))
+      .mockReturnValueOnce(second)
+      .mockReturnValueOnce(chain({ data: [], error: null }));
+    expect(await listBoardProjectSessions('b1')).toHaveLength(1001);
+    expect(second.range).toHaveBeenCalledWith(1000, 1999);
+  });
+
+  it('throws when the query fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('nope') }));
+    await expect(listBoardProjectSessions('b1')).rejects.toThrow('nope');
+  });
+});
+
+describe('addProjectSession', () => {
+  it('upserts the day, doing nothing if it is already there', async () => {
+    const c = chain({ error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    await addProjectSession('p1', 'Rob', '2026-11-25');
+    expect(mocks.supabase.from).toHaveBeenCalledWith('project_sessions');
+    expect(c.upsert).toHaveBeenCalledWith(
+      { problem_id: 'p1', climber: 'Rob', worked_on: '2026-11-25' },
+      { onConflict: 'problem_id,climber,worked_on', ignoreDuplicates: true },
+    );
+  });
+
+  it('throws when the save fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ error: new Error('nope') }));
+    await expect(addProjectSession('p1', 'Rob', '2026-11-25')).rejects.toThrow('nope');
+  });
+});
+
+describe('removeProjectSession', () => {
+  it("deletes that climber's day on that problem", async () => {
+    const c = chain({ error: null });
+    mocks.supabase.from.mockReturnValue(c);
+    await removeProjectSession('p1', 'Rob', '2026-11-25');
+    expect(mocks.supabase.from).toHaveBeenCalledWith('project_sessions');
+    expect(c.delete).toHaveBeenCalled();
+    expect(c.eq).toHaveBeenCalledWith('problem_id', 'p1');
+    expect(c.eq).toHaveBeenCalledWith('climber', 'Rob');
+    expect(c.eq).toHaveBeenCalledWith('worked_on', '2026-11-25');
+  });
+
+  it('throws when the delete fails', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ error: new Error('nope') }));
+    await expect(removeProjectSession('p1', 'Rob', '2026-11-25')).rejects.toThrow('nope');
   });
 });

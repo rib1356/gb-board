@@ -188,6 +188,42 @@ export async function listBoardVotes(boardId) {
   }
 }
 
+// Every project session on the board, paged like ticks and votes. Each row is
+// one climber's day on one problem; who sees what is decided in the app.
+export async function listBoardProjectSessions(boardId) {
+  const all = [];
+  for (;;) {
+    const { data, error } = await supabase
+      .from('project_sessions')
+      .select('id, problem_id, climber, worked_on, created_at, problems!inner(board_id)')
+      .eq('problems.board_id', boardId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(all.length, all.length + TICK_PAGE - 1);
+    if (error) throw error;
+    if (data.length === 0) return all;
+    all.push(...data);
+  }
+}
+
+// One tap a day: the unique key turns a second save of the same day into a no-op.
+export async function addProjectSession(problemId, climber, workedOn) {
+  const { error } = await supabase
+    .from('project_sessions')
+    .upsert({ problem_id: problemId, climber, worked_on: workedOn }, { onConflict: 'problem_id,climber,worked_on', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+export async function removeProjectSession(problemId, climber, workedOn) {
+  const { error } = await supabase
+    .from('project_sessions')
+    .delete()
+    .eq('problem_id', problemId)
+    .eq('climber', climber)
+    .eq('worked_on', workedOn);
+  if (error) throw error;
+}
+
 // A climber's one vote on a problem: a grade, stars, or both. Clearing both removes the row.
 export async function saveVote(problemId, climber, { grade, feel, stars }) {
   if (grade == null && stars == null) {

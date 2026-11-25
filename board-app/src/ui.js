@@ -24,6 +24,11 @@ export function formatShortDate(dateStr) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+// Projects' own colour: nothing else in the app is blue, so it never reads as
+// a send (green), a flash (gold) or a grade (orange). Ink is the dark text on it.
+export const projectBlue = '#5B8DEF';
+export const projectBlueInk = '#0E1A33';
+
 export const sectionHeading = { fontSize: 12, color: '#8b8d91', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 8px' };
 
 export const linkButton = { display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 };

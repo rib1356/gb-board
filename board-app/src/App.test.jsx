@@ -14,6 +14,9 @@ vi.mock('./lib/board', () => ({
   listTicks: vi.fn(),
   listBoardTicks: vi.fn(),
   listBoardVotes: vi.fn(),
+  listBoardProjectSessions: vi.fn(),
+  addProjectSession: vi.fn(),
+  removeProjectSession: vi.fn(),
   saveVote: vi.fn(),
   createTick: vi.fn(),
   deleteTick: vi.fn(),
@@ -51,12 +54,14 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCheckins, createInjury, updateInjury, createCheckin } from './lib/tweaks';
 import { LONG_PRESS_MS } from './tweaks/useLongPress';
 import { addDays, localDate } from './lib/dates';
+import { todayISO } from './lib/warmup';
+import { shortDate, dayLabel } from './lib/injuries';
 import App from './App';
 
 const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
@@ -69,6 +74,9 @@ beforeEach(() => {
   listTicks.mockResolvedValue([]);
   listBoardTicks.mockResolvedValue([]);
   listBoardVotes.mockResolvedValue([]);
+  listBoardProjectSessions.mockResolvedValue([]);
+  addProjectSession.mockResolvedValue(undefined);
+  removeProjectSession.mockResolvedValue(undefined);
   listClimbers.mockResolvedValue([]);
   listWarmupSessions.mockResolvedValue([]);
   getTweaksSession.mockResolvedValue(null);
@@ -3504,5 +3512,306 @@ describe('App (warm-up with provisional grades)', () => {
     const user = await openWarmup();
     await user.click(await screen.findByRole('button', { name: /edit/i }));
     expect(await screen.findByText('V5?')).toBeInTheDocument();
+  });
+});
+
+describe('App (projects)', () => {
+  const HYPERBOLE = { id: 'p1', name: 'Hyperbole', grade: 'V7', setter: 'Rob', notes: '', holds: [] };
+  const today = todayISO();
+  const session = (problemId, climber, workedOn) => ({ id: `${problemId}-${climber}-${workedOn}`, problem_id: problemId, climber, worked_on: workedOn });
+  const asRob = () => {
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+  };
+  // The main list card is the last match once Your projects lists it too.
+  const openProblem = async (name) => {
+    render(<App />);
+    const user = userEvent.setup();
+    const matches = await screen.findAllByText(name);
+    await user.click(matches[matches.length - 1]);
+    return user;
+  };
+
+  const CRIMP_LORD = { id: 'p2', name: 'Crimp Lord', grade: 'V6', setter: 'Rob', notes: '', holds: [] };
+  const SLAB = { id: 'p3', name: 'Slab', grade: 'V3', setter: 'Rob', notes: '', holds: [] };
+  const daysAgo = (n) => addDays(today, -n);
+  const yourProjects = () => screen.findByRole('region', { name: 'Your projects' });
+  // Project rows and Gone cold, not the Your projects heading that folds the section.
+  const rowNames = (section) => within(section).getAllByRole('button')
+    .map((b) => b.textContent)
+    .filter((text) => !text.startsWith('Your projects'));
+
+  it('lists your projects at the top of the list, newest first', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    listBoardProjectSessions.mockResolvedValue([
+      session('p1', 'Rob', daysAgo(3)), session('p1', 'Rob', daysAgo(2)), session('p2', 'Rob', daysAgo(1)),
+    ]);
+    render(<App />);
+    const section = await yourProjects();
+    const rows = rowNames(section);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('Crimp Lord');
+    expect(rows[0]).toContain(`1 session · last ${dayLabel(daysAgo(1), today)}`);
+    expect(rows[0]).toContain('V6');
+    expect(rows[1]).toContain('Hyperbole');
+    expect(rows[1]).toContain(`2 sessions · last ${dayLabel(daysAgo(2), today)}`);
+  });
+
+  it('keeps cold projects in a collapsed Gone cold section', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, SLAB]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1)), session('p3', 'Rob', daysAgo(30))]);
+    render(<App />);
+    const user = userEvent.setup();
+    const section = await yourProjects();
+    const toggle = within(section).getByRole('button', { name: 'Gone cold (1)' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(section).queryByText('Slab')).not.toBeInTheDocument();
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(within(section).getByText('Slab')).toBeInTheDocument();
+  });
+
+  it('keeps Gone cold open after opening a cold project and coming back', async () => {
+    asRob();
+    listProblems.mockResolvedValue([SLAB]);
+    listBoardProjectSessions.mockResolvedValue([session('p3', 'Rob', daysAgo(30))]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(within(await yourProjects()).getByRole('button', { name: 'Gone cold (1)' }));
+    await user.click(within(await yourProjects()).getByText('Slab'));
+    await user.click(await screen.findByRole('button', { name: 'Board' }));
+    const section = await yourProjects();
+    expect(within(section).getByRole('button', { name: 'Gone cold (1)' })).toHaveAttribute('aria-expanded', 'true');
+    expect(within(section).getByText('Slab')).toBeInTheDocument();
+  });
+
+  it('shows only Gone cold under the heading when every project is cold', async () => {
+    asRob();
+    listProblems.mockResolvedValue([SLAB]);
+    listBoardProjectSessions.mockResolvedValue([session('p3', 'Rob', daysAgo(40))]);
+    render(<App />);
+    const section = await yourProjects();
+    expect(within(section).getByRole('button', { name: 'Your projects (1)' })).toBeInTheDocument();
+    expect(rowNames(section)).toEqual(['Gone cold (1)']);
+  });
+
+  it('shows no Your projects with nobody picked', async () => {
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1))]);
+    render(<App />);
+    await screen.findByText('Hyperbole');
+    expect(screen.queryByRole('region', { name: 'Your projects' })).not.toBeInTheDocument();
+  });
+
+  it("shows no Your projects for another climber's sessions", async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Shawn', daysAgo(1))]);
+    render(<App />);
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    expect(screen.queryByRole('region', { name: 'Your projects' })).not.toBeInTheDocument();
+  });
+
+  it('ignores the Unsent filter and sort', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(2)), session('p2', 'Rob', daysAgo(1))]);
+    render(<App />);
+    const user = userEvent.setup();
+    const before = rowNames(await yourProjects());
+    await user.selectOptions(screen.getByLabelText('Sort problems'), 'grade-desc');
+    await user.click(screen.getByRole('button', { name: /unsent/i }));
+    expect(rowNames(await yourProjects())).toEqual(before);
+  });
+
+  it('folds Your projects down to its heading, and opens it again', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(2)), session('p2', 'Rob', daysAgo(1))]);
+    render(<App />);
+    const user = userEvent.setup();
+    const section = await yourProjects();
+    const heading = within(section).getByRole('button', { name: 'Your projects (2)' });
+    expect(heading).toHaveAttribute('aria-expanded', 'true');
+    await user.click(heading);
+    expect(heading).toHaveAttribute('aria-expanded', 'false');
+    expect(within(section).queryByText('Hyperbole')).not.toBeInTheDocument();
+    expect(screen.getByText('Hyperbole')).toBeInTheDocument();
+    await user.click(heading);
+    expect(within(section).getByText('Hyperbole')).toBeInTheDocument();
+  });
+
+  it('keeps Your projects folded on this phone after a reload', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1))]);
+    const { unmount } = render(<App />);
+    const user = userEvent.setup();
+    await user.click(within(await yourProjects()).getByRole('button', { name: 'Your projects (1)' }));
+    unmount();
+    render(<App />);
+    const section = await yourProjects();
+    expect(within(section).getByRole('button', { name: 'Your projects (1)' })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(section).queryByText('Hyperbole')).not.toBeInTheDocument();
+  });
+
+  it('still lists a project in the main list below', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1))]);
+    render(<App />);
+    await yourProjects();
+    expect(screen.getAllByText('Hyperbole')).toHaveLength(2);
+  });
+
+  it('tags a project send in the logbook with its sessions', async () => {
+    asRob();
+    const send = (id, problemId, minute) => ({ id, problem_id: problemId, sent_by: 'Rob', sent_on: '2026-11-20', notes: '', created_at: `2026-11-20T18:0${minute}:00Z` });
+    listProblems.mockResolvedValue([{ ...HYPERBOLE, send_count: 1 }, { ...CRIMP_LORD, send_count: 1 }, { ...SLAB, send_count: 1 }]);
+    listBoardTicks.mockResolvedValue([send('t1', 'p1', 1), send('t2', 'p2', 2), send('t3', 'p3', 3)]);
+    listBoardProjectSessions.mockResolvedValue([
+      session('p1', 'Rob', '2026-11-10'), session('p1', 'Rob', '2026-11-14'), session('p2', 'Rob', '2026-11-20'),
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Logbook' }));
+    await user.click(await screen.findByRole('button', { name: /Fri 20 Nov/ }));
+    expect((await screen.findByText('Hyperbole')).closest('li')).toHaveTextContent('3 sessions');
+    expect(screen.getByText('Crimp Lord').closest('li')).toHaveTextContent('First session');
+    expect(screen.getByText('Slab').closest('li')).not.toHaveTextContent(/session/i);
+  });
+
+  it('logs today as a project session with one tap', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    expect(addProjectSession).toHaveBeenCalledWith('p1', 'Rob', today);
+    expect(await screen.findByRole('button', { name: 'Worked today' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(`1 session · since ${shortDate(today, today)}`)).toBeInTheDocument();
+  });
+
+  it('undoes today with a second tap', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', today)]);
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked today' }));
+    expect(removeProjectSession).toHaveBeenCalledWith('p1', 'Rob', today);
+    expect(await screen.findByRole('button', { name: 'Worked it today' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
+  it('ignores a second tap while the first is saving', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    let finish;
+    addProjectSession.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    await user.click(screen.getByRole('button', { name: 'Worked today' }));
+    expect(addProjectSession).toHaveBeenCalledTimes(1);
+    expect(removeProjectSession).not.toHaveBeenCalled();
+    await act(async () => finish());
+    expect(screen.getByRole('button', { name: 'Worked today' })).toBeInTheDocument();
+  });
+
+  it('lets you log another problem while one save is still going', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    addProjectSession.mockImplementation((problemId) => (problemId === 'p1' ? new Promise(() => {}) : Promise.resolve()));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    const crimpLord = await screen.findAllByText('Crimp Lord');
+    await user.click(crimpLord[crimpLord.length - 1]);
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    expect(addProjectSession).toHaveBeenCalledWith('p2', 'Rob', today);
+    expect(screen.getByRole('button', { name: 'Worked today' })).toBeInTheDocument();
+  });
+
+  it('flips back and shows an error when the save fails', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    addProjectSession.mockRejectedValue(new Error('offline'));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    expect(await screen.findByText(/could not save that/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Worked it today' })).toBeInTheDocument();
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
+  it('flips back and shows an error when the undo fails', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', today)]);
+    removeProjectSession.mockRejectedValue(new Error('offline'));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked today' }));
+    expect(await screen.findByText(/could not save that/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Worked today' })).toBeInTheDocument();
+    expect(screen.getByText(`1 session · since ${shortDate(today, today)}`)).toBeInTheDocument();
+  });
+
+  it('shows no Worked button with nobody picked', async () => {
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    await openProblem('Hyperbole');
+    expect(await screen.findByText('Select who you are to log a send')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /worked/i })).not.toBeInTheDocument();
+  });
+
+  it('shows no Worked button once you have sent it, and tags your first send with its sessions', async () => {
+    asRob();
+    const robSend = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-11-20', notes: '', created_at: '2026-11-20T18:00:00Z' };
+    listProblems.mockResolvedValue([{ ...HYPERBOLE, send_count: 1 }]);
+    listBoardTicks.mockResolvedValue([robSend]);
+    listTicks.mockResolvedValue([robSend]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', '2026-11-10'), session('p1', 'Rob', '2026-11-14')]);
+    await openProblem('Hyperbole');
+    expect(await screen.findByText('3 sessions')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /log a send/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /worked/i })).not.toBeInTheDocument();
+  });
+
+  it("does not tag another climber's send, or count their sessions", async () => {
+    asRob();
+    const shawnSend = { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-11-14', notes: '', created_at: '2026-11-14T18:00:00Z' };
+    listProblems.mockResolvedValue([{ ...HYPERBOLE, send_count: 1 }]);
+    listBoardTicks.mockResolvedValue([shawnSend]);
+    listTicks.mockResolvedValue([shawnSend]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Shawn', '2026-11-10'), session('p1', 'Shawn', '2026-11-12')]);
+    await openProblem('Hyperbole');
+    expect(await screen.findByText(/Shawn · 14 Nov 2026/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Worked it today' })).toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ sessions$|^First session$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
+  it('closes the project when you send on the same day', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    createTick.mockImplementation(async (problemId, { sentOn, sentBy, flash }) => ({
+      id: 't9', problem_id: problemId, sent_by: sentBy, sent_on: sentOn, notes: '', flash, created_at: new Date().toISOString(),
+    }));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    await user.click(screen.getByRole('button', { name: /log a send/i }));
+    await user.click(screen.getByText('Save entry'));
+    expect(await screen.findByText('First session')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /worked/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
+  it("loads the board's project sessions with the board, and again on refresh", async () => {
+    render(<App />);
+    await screen.findByText('THE BOARD');
+    await waitFor(() => expect(listBoardProjectSessions).toHaveBeenCalledWith('b1'));
+    expect(listBoardProjectSessions).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(listBoardProjectSessions).toHaveBeenCalledTimes(2));
+    delete document.visibilityState;
   });
 });
