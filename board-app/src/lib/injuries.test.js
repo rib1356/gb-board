@@ -142,6 +142,16 @@ it('collects only this climber\'s board days', () => {
   expect([...boardDays(ticks, 'Rob')].sort()).toEqual(['2026-10-01', '2026-10-05']);
 });
 
+it('counts a day Rob only worked a project as a board day', () => {
+  const ticks = [{ sent_by: 'Rob', sent_on: '2026-10-01' }];
+  const sessions = [
+    { climber: 'Rob', worked_on: '2026-10-03' },
+    { climber: 'Rob', worked_on: '2026-10-01' },
+    { climber: 'Shawn', worked_on: '2026-10-04' },
+  ];
+  expect([...boardDays(ticks, 'Rob', sessions)].sort()).toEqual(['2026-10-01', '2026-10-03']);
+});
+
 it('has the binding option lists', () => {
   expect(SIDES).toEqual([['left', 'Left'], ['right', 'Right'], ['none', 'Both / n/a']]);
   expect(AREAS).toEqual([

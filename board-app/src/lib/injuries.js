@@ -123,6 +123,10 @@ export function sameSpot(fields, injuries, excludeId) {
     .sort(newestFirst((injury) => injury.started_on ?? injury.created_at.slice(0, 10)));
 }
 
-export function boardDays(ticks, climberName) {
-  return new Set(ticks.filter((tick) => tick.sent_by === climberName).map((tick) => tick.sent_on));
+// Days the climber sent something, or worked a project without sending.
+export function boardDays(ticks, climberName, sessions = []) {
+  return new Set([
+    ...ticks.filter((tick) => tick.sent_by === climberName).map((tick) => tick.sent_on),
+    ...sessions.filter((s) => s.climber === climberName).map((s) => s.worked_on),
+  ]);
 }

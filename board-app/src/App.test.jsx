@@ -14,6 +14,9 @@ vi.mock('./lib/board', () => ({
   listTicks: vi.fn(),
   listBoardTicks: vi.fn(),
   listBoardVotes: vi.fn(),
+  listBoardProjectSessions: vi.fn(),
+  addProjectSession: vi.fn(),
+  removeProjectSession: vi.fn(),
   saveVote: vi.fn(),
   createTick: vi.fn(),
   deleteTick: vi.fn(),
@@ -51,7 +54,7 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCheckins, createInjury, updateInjury, createCheckin } from './lib/tweaks';
@@ -69,6 +72,9 @@ beforeEach(() => {
   listTicks.mockResolvedValue([]);
   listBoardTicks.mockResolvedValue([]);
   listBoardVotes.mockResolvedValue([]);
+  listBoardProjectSessions.mockResolvedValue([]);
+  addProjectSession.mockResolvedValue(undefined);
+  removeProjectSession.mockResolvedValue(undefined);
   listClimbers.mockResolvedValue([]);
   listWarmupSessions.mockResolvedValue([]);
   getTweaksSession.mockResolvedValue(null);
@@ -3504,5 +3510,18 @@ describe('App (warm-up with provisional grades)', () => {
     const user = await openWarmup();
     await user.click(await screen.findByRole('button', { name: /edit/i }));
     expect(await screen.findByText('V5?')).toBeInTheDocument();
+  });
+});
+
+describe('App (projects)', () => {
+  it("loads the board's project sessions with the board, and again on refresh", async () => {
+    render(<App />);
+    await screen.findByText('THE BOARD');
+    await waitFor(() => expect(listBoardProjectSessions).toHaveBeenCalledWith('b1'));
+    expect(listBoardProjectSessions).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(listBoardProjectSessions).toHaveBeenCalledTimes(2));
+    delete document.visibilityState;
   });
 });

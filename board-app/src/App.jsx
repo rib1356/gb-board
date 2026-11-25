@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { resizeFileToBlob } from './lib/image';
 import { pointFromClientCoords, validateDraft, holdAtPoint, cleanHold } from './lib/holds';
@@ -192,6 +192,8 @@ export default function App() {
   const [savingVote, setSavingVote] = useState(false);
   // Every send on the board, so the list knows who has sent what.
   const [boardTicks, setBoardTicks] = useState([]);
+  // Every climber's project sessions; each view filters to whoever is picked.
+  const [projectSessions, setProjectSessions] = useState([]);
   const [boardVotes, setBoardVotes] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
   const [tickDate, setTickDate] = useState('');
@@ -294,10 +296,11 @@ export default function App() {
       try {
         const b = await getOrCreateBoard();
         setBoard(b);
-        const [p, bt, bv] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id)]);
+        const [p, bt, bv, ps] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listBoardProjectSessions(b.id)]);
         setProblems(p);
         setBoardTicks(bt);
         setBoardVotes(bv);
+        setProjectSessions(ps);
         const c = await listClimbers();
         setClimbers(c);
         const storedId = getStoredClimberId();
@@ -380,18 +383,19 @@ export default function App() {
   // Problems with the grade they show: an ungraded one takes its votes'
   // provisional grade. Raw `problems` stays the source for edits and saves.
   const shownProblems = useMemo(() => withShownGrades(problems, counted), [problems, counted]);
-  const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER), [boardTicks]);
+  const robsBoardDays = useMemo(() => boardDays(boardTicks, BOARD_OWNER, projectSessions), [boardTicks, projectSessions]);
 
   // Added to the home screen, the app sits suspended in memory between visits,
   // so the list never sees problems someone else has set unless it re-reads.
   const refreshList = async ({ quiet = false } = {}) => {
     try {
       const b = await getOrCreateBoard();
-      const [p, bt, bv, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listClimbers()]);
+      const [p, bt, bv, ps, c] = await Promise.all([listProblems(b.id), listBoardTicks(b.id), listBoardVotes(b.id), listBoardProjectSessions(b.id), listClimbers()]);
       setBoard(b);
       setProblems(p);
       setBoardTicks(bt);
       setBoardVotes(bv);
+      setProjectSessions(ps);
       setClimbers(c);
     } catch (err) {
       console.error(err);
