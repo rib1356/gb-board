@@ -4,6 +4,7 @@ import { monthOf } from '../lib/dates';
 import { sectionHeading, visuallyHidden } from '../ui';
 import ProgressTab from './ProgressTab';
 import { gradeLabel } from '../lib/problemList';
+import { sendTagLabel } from '../lib/projects';
 
 const mono = "'JetBrains Mono', monospace";
 
@@ -22,7 +23,7 @@ function formatMonth(month) {
 
 const badge = { borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 };
 
-function Day({ day, open, onToggle, onOpenProblem }) {
+function Day({ day, open, onToggle, onOpenProblem, sessionsToSend }) {
   const fresh = day.problems.filter((p) => p.firstSend).length;
   const flashed = day.problems.filter((p) => p.flashed).length;
   const summary = [count(day.problems.length, 'problem'), fresh > 0 && `${fresh} new`].filter(Boolean).join(' · ');
@@ -62,6 +63,9 @@ function Day({ day, open, onToggle, onOpenProblem }) {
                 <span style={{ width: 34, flexShrink: 0, fontFamily: mono, fontSize: 13, fontWeight: 700, color: p.gradeProvisional ? '#8b8d91' : '#D9552B' }}>{gradeLabel(p)}</span>
                 <span style={{ flex: 1, fontSize: 14 }}>{p.name}</span>
                 {p.firstSend && <span style={{ ...badge, background: '#5C8A66', color: '#17181A' }}>New</span>}
+                {p.firstSend && sessionsToSend.has(p.id) && (
+                  <span style={{ ...badge, background: '#3a3b3e', color: '#EDEAE3' }}>{sendTagLabel(sessionsToSend.get(p.id))}</span>
+                )}
                 {p.flashed && (
                   <span style={{ ...badge, display: 'flex', alignItems: 'center', gap: 3, background: '#C9A227', color: '#17181A' }}>
                     <Zap size={11} />Flash
@@ -77,7 +81,7 @@ function Day({ day, open, onToggle, onOpenProblem }) {
 }
 
 // A heading above the first session of each month -- a label, not a row.
-function Sessions({ days, openDays, onToggleDay, onOpenProblem }) {
+function Sessions({ days, openDays, onToggleDay, onOpenProblem, sessionsToSend }) {
   let month = null;
   return days.map((d) => {
     const first = month === null;
@@ -86,7 +90,7 @@ function Sessions({ days, openDays, onToggleDay, onOpenProblem }) {
     return (
       <div key={d.date}>
         {heading && <h3 style={{ ...sectionHeading, margin: first ? '0 0 8px' : '16px 0 8px' }}>{formatMonth(month)}</h3>}
-        <Day day={d} open={openDays.has(d.date)} onToggle={() => onToggleDay(d.date)} onOpenProblem={onOpenProblem} />
+        <Day day={d} open={openDays.has(d.date)} onToggle={() => onToggleDay(d.date)} onOpenProblem={onOpenProblem} sessionsToSend={sessionsToSend} />
       </div>
     );
   });
@@ -109,7 +113,7 @@ function Tabs({ tab, onChange }) {
   );
 }
 
-export default function LogbookScreen({ problems, ticks, climber, today, tab, onTabChange, openDays, onToggleDay, onOpenProblem, onPickClimber }) {
+export default function LogbookScreen({ problems, ticks, climber, today, tab, onTabChange, openDays, onToggleDay, onOpenProblem, onPickClimber, sessionsToSend = new Map() }) {
   if (!climber) {
     return (
       <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: '#8b8d91' }}>
@@ -134,7 +138,7 @@ export default function LogbookScreen({ problems, ticks, climber, today, tab, on
       <Tabs tab={tab} onChange={onTabChange} />
       {tab === 'progress'
         ? <ProgressTab problems={problems} ticks={ticks} climber={climber.name} today={today} onOpenProblem={onOpenProblem} />
-        : <Sessions days={days} openDays={openDays} onToggleDay={onToggleDay} onOpenProblem={onOpenProblem} />}
+        : <Sessions days={days} openDays={openDays} onToggleDay={onToggleDay} onOpenProblem={onOpenProblem} sessionsToSend={sessionsToSend} />}
     </div>
   );
 }

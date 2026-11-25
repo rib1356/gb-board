@@ -3632,6 +3632,23 @@ describe('App (projects)', () => {
     expect(screen.getAllByText('Hyperbole')).toHaveLength(2);
   });
 
+  it('tags a project send in the logbook with its sessions', async () => {
+    asRob();
+    const send = (id, problemId, minute) => ({ id, problem_id: problemId, sent_by: 'Rob', sent_on: '2026-11-20', notes: '', created_at: `2026-11-20T18:0${minute}:00Z` });
+    listProblems.mockResolvedValue([{ ...HYPERBOLE, send_count: 1 }, { ...CRIMP_LORD, send_count: 1 }, { ...SLAB, send_count: 1 }]);
+    listBoardTicks.mockResolvedValue([send('t1', 'p1', 1), send('t2', 'p2', 2), send('t3', 'p3', 3)]);
+    listBoardProjectSessions.mockResolvedValue([
+      session('p1', 'Rob', '2026-11-10'), session('p1', 'Rob', '2026-11-14'), session('p2', 'Rob', '2026-11-20'),
+    ]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Logbook' }));
+    await user.click(await screen.findByRole('button', { name: /Fri 20 Nov/ }));
+    expect((await screen.findByText('Hyperbole')).closest('li')).toHaveTextContent('3 sessions');
+    expect(screen.getByText('Crimp Lord').closest('li')).toHaveTextContent('First session');
+    expect(screen.getByText('Slab').closest('li')).not.toHaveTextContent(/session/i);
+  });
+
   it('logs today as a project session with one tap', async () => {
     asRob();
     listProblems.mockResolvedValue([HYPERBOLE]);

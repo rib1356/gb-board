@@ -1482,6 +1482,7 @@ export default function App() {
             ticks={boardTicks}
             climber={currentClimber}
             today={localDate()}
+            sessionsToSend={mySessionsToSend}
             tab={logbookTab}
             onTabChange={setLogbookTab}
             openDays={openLogbookDays}
