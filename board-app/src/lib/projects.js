@@ -70,3 +70,12 @@ export function sessionsToSend(sessions, ticks, climber) {
   }
   return counts;
 }
+
+export function sessionsLabel(n) {
+  return `${n} ${n === 1 ? 'session' : 'sessions'}`;
+}
+
+// The tag on a project's first send.
+export function sendTagLabel(n) {
+  return n === 1 ? 'First session' : sessionsLabel(n);
+}

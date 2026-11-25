@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COLD_AFTER_DAYS, workedOn, yourProjects, sessionsToSend } from './projects';
+import { COLD_AFTER_DAYS, workedOn, yourProjects, sessionsToSend, sessionsLabel, sendTagLabel } from './projects';
 
 const today = '2026-11-25';
 const P1 = { id: 'p1', name: 'Hyperbole', grade: 'V7' };
@@ -121,4 +121,14 @@ it('workedOn is true only for that problem, climber and date', () => {
   expect(workedOn(sessions, 'p2', 'Rob', '2026-11-25')).toBe(false);
   expect(workedOn(sessions, 'p1', 'Shawn', '2026-11-25')).toBe(false);
   expect(workedOn(sessions, 'p1', 'Rob', '2026-11-24')).toBe(false);
+});
+
+it('labels a session count', () => {
+  expect(sessionsLabel(1)).toBe('1 session');
+  expect(sessionsLabel(3)).toBe('3 sessions');
+});
+
+it('labels a send by the sessions it took', () => {
+  expect(sendTagLabel(1)).toBe('First session');
+  expect(sendTagLabel(5)).toBe('5 sessions');
 });

@@ -60,6 +60,8 @@ import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeM
 import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCheckins, createInjury, updateInjury, createCheckin } from './lib/tweaks';
 import { LONG_PRESS_MS } from './tweaks/useLongPress';
 import { addDays, localDate } from './lib/dates';
+import { todayISO } from './lib/warmup';
+import { shortDate } from './lib/injuries';
 import App from './App';
 
 const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
@@ -3514,6 +3516,129 @@ describe('App (warm-up with provisional grades)', () => {
 });
 
 describe('App (projects)', () => {
+  const HYPERBOLE = { id: 'p1', name: 'Hyperbole', grade: 'V7', setter: 'Rob', notes: '', holds: [] };
+  const today = todayISO();
+  const session = (problemId, climber, workedOn) => ({ id: `${problemId}-${climber}-${workedOn}`, problem_id: problemId, climber, worked_on: workedOn });
+  const asRob = () => {
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+  };
+  // The main list card is the last match once Your projects lists it too.
+  const openProblem = async (name) => {
+    render(<App />);
+    const user = userEvent.setup();
+    const matches = await screen.findAllByText(name);
+    await user.click(matches[matches.length - 1]);
+    return user;
+  };
+
+  it('logs today as a project session with one tap', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    expect(addProjectSession).toHaveBeenCalledWith('p1', 'Rob', today);
+    expect(await screen.findByRole('button', { name: 'Worked today' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(`1 session · since ${shortDate(today, today)}`)).toBeInTheDocument();
+  });
+
+  it('undoes today with a second tap', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', today)]);
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked today' }));
+    expect(removeProjectSession).toHaveBeenCalledWith('p1', 'Rob', today);
+    expect(await screen.findByRole('button', { name: 'Worked it today' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
+  it('ignores a second tap while the first is saving', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    let finish;
+    addProjectSession.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    await user.click(screen.getByRole('button', { name: 'Worked today' }));
+    expect(addProjectSession).toHaveBeenCalledTimes(1);
+    expect(removeProjectSession).not.toHaveBeenCalled();
+    await act(async () => finish());
+    expect(screen.getByRole('button', { name: 'Worked today' })).toBeInTheDocument();
+  });
+
+  it('flips back and shows an error when the save fails', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    addProjectSession.mockRejectedValue(new Error('offline'));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    expect(await screen.findByText(/could not save that/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Worked it today' })).toBeInTheDocument();
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
+  it('flips back and shows an error when the undo fails', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', today)]);
+    removeProjectSession.mockRejectedValue(new Error('offline'));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked today' }));
+    expect(await screen.findByText(/could not save that/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Worked today' })).toBeInTheDocument();
+    expect(screen.getByText(`1 session · since ${shortDate(today, today)}`)).toBeInTheDocument();
+  });
+
+  it('shows no Worked button with nobody picked', async () => {
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    await openProblem('Hyperbole');
+    expect(await screen.findByText('Select who you are to log a send')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /worked/i })).not.toBeInTheDocument();
+  });
+
+  it('shows no Worked button once you have sent it, and tags your first send with its sessions', async () => {
+    asRob();
+    const robSend = { id: 't1', problem_id: 'p1', sent_by: 'Rob', sent_on: '2026-11-20', notes: '', created_at: '2026-11-20T18:00:00Z' };
+    listProblems.mockResolvedValue([{ ...HYPERBOLE, send_count: 1 }]);
+    listBoardTicks.mockResolvedValue([robSend]);
+    listTicks.mockResolvedValue([robSend]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', '2026-11-10'), session('p1', 'Rob', '2026-11-14')]);
+    await openProblem('Hyperbole');
+    expect(await screen.findByText('3 sessions')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /log a send/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /worked/i })).not.toBeInTheDocument();
+  });
+
+  it("does not tag another climber's send, or count their sessions", async () => {
+    asRob();
+    const shawnSend = { id: 't2', problem_id: 'p1', sent_by: 'Shawn', sent_on: '2026-11-14', notes: '', created_at: '2026-11-14T18:00:00Z' };
+    listProblems.mockResolvedValue([{ ...HYPERBOLE, send_count: 1 }]);
+    listBoardTicks.mockResolvedValue([shawnSend]);
+    listTicks.mockResolvedValue([shawnSend]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Shawn', '2026-11-10'), session('p1', 'Shawn', '2026-11-12')]);
+    await openProblem('Hyperbole');
+    expect(await screen.findByText(/Shawn · 14 Nov 2026/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Worked it today' })).toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ sessions$|^First session$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
+  it('closes the project when you send on the same day', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    createTick.mockImplementation(async (problemId, { sentOn, sentBy, flash }) => ({
+      id: 't9', problem_id: problemId, sent_by: sentBy, sent_on: sentOn, notes: '', flash, created_at: new Date().toISOString(),
+    }));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    await user.click(screen.getByRole('button', { name: /log a send/i }));
+    await user.click(screen.getByText('Save entry'));
+    expect(await screen.findByText('First session')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /worked/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/sessions? · since/)).not.toBeInTheDocument();
+  });
+
   it("loads the board's project sessions with the board, and again on refresh", async () => {
     render(<App />);
     await screen.findByText('THE BOARD');
