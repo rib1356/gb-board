@@ -11,7 +11,7 @@ import { SORTS, sortAndFilterProblems, applySend, gradeNumber, gradeOf, gradeLab
 import { sentProblemIds, firstSendIds } from './lib/sends';
 import { countedVotes, starSummary, gradeVoteCounts, gradeChoices, gradeVoteLabel, voteFor, replaceVote, withShownGrades, provisionalGrade } from './lib/votes';
 import VotePicker from './votes/VotePicker';
-import { inputStyle, sectionHeading, formatShortDate } from './ui';
+import { inputStyle, sectionHeading, formatShortDate, projectBlue } from './ui';
 import { firstAscents } from './lib/boardStats';
 import { ChalkRing, FaceShape, PinnedFace, VolumeMarks } from './HoldOverlays';
 import { isPinned, faceListLines, setFace, facesOnPhoto, faceHold, upgradeVolumes } from './lib/volumes';
@@ -1433,7 +1433,7 @@ export default function App() {
                             }}>{t.id === firstSendId ? 'First send' : 'Repeat'}</span>
                             {/* Only on your own first send: projects are yours alone. */}
                             {currentClimber && t.sent_by === currentClimber.name && flashableIds.has(t.id) && mySessionsToSend.has(selected.id) && (
-                              <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: '#C08552' }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: projectBlue }}>
                                 {sendTagLabel(mySessionsToSend.get(selected.id))}
                               </span>
                             )}

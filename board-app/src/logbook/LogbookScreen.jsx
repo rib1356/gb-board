@@ -1,7 +1,7 @@
 import { ChevronDown, Zap } from 'lucide-react';
 import { buildLogbook } from '../lib/sends';
 import { monthOf } from '../lib/dates';
-import { sectionHeading, visuallyHidden } from '../ui';
+import { sectionHeading, visuallyHidden, projectBlue, projectBlueInk } from '../ui';
 import ProgressTab from './ProgressTab';
 import { gradeLabel } from '../lib/problemList';
 import { sendTagLabel } from '../lib/projects';
@@ -64,7 +64,7 @@ function Day({ day, open, onToggle, onOpenProblem, sessionsToSend }) {
                 <span style={{ flex: 1, fontSize: 14 }}>{p.name}</span>
                 {p.firstSend && <span style={{ ...badge, background: '#5C8A66', color: '#17181A' }}>New</span>}
                 {p.firstSend && sessionsToSend.has(p.id) && (
-                  <span style={{ ...badge, background: '#3a3b3e', color: '#EDEAE3' }}>{sendTagLabel(sessionsToSend.get(p.id))}</span>
+                  <span style={{ ...badge, background: projectBlue, color: projectBlueInk }}>{sendTagLabel(sessionsToSend.get(p.id))}</span>
                 )}
                 {p.flashed && (
                   <span style={{ ...badge, display: 'flex', alignItems: 'center', gap: 3, background: '#C9A227', color: '#17181A' }}>
