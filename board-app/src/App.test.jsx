@@ -3684,6 +3684,20 @@ describe('App (projects)', () => {
     expect(screen.getByRole('button', { name: 'Worked today' })).toBeInTheDocument();
   });
 
+  it('lets you log another problem while one save is still going', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    addProjectSession.mockImplementation((problemId) => (problemId === 'p1' ? new Promise(() => {}) : Promise.resolve()));
+    const user = await openProblem('Hyperbole');
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    const crimpLord = await screen.findAllByText('Crimp Lord');
+    await user.click(crimpLord[crimpLord.length - 1]);
+    await user.click(await screen.findByRole('button', { name: 'Worked it today' }));
+    expect(addProjectSession).toHaveBeenCalledWith('p2', 'Rob', today);
+    expect(screen.getByRole('button', { name: 'Worked today' })).toBeInTheDocument();
+  });
+
   it('flips back and shows an error when the save fails', async () => {
     asRob();
     listProblems.mockResolvedValue([HYPERBOLE]);

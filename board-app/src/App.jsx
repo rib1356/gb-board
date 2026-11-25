@@ -200,8 +200,10 @@ export default function App() {
   const [boardTicks, setBoardTicks] = useState([]);
   // Every climber's project sessions; each view filters to whoever is picked.
   const [projectSessions, setProjectSessions] = useState([]);
-  // A ref, not state, so a fast double tap can't slip in before a re-render.
-  const savingWorkedRef = useRef(false);
+  // Problems with a Worked save in flight. A ref, not state, so a fast double
+  // tap can't slip in before a re-render; per problem, so a stalled save on one
+  // doesn't swallow taps on another.
+  const savingWorkedRef = useRef(new Set());
   const [boardVotes, setBoardVotes] = useState([]);
   const [showLogForm, setShowLogForm] = useState(false);
   const [tickDate, setTickDate] = useState('');
@@ -682,13 +684,13 @@ export default function App() {
 
   // Flips straight away and saves in the background; a failed save flips back.
   const handleToggleWorked = async (problemId) => {
-    if (!currentClimber || savingWorkedRef.current) return;
+    if (!currentClimber || savingWorkedRef.current.has(problemId)) return;
     const name = currentClimber.name;
     const date = todayISO();
     const row = { problem_id: problemId, climber: name, worked_on: date };
     const isRow = (s) => s.problem_id === problemId && s.climber === name && s.worked_on === date;
     const undoing = workedOn(projectSessions, problemId, name, date);
-    savingWorkedRef.current = true;
+    savingWorkedRef.current.add(problemId);
     setError('');
     setProjectSessions((prev) => (undoing ? prev.filter((s) => !isRow(s)) : [...prev, row]));
     try {
@@ -699,7 +701,7 @@ export default function App() {
       setProjectSessions((prev) => (undoing ? [...prev, row] : prev.filter((s) => !isRow(s))));
       setError('Could not save that — check your connection and try again.');
     }
-    savingWorkedRef.current = false;
+    savingWorkedRef.current.delete(problemId);
   };
 
   const startLogTick = () => {
