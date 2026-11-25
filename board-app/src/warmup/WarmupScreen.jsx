@@ -26,6 +26,10 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
   const canStart = Boolean(climber);
   return (
     <div style={{ marginTop: 18 }}>
+      {/* First thing under the photo: it's what you came here to tap. */}
+      <button onClick={onStart} disabled={!canStart} style={{ ...primaryButton(canStart), width: '100%', marginBottom: 18 }}>
+        {canStart ? 'Start warm-up' : 'Select who you are first'}
+      </button>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <h2 style={sectionHeading}>Warm-up ladder · {rungs.length} rungs</h2>
         <button onClick={onEdit} style={linkButton}><Pencil size={14} /> Edit</button>
@@ -46,22 +50,23 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
           </button>
         );
       })}
-      <button onClick={onStart} disabled={!canStart} style={{ ...primaryButton(canStart), width: '100%', marginTop: 8 }}>
-        {canStart ? 'Start warm-up' : 'Select who you are first'}
-      </button>
-
-      {sessions.length > 0 && (
+      {climber && sessions.length > 0 && (
         <div style={{ marginTop: 22 }}>
           <h2 style={sectionHeading}>Last sessions</h2>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {sessions.map((s) => {
             const feel = FEELS_BY_VALUE[s.feel];
             return (
-              <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#c7c8cb', padding: '2px 0', borderBottom: '1px solid #2A2B2E' }}>
-                <span>
-                  {[formatShortDate(s.done_on), s.climbed_by].filter(Boolean).join(' · ')}
+              <li key={s.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', fontSize: 13.5, color: '#c7c8cb', padding: '2px 0', borderBottom: '1px solid #2A2B2E' }}>
+                {/* The notes wrap under the row; the delete button stays level
+                    with the first line. */}
+                <span style={{ padding: `9px 0 ${s.notes ? 8 : 9}px`, minWidth: 0 }}>
+                  {formatShortDate(s.done_on)}
                   {feel && <> · <span style={{ color: feel.color, fontWeight: 700 }}>{feel.label}</span></>}
                   {` · ${s.sent_ids.length}/${s.problem_ids.length}`}
+                  {s.notes && (
+                    <span style={{ display: 'block', marginTop: 2, fontSize: 13, color: '#8b8d91', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{s.notes}</span>
+                  )}
                 </span>
                 <button
                   aria-label={`Delete session from ${formatShortDate(s.done_on)}${s.climbed_by ? ` by ${s.climbed_by}` : ''}`}
