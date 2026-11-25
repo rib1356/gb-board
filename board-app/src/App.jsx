@@ -34,6 +34,7 @@ import { localDate } from './lib/dates';
 import { boardDays, injuryTitle, shortDate } from './lib/injuries';
 import { workedOn, yourProjects, sessionsToSend, sessionsLabel, sendTagLabel } from './lib/projects';
 import WorkedButton from './projects/WorkedButton';
+import YourProjects from './projects/YourProjects';
 import { checkinsFor } from './lib/checkins';
 
 // Dynamically imported so the segmentation library (and its model weights)
@@ -163,6 +164,9 @@ export default function App() {
   // Logbook days stay open, and the tab stays picked, while you look at one
   // of their problems and come back.
   const [openLogbookDays, setOpenLogbookDays] = useState(() => new Set());
+  // Here rather than in Your projects, so it survives a trip to a problem and
+  // Back (keeping the list's scroll spot right), and resets only on load.
+  const [coldOpen, setColdOpen] = useState(false);
   const [logbookTab, setLogbookTab] = useState('sessions');
   const [selectedId, setSelectedId] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -1193,6 +1197,17 @@ export default function App() {
                 onAdd={handleAddClimber}
                 onSelect={handleSelectClimber}
                 adding={addingClimber}
+              />
+            )}
+            {/* Ignores the sort and Unsent: a shortcut, not a filter. */}
+            {currentClimber && (
+              <YourProjects
+                active={myProjects.active}
+                cold={myProjects.cold}
+                coldOpen={coldOpen}
+                onToggleCold={() => setColdOpen((prev) => !prev)}
+                onOpenProblem={(id) => openProblem(id, 'list')}
+                today={projectToday}
               />
             )}
             {problems.length === 0 && (

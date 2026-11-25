@@ -61,7 +61,7 @@ import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCh
 import { LONG_PRESS_MS } from './tweaks/useLongPress';
 import { addDays, localDate } from './lib/dates';
 import { todayISO } from './lib/warmup';
-import { shortDate } from './lib/injuries';
+import { shortDate, dayLabel } from './lib/injuries';
 import App from './App';
 
 const BOARD = { id: 'b1', name: 'Home Board', photo_url: null };
@@ -3531,6 +3531,106 @@ describe('App (projects)', () => {
     await user.click(matches[matches.length - 1]);
     return user;
   };
+
+  const CRIMP_LORD = { id: 'p2', name: 'Crimp Lord', grade: 'V6', setter: 'Rob', notes: '', holds: [] };
+  const SLAB = { id: 'p3', name: 'Slab', grade: 'V3', setter: 'Rob', notes: '', holds: [] };
+  const daysAgo = (n) => addDays(today, -n);
+  const yourProjects = () => screen.findByRole('region', { name: 'Your projects' });
+  const rowNames = (section) => within(section).getAllByRole('button').map((b) => b.textContent);
+
+  it('lists your projects at the top of the list, newest first', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    listBoardProjectSessions.mockResolvedValue([
+      session('p1', 'Rob', daysAgo(3)), session('p1', 'Rob', daysAgo(2)), session('p2', 'Rob', daysAgo(1)),
+    ]);
+    render(<App />);
+    const section = await yourProjects();
+    const rows = rowNames(section);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('Crimp Lord');
+    expect(rows[0]).toContain(`1 session · last ${dayLabel(daysAgo(1), today)}`);
+    expect(rows[0]).toContain('V6');
+    expect(rows[1]).toContain('Hyperbole');
+    expect(rows[1]).toContain(`2 sessions · last ${dayLabel(daysAgo(2), today)}`);
+  });
+
+  it('keeps cold projects in a collapsed Gone cold section', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, SLAB]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1)), session('p3', 'Rob', daysAgo(30))]);
+    render(<App />);
+    const user = userEvent.setup();
+    const section = await yourProjects();
+    const toggle = within(section).getByRole('button', { name: 'Gone cold (1)' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(section).queryByText('Slab')).not.toBeInTheDocument();
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(within(section).getByText('Slab')).toBeInTheDocument();
+  });
+
+  it('keeps Gone cold open after opening a cold project and coming back', async () => {
+    asRob();
+    listProblems.mockResolvedValue([SLAB]);
+    listBoardProjectSessions.mockResolvedValue([session('p3', 'Rob', daysAgo(30))]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(within(await yourProjects()).getByRole('button', { name: 'Gone cold (1)' }));
+    await user.click(within(await yourProjects()).getByText('Slab'));
+    await user.click(await screen.findByRole('button', { name: 'Board' }));
+    const section = await yourProjects();
+    expect(within(section).getByRole('button', { name: 'Gone cold (1)' })).toHaveAttribute('aria-expanded', 'true');
+    expect(within(section).getByText('Slab')).toBeInTheDocument();
+  });
+
+  it('shows only Gone cold under the heading when every project is cold', async () => {
+    asRob();
+    listProblems.mockResolvedValue([SLAB]);
+    listBoardProjectSessions.mockResolvedValue([session('p3', 'Rob', daysAgo(40))]);
+    render(<App />);
+    const section = await yourProjects();
+    expect(within(section).getByText('Your projects')).toBeInTheDocument();
+    expect(rowNames(section)).toEqual(['Gone cold (1)']);
+  });
+
+  it('shows no Your projects with nobody picked', async () => {
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1))]);
+    render(<App />);
+    await screen.findByText('Hyperbole');
+    expect(screen.queryByRole('region', { name: 'Your projects' })).not.toBeInTheDocument();
+  });
+
+  it("shows no Your projects for another climber's sessions", async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Shawn', daysAgo(1))]);
+    render(<App />);
+    await screen.findByRole('button', { name: 'Climbing as Rob' });
+    expect(screen.queryByRole('region', { name: 'Your projects' })).not.toBeInTheDocument();
+  });
+
+  it('ignores the Unsent filter and sort', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE, CRIMP_LORD]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(2)), session('p2', 'Rob', daysAgo(1))]);
+    render(<App />);
+    const user = userEvent.setup();
+    const before = rowNames(await yourProjects());
+    await user.selectOptions(screen.getByLabelText('Sort problems'), 'grade-desc');
+    await user.click(screen.getByRole('button', { name: /unsent/i }));
+    expect(rowNames(await yourProjects())).toEqual(before);
+  });
+
+  it('still lists a project in the main list below', async () => {
+    asRob();
+    listProblems.mockResolvedValue([HYPERBOLE]);
+    listBoardProjectSessions.mockResolvedValue([session('p1', 'Rob', daysAgo(1))]);
+    render(<App />);
+    await yourProjects();
+    expect(screen.getAllByText('Hyperbole')).toHaveLength(2);
+  });
 
   it('logs today as a project session with one tap', async () => {
     asRob();
