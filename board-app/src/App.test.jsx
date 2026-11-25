@@ -1919,7 +1919,7 @@ describe('App (warm-up screen)', () => {
     await user.click(await screen.findByRole('button', { name: /warm-up/i }));
     expect(await screen.findByText('No warm-up yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Build your ladder' })).toBeInTheDocument();
-    expect(listWarmupSessions).toHaveBeenCalledWith('b1');
+    expect(listWarmupSessions).not.toHaveBeenCalled();
   });
 
   it('keeps New problem in the header alongside Warm-up', async () => {
@@ -1937,6 +1937,8 @@ describe('App (warm-up screen)', () => {
     listWarmupSessions.mockResolvedValue([
       { id: 's1', done_on: '2026-09-27', climbed_by: 'Rob', feel: 'strong', problem_ids: ['p1', 'p2'], sent_ids: ['p1', 'p2'] },
     ]);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
     render(<App />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /warm-up/i }));
@@ -1944,7 +1946,8 @@ describe('App (warm-up screen)', () => {
     expect(screen.getByText('random V2')).toBeInTheDocument();
     expect(screen.getByText('Problem removed')).toBeInTheDocument();
     const rows = await screen.findAllByRole('listitem');
-    expect(rows.map((r) => r.textContent)).toContainEqual(expect.stringMatching(/27 Sept? · Rob · Good · 2\/2/));
+    expect(rows.map((r) => r.textContent)).toContainEqual(expect.stringMatching(/27 Sept? · Good · 2\/2/));
+    expect(listWarmupSessions).toHaveBeenCalledWith('b1', 'Rob');
   });
 
   it('disables Start until a climber is selected', async () => {
@@ -1965,6 +1968,54 @@ describe('App (warm-up screen)', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /warm-up/i }));
     expect(await screen.findByRole('button', { name: 'Start warm-up' })).toBeEnabled();
+  });
+
+  it('hides Last sessions when nobody is picked', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    listWarmupSessions.mockResolvedValue([{ id: 's1', done_on: '2026-09-27', climbed_by: 'Rob', feel: 'strong', problem_ids: ['p1'], sent_ids: ['p1'] }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await screen.findByRole('button', { name: 'Select who you are first' });
+    expect(screen.queryByText('Last sessions')).not.toBeInTheDocument();
+    expect(listWarmupSessions).not.toHaveBeenCalled();
+  });
+
+  it('puts Start above the ladder', async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    const start = await screen.findByRole('button', { name: 'Start warm-up' });
+    const heading = screen.getByText(/Warm-up ladder · 1 rungs?/);
+    expect(start.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("reloads Last sessions for the newly picked climber, ignoring the old climber's late result", async () => {
+    getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
+    listProblems.mockResolvedValue(PROBLEMS);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }, { id: 'c2', name: 'Shawn' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
+    let resolveRob;
+    listWarmupSessions.mockImplementation((boardId, name) => (name === 'Rob'
+      ? new Promise((resolve) => { resolveRob = resolve; })
+      : Promise.resolve([{ id: 's2', done_on: '2026-09-28', climbed_by: 'Shawn', feel: 'normal', problem_ids: ['p1'], sent_ids: [], notes: 'Shawn row' }])));
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /warm-up/i }));
+    await waitFor(() => expect(listWarmupSessions).toHaveBeenCalledWith('b1', 'Rob'));
+    await user.click(screen.getByRole('button', { name: /board/i }));
+    await user.click(await screen.findByRole('button', { name: 'Climbing as Rob' }));
+    await user.click(screen.getByRole('button', { name: 'Shawn' }));
+    await user.click(screen.getByRole('button', { name: /warm-up/i }));
+    expect(await screen.findByText('Shawn row')).toBeInTheDocument();
+    await act(async () => resolveRob([{ id: 's1', done_on: '2026-09-27', climbed_by: 'Rob', feel: 'strong', problem_ids: ['p1'], sent_ids: ['p1'], notes: 'Rob row' }]));
+    expect(screen.queryByText('Rob row')).not.toBeInTheDocument();
+    expect(screen.getByText('Shawn row')).toBeInTheDocument();
   });
 
   it('goes back to the list from the header', async () => {
@@ -2115,7 +2166,9 @@ describe('App (warm-up session)', () => {
       climbedBy: 'Rob', feel: 'strong', problemIds: ['p1'], sentIds: ['p1'],
     })));
     const rows = await screen.findAllByRole('listitem');
-    expect(rows.map((r) => r.textContent)).toContainEqual(expect.stringMatching(/Rob · Good · 1\/1/));
+    const texts = rows.map((r) => r.textContent);
+    expect(texts).toContainEqual(expect.stringMatching(/Good · 1\/1/));
+    expect(texts.join('\n')).not.toMatch(/Rob/);
   });
 
   it('counts a warm-up send towards Unsent, so the problem drops off your list', async () => {
@@ -2465,11 +2518,14 @@ describe('App (scroll position)', () => {
 describe('App (deleting a warm-up session)', () => {
   const SESSIONS = [
     { id: 's1', done_on: '2026-09-29', climbed_by: 'Rob', feel: 'strong', problem_ids: ['p1'], sent_ids: [] },
-    { id: 's2', done_on: '2026-09-27', climbed_by: 'Tom', feel: 'heavy', problem_ids: ['p1'], sent_ids: ['p1'] },
+    { id: 's2', done_on: '2026-09-27', climbed_by: 'Rob', feel: 'heavy', problem_ids: ['p1'], sent_ids: ['p1'] },
   ];
+  // Last sessions are only shown, and only loaded, for whoever is picked.
   const openWarmup = async () => {
     getOrCreateBoard.mockResolvedValue({ ...BOARD, warmup: [{ grade: 'V1', problemId: 'p1' }] });
     listProblems.mockResolvedValue([{ id: 'p1', name: 'Jug Haul', grade: 'V1', setter: '', notes: '', holds: [], send_count: 1 }]);
+    listClimbers.mockResolvedValue([{ id: 'c1', name: 'Rob' }]);
+    localStorage.setItem('board-app:currentClimberId', 'c1');
     listWarmupSessions.mockResolvedValue(SESSIONS);
     render(<App />);
     const user = userEvent.setup();
@@ -2484,7 +2540,7 @@ describe('App (deleting a warm-up session)', () => {
     await user.click(screen.getByRole('button', { name: 'Delete session from 29 Sept by Rob' }));
     expect(deleteWarmupSession).toHaveBeenCalledWith('s1');
     await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1));
-    expect(screen.getByRole('listitem').textContent).toMatch(/Tom/);
+    expect(screen.getByRole('listitem').textContent).toMatch(/27 Sept?/);
   });
 
   it('keeps the session and shows an error when the delete fails', async () => {

@@ -349,17 +349,25 @@ export default function App() {
     window.scrollTo(0, y);
   }, [view]);
 
+  // Last sessions are your own. `currentClimber` is declared further down, so
+  // reading it in this effect's dependencies would throw -- work the name out here.
+  const warmupClimberName = climbers.find((c) => c.id === currentClimberId)?.name ?? null;
   useEffect(() => {
-    if (view !== 'warmup' || !board) return;
+    // Nobody picked: nothing to load, and the screen hides Last sessions.
+    if (view !== 'warmup' || !board || !warmupClimberName) return undefined;
+    // A slow load for someone you've since switched away from mustn't land.
+    let cancelled = false;
     (async () => {
       try {
-        setWarmupSessions(await listWarmupSessions(board.id));
+        const sessions = await listWarmupSessions(board.id, warmupClimberName);
+        if (!cancelled) setWarmupSessions(sessions);
       } catch (err) {
         console.error(err);
-        setError('Could not load past warm-ups — check your connection and try again.');
+        if (!cancelled) setError('Could not load past warm-ups — check your connection and try again.');
       }
     })();
-  }, [view, board]);
+    return () => { cancelled = true; };
+  }, [view, board, warmupClimberName]);
 
   // The hub reloads the injuries each time it's opened, once signed in.
   // (refresh never changes, so this runs on the view and the status alone.)
@@ -1424,7 +1432,8 @@ export default function App() {
           <WarmupScreen
             rungs={warmupRungs}
             problems={shownProblems}
-            sessions={warmupSessions}
+            // Until a switched-to climber's sessions land, don't show the last one's.
+            sessions={warmupSessions.filter((s) => s.climbed_by === currentClimber?.name)}
             climber={currentClimber}
             onFocus={setWarmupFocusId}
             onEdit={() => { setWarmupFocusId(null); setView('warmup-edit'); }}

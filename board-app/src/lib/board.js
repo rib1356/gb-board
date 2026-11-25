@@ -260,11 +260,12 @@ export async function saveVolumes(boardId, volumes) {
   return data;
 }
 
-export async function listWarmupSessions(boardId) {
+export async function listWarmupSessions(boardId, climberName) {
   const { data, error } = await supabase
     .from('warmup_sessions')
     .select('*')
     .eq('board_id', boardId)
+    .eq('climbed_by', climberName)
     .order('created_at', { ascending: false })
     .limit(10);
   if (error) throw error;

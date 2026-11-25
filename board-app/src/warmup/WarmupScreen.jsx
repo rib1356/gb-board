@@ -26,6 +26,10 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
   const canStart = Boolean(climber);
   return (
     <div style={{ marginTop: 18 }}>
+      {/* First thing under the photo: it's what you came here to tap. */}
+      <button onClick={onStart} disabled={!canStart} style={{ ...primaryButton(canStart), width: '100%', marginBottom: 18 }}>
+        {canStart ? 'Start warm-up' : 'Select who you are first'}
+      </button>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <h2 style={sectionHeading}>Warm-up ladder · {rungs.length} rungs</h2>
         <button onClick={onEdit} style={linkButton}><Pencil size={14} /> Edit</button>
@@ -46,11 +50,7 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
           </button>
         );
       })}
-      <button onClick={onStart} disabled={!canStart} style={{ ...primaryButton(canStart), width: '100%', marginTop: 8 }}>
-        {canStart ? 'Start warm-up' : 'Select who you are first'}
-      </button>
-
-      {sessions.length > 0 && (
+      {climber && sessions.length > 0 && (
         <div style={{ marginTop: 22 }}>
           <h2 style={sectionHeading}>Last sessions</h2>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -61,7 +61,7 @@ export default function WarmupScreen({ rungs, problems, sessions, climber, onFoc
                 {/* The notes wrap under the row; the delete button stays level
                     with the first line. */}
                 <span style={{ padding: `9px 0 ${s.notes ? 8 : 9}px`, minWidth: 0 }}>
-                  {[formatShortDate(s.done_on), s.climbed_by].filter(Boolean).join(' · ')}
+                  {formatShortDate(s.done_on)}
                   {feel && <> · <span style={{ color: feel.color, fontWeight: 700 }}>{feel.label}</span></>}
                   {` · ${s.sent_ids.length}/${s.problem_ids.length}`}
                   {s.notes && (

@@ -468,13 +468,14 @@ describe('saveVolumes', () => {
 });
 
 describe('listWarmupSessions', () => {
-  it('lists the latest 10 sessions for the board, newest first', async () => {
+  it("lists the climber's latest 10 sessions on the board, newest first", async () => {
     const sessions = [{ id: 's1' }];
     const c = chain({ data: sessions, error: null });
     mocks.supabase.from.mockReturnValue(c);
-    expect(await listWarmupSessions('b1')).toEqual(sessions);
+    expect(await listWarmupSessions('b1', 'Rob')).toEqual(sessions);
     expect(mocks.supabase.from).toHaveBeenCalledWith('warmup_sessions');
     expect(c.eq).toHaveBeenCalledWith('board_id', 'b1');
+    expect(c.eq).toHaveBeenCalledWith('climbed_by', 'Rob');
     expect(c.order).toHaveBeenCalledWith('created_at', { ascending: false });
     expect(c.limit).toHaveBeenCalledWith(10);
   });
