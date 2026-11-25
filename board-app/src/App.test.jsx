@@ -3358,6 +3358,31 @@ describe('App (provisional grades)', () => {
     await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V6', feel: null, stars: null }));
   });
 
+  it('saves a soft or hard grade vote with the send', async () => {
+    createTick.mockImplementation(async (problemId, { sentOn, notes, sentBy, flash }) => ({
+      id: 't9', problem_id: problemId, sent_on: sentOn, notes, sent_by: sentBy, flash, created_at: '2026-10-22T10:00:00Z',
+    }));
+    saveVote.mockResolvedValue({ id: 'v9', problem_id: 'p1', climber: 'Rob', grade: 'V5', feel: 'hard', stars: null });
+    const user = await load({ ticks: [SHAWN_SEND], votes: [SHAWN_VOTE] });
+    await open(user);
+    await user.click(screen.getByText('Log a send'));
+    fireEvent.change(screen.getByLabelText('Send date'), { target: { value: '2026-10-22' } });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Grade vote' }), 'V5');
+    await user.click(within(screen.getByRole('group', { name: 'Grade feel' })).getByRole('button', { name: 'hard V5' }));
+    await user.click(screen.getByText('Save entry'));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', feel: 'hard', stars: null }));
+  });
+
+  it('changes the feel from Your vote on an ungraded problem', async () => {
+    saveVote.mockResolvedValue({ ...ROB_VOTE, feel: 'hard' });
+    const user = await load();
+    await open(user);
+    await user.click(within(screen.getByRole('group', { name: 'Grade feel' })).getByRole('button', { name: 'hard V5' }));
+    await waitFor(() => expect(saveVote).toHaveBeenCalledWith('p1', 'Rob', { grade: 'V5', feel: 'hard', stars: null }));
+    expect(await screen.findByText('Grade votes: hard V5 ×1 · V6 ×1')).toBeInTheDocument();
+    expect(screen.getByText('V5?')).toBeInTheDocument();
+  });
+
   it('hints at the votes in the edit form but saves the problem ungraded', async () => {
     updateProblem.mockResolvedValue({ ...CRIMP, name: 'Crimp Line v2' });
     const user = await load();
