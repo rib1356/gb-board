@@ -26,6 +26,7 @@ import FaceButtons from './volumes/FaceButtons';
 import TweaksHub from './tweaks/TweaksHub';
 import LineUpScreen from './move/LineUpScreen';
 import CheckScreen from './move/CheckScreen';
+import OldProblem from './move/OldProblem';
 import { solveHomography } from './lib/homography';
 import { checkList, isMovedBy, moveHold, movedFields, moveSides, olderPhotos, putBackFields, sidesOnPhoto, upsertAlignment } from './lib/movePhoto';
 import { warpMaskBlob } from './lib/warpImage';
@@ -212,6 +213,10 @@ export default function App() {
   // from, where the check is up to, the problem being saved, and its error.
   const [moveFrom, setMoveFrom] = useState(null);
   const [moveIndex, setMoveIndex] = useState(0);
+  // While fixing a problem's holds: whether the old problem is showing over
+  // the new photo, and the photo's size to draw it at.
+  const [peekOld, setPeekOld] = useState(false);
+  const [peekSize, setPeekSize] = useState({ width: 0, height: 0 });
   const [moveBusyId, setMoveBusyId] = useState(null);
   const [moveError, setMoveError] = useState('');
   const [savingLineUp, setSavingLineUp] = useState(false);
@@ -690,6 +695,11 @@ export default function App() {
   const moveAlignment = moveFrom ? lineUpFor(moveFrom) : null;
   const moveH = moveAlignment ? solveHomography(moveAlignment.pairs) : null;
   const moveList = moveAlignment ? checkList(shownProblems, moveAlignment) : [];
+  // Volume holds go onto their sides as marked on the new photo, so a volume
+  // re-marked there carries every problem set on it over.
+  const onNewSides = { volumes, to: moveAlignment?.to };
+  // The problem being fixed, as it still is on the old photo.
+  const fixProblem = fixing ? problems.find((p) => p.id === fixing.problemId) : null;
 
   // The first problem still waiting at or after `from` (wrapping round); where
   // it is now when nothing's waiting.
@@ -752,7 +762,7 @@ export default function App() {
     setMoveBusyId(problem.id);
     setMoveError('');
     try {
-      const holds = problem.holds.map((h) => moveHold(moveH, h));
+      const holds = problem.holds.map((h) => moveHold(moveH, h, onNewSides));
       const maskUrl = problem.mask_url
         ? await uploadMaskFile(problem.id, await warpMaskBlob(problem.mask_url, moveAlignment.to, moveH))
         : null;
@@ -781,8 +791,9 @@ export default function App() {
 
   const handleFixMove = (problem) => {
     setMoveError('');
+    setPeekOld(false);
     setFixing({ problemId: problem.id, photoUrl: moveAlignment.to });
-    startEditProblem({ ...problem, holds: problem.holds.map((h) => moveHold(moveH, h)) }, 'holds');
+    startEditProblem({ ...problem, holds: problem.holds.map((h) => moveHold(moveH, h, onNewSides)) }, 'holds');
   };
 
   // Save in the hold editor while fixing: the problem moves with the holds as
@@ -1199,6 +1210,9 @@ export default function App() {
           )}
           {displayHolds.map((h, i) => <PinnedFace key={`pin-${i}`} hold={h} color={HOLD_COLORS[h.type]} volumes={volumes} />)}
           {view === 'volumes' && <VolumeMarks volumes={volumes} photoUrl={board?.photo_url} marking={marking} />}
+          {view === 'new' && peekOld && fixProblem && moveH && (
+            <OldProblem photoUrl={fixProblem.photo_url} maskUrl={fixProblem.mask_url} holds={fixProblem.holds} H={moveH} size={peekSize} colors={HOLD_COLORS} />
+          )}
           {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
@@ -1244,6 +1258,25 @@ export default function App() {
           <div style={{ marginTop: 16 }}>
             {view === 'new' && (
               <>
+                {fixProblem && moveH && (
+                  <button
+                    onPointerDown={() => {
+                      const wrap = imgWrapRef.current;
+                      setPeekSize({ width: wrap?.clientWidth ?? 0, height: wrap?.clientHeight ?? 0 });
+                      setPeekOld(true);
+                    }}
+                    onPointerUp={() => setPeekOld(false)}
+                    onPointerCancel={() => setPeekOld(false)}
+                    onPointerLeave={() => setPeekOld(false)}
+                    onContextMenu={(e) => e.preventDefault()}
+                    style={{
+                      width: '100%', marginTop: -6, marginBottom: 14, padding: '10px 0', borderRadius: 8,
+                      background: peekOld ? '#3a3b3e' : 'transparent', color: '#EDEAE3', border: '1px solid #3a3b3e',
+                      fontSize: 13.5, fontWeight: 700, cursor: 'pointer', touchAction: 'none',
+                      userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+                    }}
+                  >Hold to see the old problem</button>
+                )}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   {['start', 'hold', 'foot', 'finish'].map((t) => (
                     <button key={t} onClick={() => setPlaceType(t)} style={{

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { cssMatrix3d } from '../lib/homography';
 import { isMovedBy, moveHold } from '../lib/movePhoto';
 import { isPinned } from '../lib/volumes';
 import { gradeLabel } from '../lib/problemList';
 import { ChalkRing, FaceShape, PinnedFace } from '../HoldOverlays';
 import { primaryButton, linkButton } from '../ui';
+import OldProblem, { ThroughLineUp } from './OldProblem';
 
 const HOLD_TO_COMPARE_MS = 250;
 
@@ -15,24 +15,6 @@ const fixButton = {
   padding: '11px 16px', fontWeight: 700, fontSize: 14, cursor: 'pointer',
 };
 const fill = { position: 'absolute', left: 0, top: 0, pointerEvents: 'none' };
-
-// An image from the old photo's frame, drawn over the new photo through the
-// line-up. Before the photo has a size there's nothing to scale it to.
-function ThroughLineUp({ src, H, size, alt = '', testId }) {
-  const sized = size.width > 0;
-  return (
-    <img
-      src={src}
-      alt={alt}
-      data-testid={testId}
-      style={{
-        ...fill,
-        width: sized ? size.width : '100%', height: sized ? size.height : '100%',
-        transformOrigin: '0 0', transform: sized ? cssMatrix3d(H, size.width, size.height) : undefined,
-      }}
-    />
-  );
-}
 
 function Holds({ holds, colors, volumes, withRings }) {
   return (
@@ -90,7 +72,7 @@ export default function CheckScreen({
   };
   const measure = (e) => setSize({ width: e.currentTarget.clientWidth, height: e.currentTarget.clientHeight });
 
-  const shownHolds = done ? problem.holds : problem.holds.map((h) => moveHold(H, h));
+  const shownHolds = done ? problem.holds : problem.holds.map((h) => moveHold(H, h, { volumes, to: alignment.to }));
   const hasMask = !!problem.mask_url;
 
   return (
@@ -118,10 +100,7 @@ export default function CheckScreen({
       >
         <img src={alignment.to} alt="New board photo" onLoad={measure} draggable={false} style={{ width: '100%', display: 'block' }} />
         {comparing ? (
-          <>
-            <ThroughLineUp src={alignment.from} H={H} size={size} alt="Old photo" />
-            {before.mask_url && <ThroughLineUp src={before.mask_url} H={H} size={size} />}
-          </>
+          <OldProblem photoUrl={alignment.from} maskUrl={before.mask_url} holds={before.holds} H={H} size={size} colors={colors} />
         ) : (
           <>
             {done && problem.mask_url && (

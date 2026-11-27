@@ -4185,6 +4185,66 @@ describe('App (move problems)', () => {
     expect(moveProblem).not.toHaveBeenCalled();
   });
 
+  describe('volume holds', () => {
+    const OLD_SIDE = [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.3 }];
+    const REMARKED = [{ x: 0.5, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.6, y: 0.8 }];
+    const volumes = [{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [{ id: 'f1', name: 'Top', photoUrl: NEW, points: REMARKED }] }];
+    const onVolume = { ...P2, holds: [{ x: 0.2, y: 0.17, type: 'hold', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: OLD_SIDE } }] };
+
+    it('accepting puts them on the side as re-marked on the new photo', async () => {
+      getOrCreateBoard.mockResolvedValue({ ...board([LINED_UP]), volumes });
+      listProblems.mockResolvedValue([onVolume]);
+      moveProblem.mockImplementation(async (id, fields) => ({ ...onVolume, ...fields }));
+      render(<App />);
+      const user = userEvent.setup();
+      await openMove(user);
+      await user.click(screen.getByRole('button', { name: 'Accept' }));
+
+      await waitFor(() => expect(moveProblem).toHaveBeenCalled());
+      expect(moveProblem.mock.calls[0][1].holds[0].face.points).toEqual(REMARKED);
+    });
+
+    it('fixing starts them on the side as re-marked on the new photo', async () => {
+      getOrCreateBoard.mockResolvedValue({ ...board([LINED_UP]), volumes });
+      listProblems.mockResolvedValue([onVolume]);
+      render(<App />);
+      const user = userEvent.setup();
+      await openMove(user);
+      await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+
+      await screen.findByAltText('Climbing board');
+      expect(screen.getByTestId('face-shape').querySelector('polygon')).toHaveAttribute('points', '0.5,0.5 0.7,0.5 0.6,0.8');
+    });
+  });
+
+  it('while fixing, holding the button shows the problem as it was on the old photo', async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+
+    const peek = await screen.findByRole('button', { name: 'Hold to see the old problem' });
+    expect(screen.queryByAltText('Old photo')).not.toBeInTheDocument();
+    fireEvent.pointerDown(peek, { pointerId: 1 });
+    expect(screen.getByAltText('Old photo')).toHaveAttribute('src', OLD);
+    expect(document.querySelector(`img[src="${OLD_MASK}"]`)).toBeInTheDocument();
+    fireEvent.pointerUp(peek, { pointerId: 1 });
+    expect(screen.queryByAltText('Old photo')).not.toBeInTheDocument();
+  });
+
+  it("has no old-problem button when editing a problem normally", async () => {
+    getOrCreateBoard.mockResolvedValue(board());
+    listProblems.mockResolvedValue([{ ...P1, photo_url: NEW }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Big bump'));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
+    await screen.findByAltText('Climbing board');
+    expect(screen.queryByRole('button', { name: 'Hold to see the old problem' })).not.toBeInTheDocument();
+  });
+
   it('saving a fix moves the problem and goes on to the next one', async () => {
     getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
     listProblems.mockResolvedValue([P1, P2]);

@@ -36,6 +36,33 @@ describe('moveHold', () => {
     const face = { volumeId: 'v1', faceId: 'f9', label: 'Vol1 Under', points: [{ x: 0.5, y: 0.6 }] };
     close(moveHold(SHIFT, { x: 0.5, y: 0.6, type: 'foot', face }), { x: 0.6, y: 0.65 });
   });
+
+  describe('onto volume sides marked on the new photo', () => {
+    const face = { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.4 }] };
+    const remarked = [{ x: 0.5, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.6, y: 0.8 }];
+    const volumes = (photoUrl, points = remarked) => [{ id: 'v1', name: 'Vol1', faces: [{ id: 'f1', name: 'Top', points, photoUrl }] }];
+
+    it('takes the side as marked on the new photo, so a re-marked volume carries over', () => {
+      const moved = moveHold(SHIFT, { x: 0.2, y: 0.2, type: 'hold', face }, { volumes: volumes('new.jpg'), to: 'new.jpg' });
+      expect(moved.face.points).toEqual(remarked);
+      close(moved, { x: 0.6, y: 0.6 });
+      expect(moved.face).toMatchObject({ volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top' });
+      expect(moved.type).toBe('hold');
+    });
+
+    it("moves its own copy when the side isn't marked on the new photo", () => {
+      const stillOld = moveHold(SHIFT, { x: 0.2, y: 0.2, type: 'hold', face }, { volumes: volumes('old.jpg'), to: 'new.jpg' });
+      close(stillOld.face.points[0], { x: 0.2, y: 0.15 });
+      const unmarked = moveHold(SHIFT, { x: 0.2, y: 0.2, type: 'hold', face }, { volumes: volumes('new.jpg', []), to: 'new.jpg' });
+      close(unmarked.face.points[0], { x: 0.2, y: 0.15 });
+      const gone = moveHold(SHIFT, { x: 0.2, y: 0.2, type: 'hold', face }, { volumes: [], to: 'new.jpg' });
+      close(gone.face.points[0], { x: 0.2, y: 0.15 });
+    });
+
+    it('leaves plain holds to the line-up', () => {
+      close(moveHold(SHIFT, { x: 0.2, y: 0.3, type: 'start' }, { volumes: volumes('new.jpg'), to: 'new.jpg' }), { x: 0.3, y: 0.35 });
+    });
+  });
 });
 
 describe('olderPhotos', () => {

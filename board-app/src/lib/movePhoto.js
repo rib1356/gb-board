@@ -7,12 +7,22 @@ import { faceCenter } from './volumes';
 
 const movePoint = (H, p) => applyHomography(H, p);
 
+// The volume side a face hold came from, as marked on photo `to` -- or null
+// when it isn't marked there (or has gone).
+function sideOn(volumes, face, to) {
+  const side = (volumes || []).find((v) => v.id === face.volumeId)?.faces.find((f) => f.id === face.faceId);
+  return side && side.photoUrl === to && side.points.length > 0 ? side : null;
+}
+
 // A hold on the old photo, where it sits on the new one. A face's corners are
-// copied into the problem when it's set, so they move with it; the hold sits
-// at their centre, the same way faceHold places it.
-export function moveHold(H, hold) {
+// copied into the problem when it's set, so they move with it -- unless its
+// volume side is marked on the new photo (`volumes`, `to`), which wins: a
+// volume re-marked by hand carries every problem on it over. The hold sits at
+// the face's centre, the same way faceHold places it.
+export function moveHold(H, hold, { volumes = null, to = null } = {}) {
   if (!hold.face) return { ...hold, ...movePoint(H, hold) };
-  const points = hold.face.points.map((p) => movePoint(H, p));
+  const side = sideOn(volumes, hold.face, to);
+  const points = side ? side.points : hold.face.points.map((p) => movePoint(H, p));
   return { ...hold, ...faceCenter(points), face: { ...hold.face, points } };
 }
 

@@ -119,6 +119,23 @@ describe('CheckScreen', () => {
     expect(highlight.style.transform).toMatch(/^matrix3d\(/);
   });
 
+  it('draws a volume hold on its side as marked on the new photo', () => {
+    const face = { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.3 }] };
+    const volumes = [{ id: 'v1', name: 'Vol1', faces: [{ id: 'f1', name: 'Top', photoUrl: NEW, points: [{ x: 0.5, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.6, y: 0.8 }] }] }];
+    setup({ list: [waiting('p1', 'Big bump', { holds: [{ x: 0.2, y: 0.17, type: 'hold', face }] })], volumes });
+    expect(screen.getByTestId('face-shape').querySelector('polygon')).toHaveAttribute('points', '0.5,0.5 0.7,0.5 0.6,0.8');
+  });
+
+  it('shows the old highlight as rings when the problem has no highlight image', () => {
+    vi.useFakeTimers();
+    setup({ list: [waiting('p1', 'Big bump', { mask_url: null })] });
+    const wrap = screen.getByAltText('New board photo').parentElement;
+    fireEvent.pointerDown(wrap, { pointerId: 1 });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.getByAltText('Old photo')).toBeInTheDocument();
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+  });
+
   it('asks to redo the line-up', () => {
     const { onRedoLineUp } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Redo line-up' }));
