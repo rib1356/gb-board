@@ -75,6 +75,8 @@ create table boards (
   created_at timestamptz default now(),
   deleted_at timestamptz
 );
+-- Added 2026-11-27 (move problems to a new photo):
+-- alter table boards add column alignments jsonb not null default '[]';
 
 create table problems (
   id uuid primary key default gen_random_uuid(),
@@ -90,6 +92,8 @@ create table problems (
   created_at timestamptz default now(),
   deleted_at timestamptz
 );
+-- Added 2026-11-27: a list of { photo_url, holds, mask_url, moved_at }, newest last.
+-- alter table problems add column moved_from jsonb;
 
 -- Tweaks (Rob's private injury log)
 begin;
