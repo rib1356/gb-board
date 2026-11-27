@@ -101,7 +101,13 @@ export default function PinPhoto({ src, alt, pins, onChange, maxPins = 8, locked
         }} />
       )}
       {find && width > 0 && (
-        <div style={{ position: 'absolute', right: 8, bottom: 8, pointerEvents: 'none', textAlign: 'center' }}>
+        // In the corner away from the spot: it'll be in about the same place
+        // on this photo, and the zoom mustn't cover it.
+        <div style={{
+          position: 'absolute', pointerEvents: 'none', textAlign: 'center',
+          ...(find.at.x > 0.5 ? { left: 8 } : { right: 8 }),
+          ...(find.at.y > 0.5 ? { top: 8 } : { bottom: 8 }),
+        }}>
           <Zoom src={find.src} at={find.at} width={width} height={height} zoom={FINDER_ZOOM} size={FINDER_PX} style={{ position: 'relative' }} />
           <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: PIN_COLOR, textShadow: '0 1px 3px #000' }}>
             Find spot {findIndex + 1}

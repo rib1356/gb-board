@@ -91,3 +91,18 @@ describe('LineUpScreen', () => {
     expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
   });
 });
+
+describe('LineUpScreen finder', () => {
+  it("keeps the zoomed old photo away from the spot you're looking for", () => {
+    setup();
+    const old = photo('Old board photo');
+    SPOTS.forEach((s) => tap(old, s));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const fresh = photo('New board photo');
+    SPOTS.slice(0, 2).forEach((s) => tap(fresh, s));
+    // Spot 3 is bottom right, so the zoom goes top left.
+    const label = screen.getByText('Find spot 3');
+    expect(label.parentElement.style.left).toBe('8px');
+    expect(label.parentElement.style.top).toBe('8px');
+  });
+});
