@@ -3875,8 +3875,53 @@ describe('App (search)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Unsent' }));
     await user.type(searchBox(), 'traverse');
-    expect(screen.getByText('No problems match ‘traverse’')).toBeInTheDocument();
+    // Crimpy Traverse exists -- it's only hidden because it's been sent.
+    expect(screen.getByText('No unsent problems match ‘traverse’')).toBeInTheDocument();
     expect(screen.queryByText(/Nothing unsent/)).not.toBeInTheDocument();
+  });
+
+  it('says no problems match when the search alone empties the list', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'zzz');
+    expect(screen.getByText('No problems match ‘zzz’')).toBeInTheDocument();
+  });
+
+  it('clears the search after saving a new problem, so it shows in the list', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    createProblem.mockResolvedValue({
+      id: 'p9', name: 'Pinch Party', grade: '', setter: '', notes: '', holds: [{ x: 0.5, y: 0.5, type: 'start' }],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'crimp');
+    await user.click(screen.getByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
+    fireEvent.click(photo.parentElement, { clientX: 100, clientY: 50 });
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Pinch Party');
+    await user.click(screen.getByText('Save problem'));
+
+    expect(await screen.findByText('Pinch Party')).toBeInTheDocument();
+    expect(searchBox()).toHaveValue('');
+  });
+
+  it('turns off autocorrect, so slang names are searched as typed', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    await screen.findByText('Jug Haul');
+
+    expect(searchBox()).toHaveAttribute('autocorrect', 'off');
+    expect(searchBox()).toHaveAttribute('autocapitalize', 'none');
+    expect(searchBox()).toHaveAttribute('spellcheck', 'false');
   });
 
   it('keeps the search after opening a problem and coming back', async () => {

@@ -647,6 +647,8 @@ export default function App() {
         }
 
         setProblems((prev) => [problem, ...prev]);
+        // An old search would hide the problem just saved.
+        setSearch('');
       }
       // Otherwise the just-saved problem's holds keep overlaying the board
       // photo on the list view, since it's still the "selected"/"editing"
@@ -1210,6 +1212,12 @@ export default function App() {
                   type="search"
                   className="problem-search"
                   enterKeyHint="search"
+                  // Every word has to match, so one "corrected" slang name
+                  // would empty the list.
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  spellCheck={false}
                   aria-label="Search problems"
                   placeholder="Search problems"
                   value={search}
@@ -1263,7 +1271,10 @@ export default function App() {
             {problems.length > 0 && visibleProblems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
                 <p style={{ fontSize: 14, margin: 0 }}>
-                  {search.trim() ? `No problems match ‘${search.trim()}’` : 'Nothing unsent — go set something new.'}
+                  {!search.trim() ? 'Nothing unsent — go set something new.'
+                    // With Unsent on, a match may exist and just be sent.
+                    : unsentOnly ? `No unsent problems match ‘${search.trim()}’`
+                    : `No problems match ‘${search.trim()}’`}
                 </p>
               </div>
             )}
