@@ -3840,3 +3840,76 @@ describe('App (projects)', () => {
     delete document.visibilityState;
   });
 });
+
+describe('App (search)', () => {
+  const SEARCH_PROBLEMS = [
+    { id: 'p1', name: 'Crimpy Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1 },
+    { id: 'p2', name: 'Jug Haul', grade: 'V2', setter: 'Sam', notes: '', holds: [], send_count: 0 },
+    { id: 'p3', name: 'Crimp Ladder', grade: 'V3', setter: 'Sam', notes: '', holds: [], send_count: 0 },
+  ];
+  const searchBox = () => screen.getByRole('searchbox', { name: 'Search problems' });
+
+  it('filters the list as you type and clears with the ✕', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'crimp');
+    expect(screen.getByText('Crimpy Traverse')).toBeInTheDocument();
+    expect(screen.getByText('Crimp Ladder')).toBeInTheDocument();
+    expect(screen.queryByText('Jug Haul')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(searchBox()).toHaveValue('');
+    expect(screen.getByText('Jug Haul')).toBeInTheDocument();
+    expect(screen.getByText('Crimpy Traverse')).toBeInTheDocument();
+    expect(screen.getByText('Crimp Ladder')).toBeInTheDocument();
+  });
+
+  it('says nothing matches the search, even with Unsent on', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.click(screen.getByRole('button', { name: 'Unsent' }));
+    await user.type(searchBox(), 'traverse');
+    expect(screen.getByText('No problems match ‘traverse’')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing unsent/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the search after opening a problem and coming back', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'jug');
+    await user.click(screen.getByText('Jug Haul'));
+    await user.click(await screen.findByRole('button', { name: 'Board' }));
+    expect(searchBox()).toHaveValue('jug');
+    expect(screen.getByText('Jug Haul')).toBeInTheDocument();
+    expect(screen.queryByText('Crimpy Traverse')).not.toBeInTheDocument();
+  });
+
+  it('closes the keyboard on Enter and keeps the filter', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.click(searchBox());
+    await user.type(searchBox(), 'jug{Enter}');
+    expect(searchBox()).not.toBe(document.activeElement);
+    expect(searchBox()).toHaveValue('jug');
+    expect(screen.getByText('Jug Haul')).toBeInTheDocument();
+    expect(screen.queryByText('Crimp Ladder')).not.toBeInTheDocument();
+  });
+
+  it('has no search box when there are no problems', async () => {
+    render(<App />);
+    await screen.findByText('No problems set yet. Upload a photo and add your first one.');
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  });
+});

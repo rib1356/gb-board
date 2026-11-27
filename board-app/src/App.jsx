@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap, Search, X } from 'lucide-react';
 import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { getProjectsCollapsed, setProjectsCollapsed } from './lib/projectsStorage';
@@ -195,6 +195,8 @@ export default function App() {
   const [deletedProblem, setDeletedProblem] = useState(null);
   const [sort, setSort] = useState('newest');
   const [unsentOnly, setUnsentOnly] = useState(false);
+  // Stays while you open a problem and come back; gone on reload.
+  const [search, setSearch] = useState('');
   const [warmupFocusId, setWarmupFocusId] = useState(null);
   const [warmupSessions, setWarmupSessions] = useState([]);
   const [savingWarmup, setSavingWarmup] = useState(false);
@@ -896,7 +898,7 @@ export default function App() {
     : ['list', 'Board'];
   // With nobody picked, Unsent falls back to unsent by anyone.
   const visibleProblems = sortAndFilterProblems(shownProblems, {
-    sort, unsentOnly, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
+    sort, unsentOnly, search, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
   });
   // Projects are the picked climber's own; with nobody picked there are none.
   // Dated by the same clock as sends, so sessions to send always line up.
@@ -1199,6 +1201,36 @@ export default function App() {
               </button>
               </div>
             </div>
+            {/* Filters the list only, like sort and Unsent -- Your projects
+                below is a shortcut and stays whole. */}
+            {problems.length > 0 && (
+              <div style={{ position: 'relative', marginBottom: 12 }}>
+                <Search size={16} color="#8b8d91" aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <input
+                  type="search"
+                  className="problem-search"
+                  enterKeyHint="search"
+                  aria-label="Search problems"
+                  placeholder="Search problems"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  // Search on the phone keyboard just puts it away; the list
+                  // is already filtered.
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  // 16px: any smaller and iOS Safari zooms the page on focus.
+                  style={{ ...inputStyle, marginTop: 0, fontSize: 16, padding: '9px 38px 9px 36px', WebkitAppearance: 'none', appearance: 'none' }}
+                />
+                {search && (
+                  <button type="button" aria-label="Clear search" onClick={() => setSearch('')} style={{
+                    position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'none', border: 'none', color: '#8b8d91', cursor: 'pointer', padding: 0,
+                  }}>
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            )}
             {showClimberPanel && (
               <ClimberPanel
                 climbers={climbers}
@@ -1230,7 +1262,9 @@ export default function App() {
             )}
             {problems.length > 0 && visibleProblems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
-                <p style={{ fontSize: 14, margin: 0 }}>Nothing unsent — go set something new.</p>
+                <p style={{ fontSize: 14, margin: 0 }}>
+                  {search.trim() ? `No problems match ‘${search.trim()}’` : 'Nothing unsent — go set something new.'}
+                </p>
               </div>
             )}
             {visibleProblems.map((p) => (
