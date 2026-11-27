@@ -14,6 +14,8 @@ function sideOn(volumes, face, to) {
   return side && side.photoUrl === to && side.points.length > 0 ? side : null;
 }
 
+const onPoints = (hold, points) => ({ ...hold, ...faceCenter(points), face: { ...hold.face, points } });
+
 // A hold on the old photo, where it sits on the new one. A face's corners are
 // copied into the problem when it's set, so they move with it -- unless its
 // volume side is marked on the new photo (`volumes`, `to`), which wins: a
@@ -22,8 +24,23 @@ function sideOn(volumes, face, to) {
 export function moveHold(H, hold, { volumes = null, to = null } = {}) {
   if (!hold.face) return { ...hold, ...movePoint(H, hold) };
   const side = sideOn(volumes, hold.face, to);
-  const points = side ? side.points : hold.face.points.map((p) => movePoint(H, p));
-  return { ...hold, ...faceCenter(points), face: { ...hold.face, points } };
+  return onPoints(hold, side ? side.points : hold.face.points.map((p) => movePoint(H, p)));
+}
+
+// A hold already on photo `to`, with its volume side as marked there now --
+// so a problem moved before its volume was re-marked can catch up. Anything
+// else comes back untouched.
+export function onCurrentSide(hold, { volumes = null, to = null } = {}) {
+  if (!hold.face) return hold;
+  const side = sideOn(volumes, hold.face, to);
+  return side ? onPoints(hold, side.points) : hold;
+}
+
+// The first index at or after `from` (wrapping round) whose item isn't done,
+// or null when they all are.
+export function nextToCheck(list, isDone, from = 0) {
+  const order = [...list.keys()].slice(from).concat([...list.keys()].slice(0, from));
+  return order.find((j) => !isDone(list[j])) ?? null;
 }
 
 // The photos problems are still on, other than the board's current one, with
@@ -53,6 +70,12 @@ export function checkList(problems, alignment) {
 export function movedFields(problem, { photoUrl, holds, maskUrl }, movedAt) {
   const was = { photo_url: problem.photo_url, holds: problem.holds, mask_url: problem.mask_url ?? null, moved_at: movedAt };
   return { photo_url: photoUrl, holds, mask_url: maskUrl, moved_from: [...(problem.moved_from || []), was] };
+}
+
+// The update that changes a moved problem's holds in place: no new entry in
+// its history, so Put back still takes it to the photo it came from.
+export function recheckedFields(problem, { holds, maskUrl }) {
+  return { photo_url: problem.photo_url, holds, mask_url: maskUrl, moved_from: problem.moved_from };
 }
 
 // The update that undoes the last move.

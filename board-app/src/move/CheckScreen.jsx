@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { isMovedBy, moveHold } from '../lib/movePhoto';
+import { isMovedBy, moveHold, onCurrentSide, nextToCheck } from '../lib/movePhoto';
 import { isPinned } from '../lib/volumes';
 import { gradeLabel } from '../lib/problemList';
 import { ChalkRing, FaceShape, PinnedFace } from '../HoldOverlays';
@@ -30,9 +30,13 @@ function Holds({ holds, colors, volumes, withRings }) {
 // re-places its holds there first, Skip leaves it on the old photo for now.
 // Holding the photo shows the old one underneath, lined up, to spot a hold
 // that's moved.
+//
+// Checking them all again (`again`: the ids done so far, or null) goes back
+// through every problem, moved ones too: a moved problem shows its volume
+// holds on their sides as marked now, for Looks good or Fix holds.
 export default function CheckScreen({
   list, index, onIndexChange, alignment, H, colors, volumes, busyId, error,
-  onAccept, onFix, onPutBack, onRedoLineUp,
+  onAccept, onFix, onPutBack, onRedoLineUp, again = null, onCheckAgain, onLooksGood,
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [comparing, setComparing] = useState(false);
@@ -46,21 +50,23 @@ export default function CheckScreen({
   const i = Math.min(Math.max(index, 0), list.length - 1);
   const problem = list[i];
   const isMoved = (p) => isMovedBy(p, alignment);
+  const isDone = (p) => isMoved(p) && (!again || again.has(p.id));
   const movedCount = list.filter(isMoved).length;
-  const allMoved = movedCount === list.length;
-  const done = isMoved(problem);
+  const doneCount = list.filter(isDone).length;
+  const allDone = doneCount === list.length;
+  const moved = isMoved(problem);
+  const done = isDone(problem);
   // Anything saving locks the whole screen: two saves at once could leave the
   // app's copy of a problem out of step with the database.
   const busy = busyId != null;
   const savingThis = busyId === problem.id;
-  const before = done ? problem.moved_from[problem.moved_from.length - 1] : problem;
+  const before = moved ? problem.moved_from[problem.moved_from.length - 1] : problem;
 
-  // The next problem still waiting, after this one, wrapping round.
-  const skip = () => {
-    const order = [...list.keys()].slice(i + 1).concat([...list.keys()].slice(0, i + 1));
-    const next = order.find((j) => !isMoved(list[j]));
-    onIndexChange(next ?? Math.min(i + 1, list.length - 1));
-  };
+  // The next problem still to do, after this one, wrapping round.
+  const skip = () => onIndexChange(nextToCheck(list, isDone, (i + 1) % list.length) ?? Math.min(i + 1, list.length - 1));
+  const checkAgainButton = !again && movedCount > 0 && (
+    <button onClick={onCheckAgain} disabled={busy} style={{ ...linkButton, color: '#8b8d91', fontSize: 13 }}>Check all again from the start</button>
+  );
 
   const startHold = () => {
     clearTimeout(holdTimer.current);
@@ -72,20 +78,31 @@ export default function CheckScreen({
   };
   const measure = (e) => setSize({ width: e.currentTarget.clientWidth, height: e.currentTarget.clientHeight });
 
-  const shownHolds = done ? problem.holds : problem.holds.map((h) => moveHold(H, h, { volumes, to: alignment.to }));
+  const sides = { volumes, to: alignment.to };
+  let shownHolds = problem.holds;
+  if (!moved) shownHolds = problem.holds.map((h) => moveHold(H, h, sides));
+  else if (!done) shownHolds = problem.holds.map((h) => onCurrentSide(h, sides));
+  const sidesChanged = moved && !done && shownHolds.some((h, j) => h !== problem.holds[j]);
   const hasMask = !!problem.mask_url;
 
   return (
     <div>
-      {allMoved && (
+      {allDone && (
         <div style={{ background: '#232427', border: '1px solid #3a3b3e', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-          <p style={{ margin: '0 0 10px', fontSize: 14 }}>All moved. The old photo isn&apos;t used any more.</p>
-          <button onClick={() => onIndexChange(-1)} style={primaryButton(true)}>Back to Tweaks</button>
+          <p style={{ margin: '0 0 10px', fontSize: 14 }}>
+            {again ? 'All checked again.' : <>All moved. The old photo isn&apos;t used any more.</>}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <button onClick={() => onIndexChange(-1)} style={primaryButton(true)}>Back to Tweaks</button>
+            {checkAgainButton}
+          </div>
         </div>
       )}
 
       <h1 style={heading}>MOVE PROBLEMS</h1>
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: '#8b8d91' }}>{`${i + 1} of ${list.length} · ${movedCount} moved`}</p>
+      <p style={{ margin: '0 0 12px', fontSize: 13, color: '#8b8d91' }}>
+        {`${i + 1} of ${list.length} · ${again ? `${doneCount} checked again` : `${movedCount} moved`}`}
+      </p>
 
       <div
         onPointerDown={startHold}
@@ -103,10 +120,10 @@ export default function CheckScreen({
           <OldProblem photoUrl={alignment.from} maskUrl={before.mask_url} holds={before.holds} H={H} size={size} colors={colors} />
         ) : (
           <>
-            {done && problem.mask_url && (
+            {moved && problem.mask_url && (
               <img src={problem.mask_url} alt="" style={{ ...fill, width: '100%', height: '100%' }} />
             )}
-            {!done && problem.mask_url && <ThroughLineUp src={problem.mask_url} H={H} size={size} testId="moved-highlight" />}
+            {!moved && problem.mask_url && <ThroughLineUp src={problem.mask_url} H={H} size={size} testId="moved-highlight" />}
             <Holds holds={shownHolds} colors={colors} volumes={volumes} withRings={!hasMask} />
           </>
         )}
@@ -120,9 +137,13 @@ export default function CheckScreen({
         </div>
       </div>
 
+      {sidesChanged && (
+        <p style={{ margin: '10px 0 0', fontSize: 12.5, color: '#C08552' }}>Volume holds moved to where the volume is marked now.</p>
+      )}
+
       {done ? (
         <div style={{ ...row, alignItems: 'flex-start' }}>
-          <span style={{ color: '#5C8A66', fontWeight: 700, fontSize: 14 }}>Moved ✓</span>
+          <span style={{ color: '#5C8A66', fontWeight: 700, fontSize: 14 }}>{again ? 'Checked ✓' : 'Moved ✓'}</span>
           <div style={{ textAlign: 'right' }}>
             <button onClick={() => onPutBack(problem)} disabled={busy} style={{ ...linkButton, marginLeft: 'auto' }}>Put back</button>
             <div style={{ fontSize: 11.5, color: '#6d6f73', marginTop: 2 }}>Undoes anything changed since the move.</div>
@@ -131,9 +152,15 @@ export default function CheckScreen({
       ) : (
         <div style={row}>
           <button onClick={() => onFix(problem)} disabled={busy} style={fixButton}>Fix holds</button>
-          <button onClick={() => onAccept(problem)} disabled={busy} style={{ ...primaryButton(!busy), minWidth: 120 }}>
-            {savingThis ? 'Moving…' : 'Accept'}
-          </button>
+          {moved ? (
+            <button onClick={() => onLooksGood(problem)} disabled={busy} style={{ ...primaryButton(!busy), minWidth: 120 }}>
+              {savingThis ? 'Saving…' : 'Looks good'}
+            </button>
+          ) : (
+            <button onClick={() => onAccept(problem)} disabled={busy} style={{ ...primaryButton(!busy), minWidth: 120 }}>
+              {savingThis ? 'Moving…' : 'Accept'}
+            </button>
+          )}
         </div>
       )}
       {error && <p role="alert" style={{ color: '#D9552B', fontSize: 13, margin: '10px 0 0' }}>{error}</p>}
@@ -143,7 +170,10 @@ export default function CheckScreen({
         <button onClick={skip} disabled={busy} style={linkButton}>Skip ›</button>
       </div>
 
-      <button onClick={onRedoLineUp} disabled={busy} style={{ ...linkButton, marginTop: 24, color: '#8b8d91', fontSize: 13 }}>Redo line-up</button>
+      <div style={{ ...row, marginTop: 24 }}>
+        <button onClick={onRedoLineUp} disabled={busy} style={{ ...linkButton, color: '#8b8d91', fontSize: 13 }}>Redo line-up</button>
+        {!allDone && checkAgainButton}
+      </div>
     </div>
   );
 }

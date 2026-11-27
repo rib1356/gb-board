@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { solveHomography } from './homography';
 import {
-  moveHold, olderPhotos, isMovedBy, checkList, movedFields, putBackFields,
-  sidesOnPhoto, moveSides, upsertAlignment,
+  moveHold, onCurrentSide, nextToCheck, olderPhotos, isMovedBy, checkList, movedFields, putBackFields,
+  recheckedFields, sidesOnPhoto, moveSides, upsertAlignment,
 } from './movePhoto';
 
 const OLD = 'https://cdn.example/old.jpg';
@@ -65,6 +65,43 @@ describe('moveHold', () => {
   });
 });
 
+describe('onCurrentSide', () => {
+  const face = { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: [{ x: 0.2, y: 0.15 }, { x: 0.4, y: 0.15 }, { x: 0.3, y: 0.45 }] };
+  const hold = { x: 0.3, y: 0.25, type: 'hold', face };
+
+  it('puts a volume hold on its side as marked on the photo now', () => {
+    const pin = [{ x: 0.5, y: 0.6 }];
+    const volumes = [{ id: 'v1', name: 'Vol1', faces: [{ id: 'f1', name: 'Top', points: pin, photoUrl: NEW }] }];
+    const now = onCurrentSide(hold, { volumes, to: NEW });
+    expect(now.face.points).toEqual(pin);
+    close(now, { x: 0.5, y: 0.6 });
+    expect(now.face).toMatchObject({ volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top' });
+  });
+
+  it("leaves plain holds, and sides not marked on that photo, exactly as they are", () => {
+    const plain = { x: 0.2, y: 0.3, type: 'start' };
+    const elsewhere = [{ id: 'v1', name: 'Vol1', faces: [{ id: 'f1', name: 'Top', points: [{ x: 0.9, y: 0.9 }], photoUrl: OLD }] }];
+    expect(onCurrentSide(plain, { volumes: elsewhere, to: NEW })).toBe(plain);
+    expect(onCurrentSide(hold, { volumes: elsewhere, to: NEW })).toBe(hold);
+    expect(onCurrentSide(hold, { volumes: [], to: NEW })).toBe(hold);
+  });
+});
+
+describe('nextToCheck', () => {
+  const list = ['a', 'b', 'c', 'd'];
+
+  it('finds the first one not done from a point, wrapping round', () => {
+    expect(nextToCheck(list, (x) => x === 'a', 0)).toBe(1);
+    expect(nextToCheck(list, (x) => x !== 'b', 2)).toBe(1);
+    expect(nextToCheck(list, () => false, 3)).toBe(3);
+  });
+
+  it('is null when everything is done', () => {
+    expect(nextToCheck(list, () => true, 1)).toBeNull();
+    expect(nextToCheck([], () => false)).toBeNull();
+  });
+});
+
 describe('olderPhotos', () => {
   it('groups problems not on the current photo, most first, ignoring ones with no photo', () => {
     const problems = [
@@ -114,6 +151,14 @@ describe('movedFields and putBackFields', () => {
   it('puts a problem back exactly as it was', () => {
     const once = { ...problem, ...movedFields(problem, target, 't1') };
     expect(putBackFields(once)).toEqual({ photo_url: OLD, holds: problem.holds, mask_url: 'old-mask', moved_from: null });
+  });
+
+  it('changes a moved problem\'s holds without adding a move, so it can still be put back to the old photo', () => {
+    const once = { ...problem, ...movedFields(problem, target, 't1') };
+    const holds = [{ x: 0.5, y: 0.5, type: 'hold' }];
+    expect(recheckedFields(once, { holds, maskUrl: 'fixed-mask' })).toEqual({
+      photo_url: NEW, holds, mask_url: 'fixed-mask', moved_from: once.moved_from,
+    });
   });
 
   it('puts back one move at a time', () => {

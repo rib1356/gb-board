@@ -4259,6 +4259,118 @@ describe('App (move problems)', () => {
     expect(screen.queryByRole('button', { name: 'Hold to see the old problem' })).not.toBeInTheDocument();
   });
 
+  describe('checking them all again', () => {
+    const OLD_SIDE = [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.3 }];
+    const REMARKED = [{ x: 0.5, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.6, y: 0.8 }];
+    const volumes = [{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [{ id: 'f1', name: 'Top', photoUrl: NEW, points: REMARKED }] }];
+    const history = (p) => [{ photo_url: OLD, holds: p.holds, mask_url: p.mask_url, moved_at: 't' }];
+    const movedP1 = { ...P1, photo_url: NEW, mask_url: 'https://cdn.example/masks/p1/new.png', moved_from: history(P1) };
+    const movedP2 = {
+      ...P2, photo_url: NEW, moved_from: history(P2),
+      holds: [{ x: 0.2, y: 0.17, type: 'hold', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: OLD_SIDE } }],
+    };
+
+    beforeEach(() => {
+      localStorage.removeItem('board-app:checkAgain');
+      getOrCreateBoard.mockResolvedValue({ ...board([LINED_UP]), volumes });
+      listProblems.mockResolvedValue([movedP1, movedP2]);
+      moveProblem.mockImplementation(async (id, fields) => ({ ...[movedP1, movedP2].find((p) => p.id === id), ...fields }));
+    });
+
+    async function openMoved(user) {
+      await holdTitle();
+      await user.click(await screen.findByRole('button', { name: 'Moved problems' }));
+    }
+
+    async function startCheckAgain(user) {
+      await openMoved(user);
+      await user.click(screen.getByRole('button', { name: 'Check all again from the start' }));
+      expect(screen.getByText('1 of 2 · 0 checked again')).toBeInTheDocument();
+    }
+
+    it('Looks good with nothing to change saves nothing and goes on', async () => {
+      render(<App />);
+      const user = userEvent.setup();
+      await startCheckAgain(user);
+      await user.click(screen.getByRole('button', { name: 'Looks good' }));
+
+      expect(await screen.findByText('2 of 2 · 1 checked again')).toBeInTheDocument();
+      expect(screen.getByText('Pinchin')).toBeInTheDocument();
+      expect(moveProblem).not.toHaveBeenCalled();
+    });
+
+    it('Looks good saves volume holds onto their sides as marked now, keeping the highlight and the move', async () => {
+      render(<App />);
+      const user = userEvent.setup();
+      await startCheckAgain(user);
+      await user.click(screen.getByRole('button', { name: 'Skip ›' }));
+      await user.click(screen.getByRole('button', { name: 'Looks good' }));
+
+      await waitFor(() => expect(moveProblem).toHaveBeenCalled());
+      const [id, fields] = moveProblem.mock.calls[0];
+      expect(id).toBe('p2');
+      expect(fields).toMatchObject({ photo_url: NEW, mask_url: null, moved_from: movedP2.moved_from });
+      expect(fields.holds[0].face.points).toEqual(REMARKED);
+      expect(await screen.findByText('1 of 2 · 1 checked again')).toBeInTheDocument();
+    });
+
+    it('fixing a moved problem saves its holds without moving it again, then goes on', async () => {
+      render(<App />);
+      const user = userEvent.setup();
+      await startCheckAgain(user);
+      await user.click(screen.getByRole('button', { name: 'Skip ›' }));
+      await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+
+      expect(await screen.findByAltText('Climbing board')).toHaveAttribute('src', NEW);
+      expect(screen.getByTestId('face-shape').querySelector('polygon')).toHaveAttribute('points', '0.5,0.5 0.7,0.5 0.6,0.8');
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(moveProblem).toHaveBeenCalledWith('p2', expect.objectContaining({
+        photo_url: NEW, mask_url: null, moved_from: movedP2.moved_from,
+      })));
+      expect(updateProblem).not.toHaveBeenCalled();
+      expect(await screen.findByText('1 of 2 · 1 checked again')).toBeInTheDocument();
+    });
+
+    it('while fixing a moved problem, the old problem is the one from the old photo', async () => {
+      render(<App />);
+      const user = userEvent.setup();
+      await startCheckAgain(user);
+      await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+
+      const peek = await screen.findByRole('button', { name: 'Hold to see the old problem' });
+      fireEvent.pointerDown(peek, { pointerId: 1 });
+      expect(screen.getByAltText('Old photo')).toHaveAttribute('src', OLD);
+      expect(document.querySelector(`img[src="${OLD_MASK}"]`)).toBeInTheDocument();
+    });
+
+    it('carries on where it left off after the app reloads', async () => {
+      const { unmount } = render(<App />);
+      const user = userEvent.setup();
+      await startCheckAgain(user);
+      await user.click(screen.getByRole('button', { name: 'Looks good' }));
+      await screen.findByText('2 of 2 · 1 checked again');
+      unmount();
+
+      render(<App />);
+      await openMoved(user);
+      expect(screen.getByText('2 of 2 · 1 checked again')).toBeInTheDocument();
+    });
+
+    it('ends once every problem is checked and you go back to Tweaks', async () => {
+      render(<App />);
+      const user = userEvent.setup();
+      await startCheckAgain(user);
+      await user.click(screen.getByRole('button', { name: 'Looks good' }));
+      await user.click(await screen.findByRole('button', { name: 'Looks good' }));
+      expect(await screen.findByText('All checked again.')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Back to Tweaks' }));
+
+      await user.click(await screen.findByRole('button', { name: 'Moved problems' }));
+      expect(screen.getByText(/· 2 moved$/)).toBeInTheDocument();
+    });
+  });
+
   it('saving a fix moves the problem and goes on to the next one', async () => {
     getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
     listProblems.mockResolvedValue([P1, P2]);

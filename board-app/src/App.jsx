@@ -28,7 +28,11 @@ import LineUpScreen from './move/LineUpScreen';
 import CheckScreen from './move/CheckScreen';
 import OldProblem from './move/OldProblem';
 import { solveHomography } from './lib/homography';
-import { checkList, isMovedBy, moveHold, movedFields, moveSides, olderPhotos, putBackFields, sidesOnPhoto, upsertAlignment } from './lib/movePhoto';
+import {
+  checkList, isMovedBy, moveHold, movedFields, moveSides, nextToCheck, olderPhotos, onCurrentSide, putBackFields,
+  recheckedFields, sidesOnPhoto, upsertAlignment,
+} from './lib/movePhoto';
+import { loadCheckAgain, saveCheckAgain } from './lib/checkAgain';
 import { warpMaskBlob } from './lib/warpImage';
 import UnlockSheet from './tweaks/UnlockSheet';
 import InjuryPage from './tweaks/InjuryPage';
@@ -213,6 +217,9 @@ export default function App() {
   // from, where the check is up to, the problem being saved, and its error.
   const [moveFrom, setMoveFrom] = useState(null);
   const [moveIndex, setMoveIndex] = useState(0);
+  // Checking every problem again (say after re-marking volumes): the ids
+  // looked at so far, or null when not doing that.
+  const [checkAgain, setCheckAgain] = useState(null);
   // While fixing a problem's holds: whether the old problem is showing over
   // the new photo, and the photo's size to draw it at.
   const [peekOld, setPeekOld] = useState(false);
@@ -698,26 +705,58 @@ export default function App() {
   // Volume holds go onto their sides as marked on the new photo, so a volume
   // re-marked there carries every problem set on it over.
   const onNewSides = { volumes, to: moveAlignment?.to };
-  // The problem being fixed, as it still is on the old photo.
+  // The problem being fixed, and how it was on the old photo -- for one
+  // that's already moved, the version its move kept.
   const fixProblem = fixing ? problems.find((p) => p.id === fixing.problemId) : null;
+  const fixBefore = fixProblem && moveAlignment && isMovedBy(fixProblem, moveAlignment)
+    ? fixProblem.moved_from[fixProblem.moved_from.length - 1]
+    : fixProblem;
 
-  // The first problem still waiting at or after `from` (wrapping round); where
-  // it is now when nothing's waiting.
-  const nextWaiting = (list, alignment, from = 0) => {
-    const order = [...list.keys()].slice(from).concat([...list.keys()].slice(0, from));
-    return order.find((j) => !isMovedBy(list[j], alignment)) ?? Math.min(from, Math.max(list.length - 1, 0));
-  };
+  // Done in the check: moved -- and, while checking them all again, looked at again.
+  const doneIn = (alignment, again) => (p) => isMovedBy(p, alignment) && (!again || again.has(p.id));
+  // The first problem still to do at or after `from` (wrapping round); where
+  // it is now when everything's done.
+  const nextWaiting = (list, alignment, from = 0, again = checkAgain) =>
+    nextToCheck(list, doneIn(alignment, again), from) ?? Math.min(from, Math.max(list.length - 1, 0));
 
   const startMove = (from) => {
     setMoveFrom(from);
     setMoveError('');
     const saved = lineUpFor(from);
+    const again = saved ? loadCheckAgain(from, saved.to) : null;
+    setCheckAgain(again);
     if (saved) {
-      setMoveIndex(nextWaiting(checkList(problems, saved), saved));
+      setMoveIndex(nextWaiting(checkList(problems, saved), saved, 0, again));
       leaveFor('move-check');
     } else {
       leaveFor('move-lineup');
     }
+  };
+
+  const keepCheckAgain = (again) => {
+    setCheckAgain(again);
+    saveCheckAgain(moveAlignment.from, moveAlignment.to, again);
+  };
+
+  // While checking them all again, notes a problem as done; the ids to go on with.
+  const markChecked = (id) => {
+    if (!checkAgain) return null;
+    const again = new Set(checkAgain).add(id);
+    keepCheckAgain(again);
+    return again;
+  };
+
+  const handleCheckAgain = () => {
+    const again = new Set();
+    keepCheckAgain(again);
+    setMoveError('');
+    setMoveIndex(nextWaiting(moveList, moveAlignment, 0, again));
+  };
+
+  const leaveCheck = () => {
+    // Leaving once every problem's been checked again ends that check.
+    if (checkAgain && moveList.every(doneIn(moveAlignment, checkAgain))) keepCheckAgain(null);
+    setView('tweaks');
   };
 
   const openMoveProblems = () => {
@@ -768,11 +807,33 @@ export default function App() {
         : null;
       const updated = await moveProblem(problem.id, movedFields(problem, { photoUrl: moveAlignment.to, holds, maskUrl }, new Date().toISOString()));
       const next = replaceProblem(updated);
+      const again = markChecked(problem.id);
       const list = checkList(next, moveAlignment);
-      setMoveIndex(nextWaiting(list, moveAlignment, list.findIndex((p) => p.id === problem.id) + 1));
+      setMoveIndex(nextWaiting(list, moveAlignment, list.findIndex((p) => p.id === problem.id) + 1, again));
     } catch (err) {
       console.error(err);
       setMoveError('Could not move that problem — check your connection and try again.');
+    }
+    setMoveBusyId(null);
+  };
+
+  // Checking again, a moved problem that looks right: its volume holds go
+  // onto their sides as marked now -- nothing to save if they're there already.
+  const handleLooksGood = async (problem) => {
+    setMoveBusyId(problem.id);
+    setMoveError('');
+    try {
+      const holds = problem.holds.map((h) => onCurrentSide(h, onNewSides));
+      const changed = holds.some((h, i) => h !== problem.holds[i]);
+      const next = changed
+        ? replaceProblem(await moveProblem(problem.id, recheckedFields(problem, { holds, maskUrl: problem.mask_url ?? null })))
+        : problems;
+      const again = markChecked(problem.id);
+      const list = checkList(next, moveAlignment);
+      setMoveIndex(nextWaiting(list, moveAlignment, list.findIndex((p) => p.id === problem.id) + 1, again));
+    } catch (err) {
+      console.error(err);
+      setMoveError('Could not save that problem — check your connection and try again.');
     }
     setMoveBusyId(null);
   };
@@ -793,11 +854,15 @@ export default function App() {
     setMoveError('');
     setPeekOld(false);
     setFixing({ problemId: problem.id, photoUrl: moveAlignment.to });
-    startEditProblem({ ...problem, holds: problem.holds.map((h) => moveHold(moveH, h, onNewSides)) }, 'holds');
+    // One already moved is on the new photo: only its volume holds catch up.
+    const moved = isMovedBy(problem, moveAlignment);
+    const holds = problem.holds.map((h) => (moved ? onCurrentSide(h, onNewSides) : moveHold(moveH, h, onNewSides)));
+    startEditProblem({ ...problem, holds }, 'holds');
   };
 
   // Save in the hold editor while fixing: the problem moves with the holds as
-  // re-placed on the new photo, and the check goes on to the next one.
+  // re-placed on the new photo (or, already moved, just takes them), and the
+  // check goes on to the next one.
   const saveFix = async (cleanHolds, segmented) => {
     const problem = problems.find((p) => p.id === fixing.problemId);
     let maskUrl = null;
@@ -814,11 +879,14 @@ export default function App() {
         // Moves anyway -- it just falls back to circle markers.
       }
     }
-    const updated = await moveProblem(problem.id, movedFields(problem, { photoUrl: fixing.photoUrl, holds: cleanHolds, maskUrl }, new Date().toISOString()));
-    const next = replaceProblem(updated);
     const alignment = lineUpFor(moveFrom);
+    const fields = isMovedBy(problem, alignment)
+      ? recheckedFields(problem, { holds: cleanHolds, maskUrl })
+      : movedFields(problem, { photoUrl: fixing.photoUrl, holds: cleanHolds, maskUrl }, new Date().toISOString());
+    const next = replaceProblem(await moveProblem(problem.id, fields));
+    const again = markChecked(problem.id);
     const list = checkList(next, alignment);
-    setMoveIndex(nextWaiting(list, alignment, list.findIndex((p) => p.id === problem.id) + 1));
+    setMoveIndex(nextWaiting(list, alignment, list.findIndex((p) => p.id === problem.id) + 1, again));
   };
 
   const saveDetails = async () => {
@@ -1211,7 +1279,7 @@ export default function App() {
           {displayHolds.map((h, i) => <PinnedFace key={`pin-${i}`} hold={h} color={HOLD_COLORS[h.type]} volumes={volumes} />)}
           {view === 'volumes' && <VolumeMarks volumes={volumes} photoUrl={board?.photo_url} marking={marking} />}
           {view === 'new' && peekOld && fixProblem && moveH && (
-            <OldProblem photoUrl={fixProblem.photo_url} maskUrl={fixProblem.mask_url} holds={fixProblem.holds} H={moveH} size={peekSize} colors={HOLD_COLORS} />
+            <OldProblem photoUrl={fixBefore.photo_url} maskUrl={fixBefore.mask_url} holds={fixBefore.holds} H={moveH} size={peekSize} colors={HOLD_COLORS} />
           )}
           {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
@@ -1907,7 +1975,7 @@ export default function App() {
           <CheckScreen
             list={moveList}
             index={moveIndex}
-            onIndexChange={(i) => { if (i < 0) setView('tweaks'); else { setMoveError(''); setMoveIndex(i); } }}
+            onIndexChange={(i) => { if (i < 0) leaveCheck(); else { setMoveError(''); setMoveIndex(i); } }}
             alignment={moveAlignment}
             H={moveH}
             colors={HOLD_COLORS}
@@ -1917,6 +1985,9 @@ export default function App() {
             onAccept={handleAcceptMove}
             onFix={handleFixMove}
             onPutBack={handlePutBack}
+            again={checkAgain}
+            onCheckAgain={handleCheckAgain}
+            onLooksGood={handleLooksGood}
             onRedoLineUp={() => { setMoveError(''); setView('move-lineup'); }}
           />
         )}

@@ -20,7 +20,10 @@ const moved = (id, name) => ({
 });
 
 function setup(props = {}) {
-  const handlers = { onIndexChange: vi.fn(), onAccept: vi.fn(), onFix: vi.fn(), onPutBack: vi.fn(), onRedoLineUp: vi.fn() };
+  const handlers = {
+    onIndexChange: vi.fn(), onAccept: vi.fn(), onFix: vi.fn(), onPutBack: vi.fn(), onRedoLineUp: vi.fn(),
+    onCheckAgain: vi.fn(), onLooksGood: vi.fn(),
+  };
   render(
     <CheckScreen
       list={[waiting('p1', 'Big bump'), waiting('p2', 'Pinchin'), waiting('p3', 'Worship')]}
@@ -134,6 +137,73 @@ describe('CheckScreen', () => {
     act(() => { vi.advanceTimersByTime(300); });
     expect(screen.getByAltText('Old photo')).toBeInTheDocument();
     expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+  });
+
+  describe('checking them all again', () => {
+    const OLD_SIDE = [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.3 }];
+    const REMARKED = [{ x: 0.5, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.6, y: 0.8 }];
+    const volumes = [{ id: 'v1', name: 'Vol1', faces: [{ id: 'f1', name: 'Top', photoUrl: NEW, points: REMARKED }] }];
+    const onVolume = (id, name) => ({
+      ...moved(id, name), holds: [{ x: 0.2, y: 0.17, type: 'hold', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: OLD_SIDE } }],
+    });
+
+    it('is offered once any problem has moved', () => {
+      const { onCheckAgain } = setup({ list: [waiting('p1', 'A'), moved('p2', 'B')] });
+      fireEvent.click(screen.getByRole('button', { name: 'Check all again from the start' }));
+      expect(onCheckAgain).toHaveBeenCalled();
+    });
+
+    it('is not offered before anything has moved', () => {
+      setup();
+      expect(screen.queryByRole('button', { name: 'Check all again from the start' })).not.toBeInTheDocument();
+    });
+
+    it('is offered next to Back to Tweaks once everything has moved', () => {
+      const { onCheckAgain } = setup({ list: [moved('p1', 'A'), moved('p2', 'B')] });
+      fireEvent.click(screen.getByRole('button', { name: 'Check all again from the start' }));
+      expect(onCheckAgain).toHaveBeenCalled();
+    });
+
+    it('shows a moved problem with its volume holds on the sides as marked now, to confirm or fix', () => {
+      const { onLooksGood, onFix } = setup({ list: [onVolume('p1', 'A'), moved('p2', 'B')], volumes, again: new Set() });
+      expect(screen.getByText('1 of 2 · 0 checked again')).toBeInTheDocument();
+      expect(screen.getByTestId('face-shape').querySelector('polygon')).toHaveAttribute('points', '0.5,0.5 0.7,0.5 0.6,0.8');
+      expect(screen.getByText('Volume holds moved to where the volume is marked now.')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Looks good' }));
+      expect(onLooksGood).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Fix holds' }));
+      expect(onFix).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
+    });
+
+    it("says nothing about volumes when a problem's holds are unchanged", () => {
+      setup({ list: [moved('p1', 'A')], again: new Set() });
+      expect(screen.queryByText('Volume holds moved to where the volume is marked now.')).not.toBeInTheDocument();
+    });
+
+    it('still accepts a problem that never moved', () => {
+      const { onAccept } = setup({ list: [waiting('p1', 'A'), moved('p2', 'B')], again: new Set() });
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+      expect(onAccept).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
+    });
+
+    it('skips past the ones already checked, which can still be put back', () => {
+      const { onIndexChange, onPutBack } = setup({ list: [moved('p1', 'A'), moved('p2', 'B'), moved('p3', 'C')], index: 1, again: new Set(['p2']) });
+      expect(screen.getByText('Checked ✓')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Looks good' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Put back' }));
+      expect(onPutBack).toHaveBeenCalledWith(expect.objectContaining({ id: 'p2' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Skip ›' }));
+      expect(onIndexChange).toHaveBeenCalledWith(2);
+    });
+
+    it('says when every problem has been checked again', () => {
+      const { onIndexChange } = setup({ list: [moved('p1', 'A'), moved('p2', 'B')], again: new Set(['p1', 'p2']) });
+      expect(screen.getByText('All checked again.')).toBeInTheDocument();
+      expect(screen.queryByText(/All moved/)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Back to Tweaks' }));
+      expect(onIndexChange).toHaveBeenCalledWith(-1);
+    });
   });
 
   it('asks to redo the line-up', () => {
