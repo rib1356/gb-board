@@ -30,16 +30,17 @@ export async function listProblems(boardId) {
   return data;
 }
 
+// randomUUID needs a secure context, so it's absent when the dev server is
+// opened over a plain-http LAN address on a phone -- fall back there.
+const uniqueSuffix = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
+
 export async function uploadBoardPhoto(boardId, blob) {
   // Every upload gets its own object, and no upsert -- problems store the url
   // of the photo their holds were placed against, so re-shooting the board
   // must never change the bytes behind an older problem's url. The timestamp
   // keeps the bucket readable in upload order; the uuid makes two shots in the
   // same millisecond still distinct.
-  // randomUUID needs a secure context, so it's absent when the dev server is
-  // opened over a plain-http LAN address on a phone -- fall back there.
-  const unique = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
-  const path = `${boardId}/${Date.now()}-${unique}.jpg`;
+  const path = `${boardId}/${Date.now()}-${uniqueSuffix()}.jpg`;
   const { error: uploadError } = await supabase.storage
     .from('board-photos')
     .upload(path, blob, { contentType: 'image/jpeg' });
@@ -60,16 +61,20 @@ export async function uploadBoardPhoto(boardId, blob) {
   return updated;
 }
 
-export async function uploadProblemMask(problemId, blob) {
-  const path = `masks/${problemId}.png`;
-  const { error: uploadError } = await supabase.storage
+// Like board photos, every highlight image gets its own file and is never
+// overwritten: a moved problem keeps its old highlight's url in moved_from, so
+// those bytes must stay put. The path is unique, so no `?t=` cache-buster.
+export async function uploadMaskFile(problemId, blob) {
+  const path = `masks/${problemId}/${Date.now()}-${uniqueSuffix()}.png`;
+  const { error } = await supabase.storage
     .from('board-photos')
-    .upload(path, blob, { upsert: true, contentType: 'image/png' });
-  if (uploadError) throw uploadError;
+    .upload(path, blob, { contentType: 'image/png' });
+  if (error) throw error;
+  return supabase.storage.from('board-photos').getPublicUrl(path).data.publicUrl;
+}
 
-  const { data: publicUrlData } = supabase.storage.from('board-photos').getPublicUrl(path);
-  const maskUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
-
+export async function uploadProblemMask(problemId, blob) {
+  const maskUrl = await uploadMaskFile(problemId, blob);
   const { data: updated, error: updateError } = await supabase
     .from('problems')
     .update({ mask_url: maskUrl })
@@ -78,6 +83,30 @@ export async function uploadProblemMask(problemId, blob) {
     .single();
   if (updateError) throw updateError;
   return updated;
+}
+
+// Moves a problem onto another board photo (or puts it back): its photo,
+// holds, highlight and move history change together.
+export async function moveProblem(id, { photo_url, holds, mask_url, moved_from }) {
+  const { data, error } = await supabase
+    .from('problems')
+    .update({ photo_url, holds, mask_url, moved_from })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function saveAlignments(boardId, alignments) {
+  const { data, error } = await supabase
+    .from('boards')
+    .update({ alignments })
+    .eq('id', boardId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function createProblem(boardId, { name, grade, setter, notes, holds, photoUrl }) {
