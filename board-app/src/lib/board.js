@@ -98,10 +98,12 @@ export async function moveProblem(id, { photo_url, holds, mask_url, moved_from }
   return data;
 }
 
-export async function saveAlignments(boardId, alignments) {
+// Volume sides moved by a line-up go in the same write, so a failure can't
+// leave the line-up saved but the sides still on the old photo.
+export async function saveAlignments(boardId, alignments, volumes = null) {
   const { data, error } = await supabase
     .from('boards')
-    .update({ alignments })
+    .update({ alignments, ...(volumes && { volumes }) })
     .eq('id', boardId)
     .select()
     .single();

@@ -67,7 +67,10 @@ export default function CheckScreen({
   const movedCount = list.filter(isMoved).length;
   const allMoved = movedCount === list.length;
   const done = isMoved(problem);
-  const busy = busyId === problem.id;
+  // Anything saving locks the whole screen: two saves at once could leave the
+  // app's copy of a problem out of step with the database.
+  const busy = busyId != null;
+  const savingThis = busyId === problem.id;
   const before = done ? problem.moved_from[problem.moved_from.length - 1] : problem;
 
   // The next problem still waiting, after this one, wrapping round.
@@ -150,18 +153,18 @@ export default function CheckScreen({
         <div style={row}>
           <button onClick={() => onFix(problem)} disabled={busy} style={fixButton}>Fix holds</button>
           <button onClick={() => onAccept(problem)} disabled={busy} style={{ ...primaryButton(!busy), minWidth: 120 }}>
-            {busy ? 'Moving…' : 'Accept'}
+            {savingThis ? 'Moving…' : 'Accept'}
           </button>
         </div>
       )}
       {error && <p role="alert" style={{ color: '#D9552B', fontSize: 13, margin: '10px 0 0' }}>{error}</p>}
 
       <div style={row}>
-        <button onClick={() => onIndexChange(i - 1)} disabled={i === 0} style={linkButton}>‹ Back</button>
-        <button onClick={skip} style={linkButton}>Skip ›</button>
+        <button onClick={() => onIndexChange(i - 1)} disabled={busy || i === 0} style={linkButton}>‹ Back</button>
+        <button onClick={skip} disabled={busy} style={linkButton}>Skip ›</button>
       </div>
 
-      <button onClick={onRedoLineUp} style={{ ...linkButton, marginTop: 24, color: '#8b8d91', fontSize: 13 }}>Redo line-up</button>
+      <button onClick={onRedoLineUp} disabled={busy} style={{ ...linkButton, marginTop: 24, color: '#8b8d91', fontSize: 13 }}>Redo line-up</button>
     </div>
   );
 }

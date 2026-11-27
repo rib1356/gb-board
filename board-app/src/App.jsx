@@ -717,10 +717,11 @@ export default function App() {
     if (from) startMove(from);
   };
 
+  // The screen is locked while a move saves, so `problems` here is current;
+  // the state update still goes through prev in case anything else landed.
   const replaceProblem = (updated) => {
-    const next = problems.map((p) => (p.id === updated.id ? updated : p));
-    setProblems(next);
-    return next;
+    setProblems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    return problems.map((p) => (p.id === updated.id ? updated : p));
   };
 
   const handleSaveLineUp = async (pairs) => {
@@ -735,10 +736,9 @@ export default function App() {
     setSavingLineUp(true);
     setMoveError('');
     try {
-      let saved = await saveAlignments(board.id, upsertAlignment(alignments, entry));
       const movedVolumes = moveSides(volumes, sidesBefore, { from, to, H, prevH });
-      if (JSON.stringify(movedVolumes) !== JSON.stringify(volumes)) saved = await saveVolumes(board.id, movedVolumes);
-      setBoard(saved);
+      const sidesMoved = JSON.stringify(movedVolumes) !== JSON.stringify(volumes);
+      setBoard(await saveAlignments(board.id, upsertAlignment(alignments, entry), sidesMoved ? movedVolumes : null));
       setMoveIndex(nextWaiting(checkList(problems, entry), entry));
       setView('move-check');
     } catch (err) {

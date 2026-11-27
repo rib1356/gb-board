@@ -4037,10 +4037,61 @@ describe('App (move problems)', () => {
     await user.click(screen.getByRole('button', { name: 'Check fit' }));
     await user.click(screen.getByRole('button', { name: 'Looks right' }));
 
+    // No volume sides on the old photo, so nothing else to save with it.
     await waitFor(() => expect(saveAlignments).toHaveBeenCalledWith('b1', [
       expect.objectContaining({ from: OLD, to: NEW, pairs: expect.any(Array), sidesBefore: [] }),
-    ]));
+    ], null));
     expect(await screen.findByText('1 of 2 · 0 moved')).toBeInTheDocument();
+  });
+
+  it('moves the volume sides in the same save as the line-up', async () => {
+    const side = { id: 'f1', name: 'Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.3 }], photoUrl: OLD };
+    const volumes = [{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [side] }];
+    getOrCreateBoard.mockResolvedValue({ ...board(), volumes });
+    listProblems.mockResolvedValue([P1]);
+    saveAlignments.mockImplementation(async (id, alignments, vols) => ({ ...board(alignments), volumes: vols }));
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+
+    const tapAll = (alt) => {
+      const wrap = screen.getByAltText(alt).parentElement;
+      vi.spyOn(wrap, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 });
+      [[20, 10], [180, 10], [180, 90], [20, 90]].forEach(([x, y]) => {
+        fireEvent.pointerDown(wrap, { clientX: x, clientY: y, pointerId: 1 });
+        fireEvent.pointerUp(wrap, { clientX: x, clientY: y, pointerId: 1 });
+      });
+    };
+    tapAll('Old board photo');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    tapAll('New board photo');
+    await user.click(screen.getByRole('button', { name: 'Check fit' }));
+    await user.click(screen.getByRole('button', { name: 'Looks right' }));
+
+    await waitFor(() => expect(saveAlignments).toHaveBeenCalledTimes(1));
+    const [, alignments, savedVolumes] = saveAlignments.mock.calls[0];
+    expect(alignments[0].sidesBefore).toEqual([{ volumeId: 'v1', faceId: 'f1', points: side.points }]);
+    expect(savedVolumes[0].faces[0].photoUrl).toBe(NEW);
+    expect(saveVolumes).not.toHaveBeenCalled();
+  });
+
+  it("doesn't move a problem when its highlight can't be redrawn or uploaded", async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    warpMaskBlob.mockRejectedValueOnce(new Error('cors'));
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+    expect(await screen.findByText(MOVE_ERROR)).toBeInTheDocument();
+
+    warpMaskBlob.mockResolvedValueOnce(new Blob(['w']));
+    uploadMaskFile.mockRejectedValueOnce(new Error('storage'));
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(uploadMaskFile).toHaveBeenCalled());
+    expect(await screen.findByText(MOVE_ERROR)).toBeInTheDocument();
+    expect(moveProblem).not.toHaveBeenCalled();
+    expect(screen.getByText('1 of 2 · 0 moved')).toBeInTheDocument();
   });
 
   it('accepts a problem: warps its highlight, uploads it and moves it', async () => {

@@ -488,6 +488,16 @@ describe('saveAlignments', () => {
     expect(updateChain.update).toHaveBeenCalledWith({ alignments: board.alignments });
     expect(updateChain.eq).toHaveBeenCalledWith('id', 'b1');
   });
+
+  it('saves moved volume sides in the same write, so the two never come apart', async () => {
+    const volumes = [{ id: 'v1', faces: [] }];
+    const updateChain = chain({ data: { id: 'b1' }, error: null });
+    mocks.supabase.from.mockReturnValue(updateChain);
+
+    await saveAlignments('b1', [{ from: 'old', to: 'new' }], volumes);
+    expect(updateChain.update).toHaveBeenCalledTimes(1);
+    expect(updateChain.update).toHaveBeenCalledWith({ alignments: [{ from: 'old', to: 'new' }], volumes });
+  });
 });
 
 describe('saveWarmup', () => {

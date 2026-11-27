@@ -71,6 +71,20 @@ describe('CheckScreen', () => {
     expect(screen.getByRole('button', { name: 'Moving…' })).toBeDisabled();
   });
 
+  it('locks every button while any problem is saving, so two saves never overlap', () => {
+    setup({ list: [waiting('p1', 'A'), moved('p2', 'B'), waiting('p3', 'C')], index: 1, busyId: 'p3' });
+    expect(screen.getByRole('button', { name: 'Put back' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '‹ Back' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Skip ›' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Redo line-up' })).toBeDisabled();
+  });
+
+  it('locks Accept and Fix on a waiting problem while another is saving', () => {
+    setup({ busyId: 'p2' });
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Fix holds' })).toBeDisabled();
+  });
+
   it('says when everything has moved', () => {
     const { onIndexChange } = setup({ list: [moved('p1', 'A'), moved('p2', 'B')] });
     expect(screen.getByText("All moved. The old photo isn't used any more.")).toBeInTheDocument();

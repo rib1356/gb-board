@@ -31,12 +31,38 @@ async function loadBitmap(url) {
   return createImageBitmap(await res.blob());
 }
 
+// Only the new photo's size is needed, and it's the same for every problem in
+// a move -- read it once (a plain <img>, which the browser caches) instead of
+// downloading the photo again per problem.
+const photoSizes = new Map();
+function photoSize(url) {
+  if (!photoSizes.has(url)) {
+    photoSizes.set(url, new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => {
+        photoSizes.delete(url);
+        reject(new Error(`Could not load ${url}`));
+      };
+      img.src = url;
+    }));
+  }
+  return photoSizes.get(url);
+}
+
+// A zero-size canvas lets iOS Safari give its memory back straight away,
+// rather than whenever it next collects garbage -- this runs once per problem.
+const free = (canvas) => {
+  canvas.width = 0;
+  canvas.height = 0;
+};
+
 // Browser-only (needs a canvas). The highlight comes out at the new photo's
 // size, ready to upload.
 export async function warpMaskBlob(maskUrl, newPhotoUrl, H) {
   const Hinv = invertHomography(H);
   if (!Hinv) throw new Error('The line-up has no inverse');
-  const [mask, photo] = await Promise.all([loadBitmap(maskUrl), loadBitmap(newPhotoUrl)]);
+  const [mask, size] = await Promise.all([loadBitmap(maskUrl), photoSize(newPhotoUrl)]);
 
   const read = document.createElement('canvas');
   read.width = mask.width;
@@ -44,13 +70,19 @@ export async function warpMaskBlob(maskUrl, newPhotoUrl, H) {
   const readCtx = read.getContext('2d');
   readCtx.drawImage(mask, 0, 0);
   const src = readCtx.getImageData(0, 0, mask.width, mask.height);
+  mask.close();
+  free(read);
 
-  const out = warpImageData(src, Hinv, photo.width, photo.height);
+  const out = warpImageData(src, Hinv, size.width, size.height);
   const write = document.createElement('canvas');
   write.width = out.width;
   write.height = out.height;
   write.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
-  return new Promise((resolve, reject) => {
-    write.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not create highlight image'))), 'image/png');
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      write.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not create highlight image'))), 'image/png');
+    });
+  } finally {
+    free(write);
+  }
 }
