@@ -3077,6 +3077,20 @@ describe('App (volumes setup)', () => {
     expect(screen.getByTestId('face-shape')).toBeInTheDocument();
   });
 
+  it("draws the marked sides without name tags, so they don't cover other volumes", async () => {
+    getOrCreateBoard.mockResolvedValue(boardWith([upgraded('v1', 'Vol1', [
+      { id: 'v1-top', name: 'Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.4 }], photoUrl: PHOTO },
+      { id: 'v1-under', name: 'Under', points: [{ x: 0.5, y: 0.5 }], photoUrl: PHOTO },
+    ])]));
+    render(<App />);
+    const user = userEvent.setup();
+    await openVolumes(user);
+
+    expect(screen.getByTestId('face-shape')).toBeInTheDocument();
+    expect(screen.getAllByTestId('hold-marker')).toHaveLength(1);
+    expect(screen.queryByTestId('tag-pill')).not.toBeInTheDocument();
+  });
+
   it('pins a side you cannot see with a single tap', async () => {
     getOrCreateBoard.mockResolvedValue(boardWith([{ id: 'v2', name: 'Vol2', faces: [] }]));
     render(<App />);

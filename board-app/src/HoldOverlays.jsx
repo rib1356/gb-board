@@ -1,4 +1,3 @@
-import { Fragment } from 'react';
 import { isPinned, faceLabel, facesOnPhoto, faceCenter } from './lib/volumes';
 
 export function ChalkRing({ x, y, color, label, size = 34 }) {
@@ -108,22 +107,17 @@ export function MarkingDots({ points }) {
 const MARK_COLOR = '#C08552';
 
 // Setup view: every face marked on this photo in one neutral colour, plus the
-// outline being drawn right now.
+// outline being drawn right now. No name tags: they piled up over the other
+// volumes, and the list below names every side anyway.
 export function VolumeMarks({ volumes, photoUrl, marking }) {
   return (
     <>
-      {facesOnPhoto(volumes, photoUrl).flatMap(({ volume, faces }) => faces.map((face) => {
+      {facesOnPhoto(volumes, photoUrl).flatMap(({ faces }) => faces.map((face) => {
         // The side being re-marked is shown by its new outline instead.
         if (marking && marking.faceId === face.id) return null;
+        if (!isPinned(face)) return <FaceShape key={face.id} points={face.points} color={MARK_COLOR} fillOpacity={0.35} />;
         const center = faceCenter(face.points);
-        return (
-          <Fragment key={face.id}>
-            {isPinned(face)
-              ? <ChalkRing x={center.x} y={center.y} color={MARK_COLOR} />
-              : <FaceShape points={face.points} color={MARK_COLOR} fillOpacity={0.35} />}
-            <TagPill x={center.x} y={center.y} color={MARK_COLOR} text={`${volume.name} ${face.name}`} />
-          </Fragment>
-        );
+        return <ChalkRing key={face.id} x={center.x} y={center.y} color={MARK_COLOR} />;
       }))}
       {marking && marking.points.length >= 3 && <FaceShape points={marking.points} color="#D9552B" fillOpacity={0.35} />}
       {marking && <MarkingDots points={marking.points} />}
