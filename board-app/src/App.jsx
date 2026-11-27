@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap } from 'lucide-react';
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { Camera, Plus, ChevronLeft, Check, Trash2, CircleDot, Loader2, Star, Pencil, CheckCircle2, Flame, RefreshCw, StarHalf, CalendarDays, Trophy, Zap, Search, X } from 'lucide-react';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, listWarmupSessions, saveWarmup, saveVolumes, createWarmupSession, deleteWarmupSession, uploadMaskFile, moveProblem, saveAlignments } from './lib/board';
 import { getStoredClimberId, setStoredClimberId } from './lib/climberStorage';
 import { getProjectsCollapsed, setProjectsCollapsed } from './lib/projectsStorage';
 import { resizeFileToBlob } from './lib/image';
@@ -24,6 +24,12 @@ import LogbookScreen from './logbook/LogbookScreen';
 import BoardStatsScreen from './stats/BoardStatsScreen';
 import FaceButtons from './volumes/FaceButtons';
 import TweaksHub from './tweaks/TweaksHub';
+import LineUpScreen from './move/LineUpScreen';
+import CheckScreen from './move/CheckScreen';
+import OldProblem from './move/OldProblem';
+import { solveHomography } from './lib/homography';
+import { checkList, isMovedBy, moveHold, movedFields, moveSides, olderPhotos, putBackFields, sidesOnPhoto, upsertAlignment } from './lib/movePhoto';
+import { warpMaskBlob } from './lib/warpImage';
 import UnlockSheet from './tweaks/UnlockSheet';
 import InjuryPage from './tweaks/InjuryPage';
 import InjuryForm from './tweaks/InjuryForm';
@@ -195,12 +201,28 @@ export default function App() {
   const [deletedProblem, setDeletedProblem] = useState(null);
   const [sort, setSort] = useState('newest');
   const [unsentOnly, setUnsentOnly] = useState(false);
+  // Stays while you open a problem and come back; gone on reload.
+  const [search, setSearch] = useState('');
   const [warmupFocusId, setWarmupFocusId] = useState(null);
   const [warmupSessions, setWarmupSessions] = useState([]);
   const [savingWarmup, setSavingWarmup] = useState(false);
   // While marking a volume face in setup, photo taps add its corners (or its pin).
   const [marking, setMarking] = useState(null);
   const [savingVolumes, setSavingVolumes] = useState(false);
+  // Moving problems onto a new board photo (Tweaks): the old photo being moved
+  // from, where the check is up to, the problem being saved, and its error.
+  const [moveFrom, setMoveFrom] = useState(null);
+  const [moveIndex, setMoveIndex] = useState(0);
+  // While fixing a problem's holds: whether the old problem is showing over
+  // the new photo, and the photo's size to draw it at.
+  const [peekOld, setPeekOld] = useState(false);
+  const [peekSize, setPeekSize] = useState({ width: 0, height: 0 });
+  const [moveBusyId, setMoveBusyId] = useState(null);
+  const [moveError, setMoveError] = useState('');
+  const [savingLineUp, setSavingLineUp] = useState(false);
+  // Fix holds from the check: the hold editor works on the new photo, and
+  // Save / Back go back to the check. { problemId, photoUrl }
+  const [fixing, setFixing] = useState(null);
 
   const [ticks, setTicks] = useState([]);
   const [savingVote, setSavingVote] = useState(false);
@@ -246,7 +268,7 @@ export default function App() {
   // problem was set, and the holds' x/y fractions only line up with the
   // photo they were originally placed on.
   const editingProblem = editingId ? problems.find((p) => p.id === editingId) : null;
-  const activePhotoUrl = editingProblem?.photo_url || board?.photo_url;
+  const activePhotoUrl = fixing?.photoUrl || editingProblem?.photo_url || board?.photo_url;
   const volumes = upgradeVolumes(board?.volumes);
 
   useEffect(() => {
@@ -611,7 +633,9 @@ export default function App() {
       const segmented = draftHolds.filter((h) => !h.face);
       const allMasked = segmented.length > 0 && segmented.every((h) => h._mask);
 
-      if (editingId) {
+      if (fixing) {
+        await saveFix(cleanHolds, allMasked ? segmented : null);
+      } else if (editingId) {
         let updated = await updateProblem(editingId, { name, grade, setter, notes, holds: cleanHolds });
         if (allMasked) {
           try {
@@ -645,18 +669,156 @@ export default function App() {
         }
 
         setProblems((prev) => [problem, ...prev]);
+        // An old search would hide the problem just saved.
+        setSearch('');
       }
       // Otherwise the just-saved problem's holds keep overlaying the board
       // photo on the list view, since it's still the "selected"/"editing"
       // problem even though we've navigated away from it.
       setSelectedId(null);
       setEditingId(null);
-      setView('list');
+      setView(fixing ? 'move-check' : 'list');
+      setFixing(null);
     } catch (err) {
       console.error(err);
       setError(`Could not ${editingId ? 'update' : 'save'} that problem — check your connection and try again.`);
     }
     setSaving(false);
+  };
+
+  // --- Moving problems onto a new board photo ---------------------------------
+  const alignments = board?.alignments || [];
+  const older = olderPhotos(problems, board?.photo_url);
+  const moveCount = older.reduce((sum, o) => sum + o.count, 0);
+  const hasMoved = problems.some((p) => p.moved_from?.length);
+  const lineUpFor = (from) => alignments.find((a) => a.from === from && a.to === board?.photo_url) ?? null;
+  const moveAlignment = moveFrom ? lineUpFor(moveFrom) : null;
+  const moveH = moveAlignment ? solveHomography(moveAlignment.pairs) : null;
+  const moveList = moveAlignment ? checkList(shownProblems, moveAlignment) : [];
+  // Volume holds go onto their sides as marked on the new photo, so a volume
+  // re-marked there carries every problem set on it over.
+  const onNewSides = { volumes, to: moveAlignment?.to };
+  // The problem being fixed, as it still is on the old photo.
+  const fixProblem = fixing ? problems.find((p) => p.id === fixing.problemId) : null;
+
+  // The first problem still waiting at or after `from` (wrapping round); where
+  // it is now when nothing's waiting.
+  const nextWaiting = (list, alignment, from = 0) => {
+    const order = [...list.keys()].slice(from).concat([...list.keys()].slice(0, from));
+    return order.find((j) => !isMovedBy(list[j], alignment)) ?? Math.min(from, Math.max(list.length - 1, 0));
+  };
+
+  const startMove = (from) => {
+    setMoveFrom(from);
+    setMoveError('');
+    const saved = lineUpFor(from);
+    if (saved) {
+      setMoveIndex(nextWaiting(checkList(problems, saved), saved));
+      leaveFor('move-check');
+    } else {
+      leaveFor('move-lineup');
+    }
+  };
+
+  const openMoveProblems = () => {
+    if (older.length > 1) { setMoveError(''); leaveFor('move-pick'); return; }
+    // Nothing left to move: the latest line-up onto this photo, for putting back.
+    const from = older[0]?.photoUrl ?? [...alignments].reverse().find((a) => a.to === board?.photo_url)?.from;
+    if (from) startMove(from);
+  };
+
+  // The screen is locked while a move saves, so `problems` here is current;
+  // the state update still goes through prev in case anything else landed.
+  const replaceProblem = (updated) => {
+    setProblems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    return problems.map((p) => (p.id === updated.id ? updated : p));
+  };
+
+  const handleSaveLineUp = async (pairs) => {
+    const H = solveHomography(pairs);
+    if (!H) return;
+    const from = moveFrom;
+    const to = board.photo_url;
+    const prev = lineUpFor(from);
+    const sidesBefore = prev?.sidesBefore ?? sidesOnPhoto(volumes, from);
+    const prevH = prev ? solveHomography(prev.pairs) : null;
+    const entry = { from, to, pairs, sidesBefore, saved_at: new Date().toISOString() };
+    setSavingLineUp(true);
+    setMoveError('');
+    try {
+      const movedVolumes = moveSides(volumes, sidesBefore, { from, to, H, prevH });
+      const sidesMoved = JSON.stringify(movedVolumes) !== JSON.stringify(volumes);
+      setBoard(await saveAlignments(board.id, upsertAlignment(alignments, entry), sidesMoved ? movedVolumes : null));
+      setMoveIndex(nextWaiting(checkList(problems, entry), entry));
+      setView('move-check');
+    } catch (err) {
+      console.error(err);
+      setMoveError('Could not save the line-up — check your connection and try again.');
+    }
+    setSavingLineUp(false);
+  };
+
+  const handleAcceptMove = async (problem) => {
+    setMoveBusyId(problem.id);
+    setMoveError('');
+    try {
+      const holds = problem.holds.map((h) => moveHold(moveH, h, onNewSides));
+      const maskUrl = problem.mask_url
+        ? await uploadMaskFile(problem.id, await warpMaskBlob(problem.mask_url, moveAlignment.to, moveH))
+        : null;
+      const updated = await moveProblem(problem.id, movedFields(problem, { photoUrl: moveAlignment.to, holds, maskUrl }, new Date().toISOString()));
+      const next = replaceProblem(updated);
+      const list = checkList(next, moveAlignment);
+      setMoveIndex(nextWaiting(list, moveAlignment, list.findIndex((p) => p.id === problem.id) + 1));
+    } catch (err) {
+      console.error(err);
+      setMoveError('Could not move that problem — check your connection and try again.');
+    }
+    setMoveBusyId(null);
+  };
+
+  const handlePutBack = async (problem) => {
+    setMoveBusyId(problem.id);
+    setMoveError('');
+    try {
+      replaceProblem(await moveProblem(problem.id, putBackFields(problem)));
+    } catch (err) {
+      console.error(err);
+      setMoveError('Could not put that problem back — check your connection and try again.');
+    }
+    setMoveBusyId(null);
+  };
+
+  const handleFixMove = (problem) => {
+    setMoveError('');
+    setPeekOld(false);
+    setFixing({ problemId: problem.id, photoUrl: moveAlignment.to });
+    startEditProblem({ ...problem, holds: problem.holds.map((h) => moveHold(moveH, h, onNewSides)) }, 'holds');
+  };
+
+  // Save in the hold editor while fixing: the problem moves with the holds as
+  // re-placed on the new photo, and the check goes on to the next one.
+  const saveFix = async (cleanHolds, segmented) => {
+    const problem = problems.find((p) => p.id === fixing.problemId);
+    let maskUrl = null;
+    if (segmented) {
+      try {
+        const blob = await segmentModule.compositeMaskBlob(
+          segmented.map((h) => ({ mask: h._mask, color: HOLD_COLORS[h.type] })),
+          embeddingRef.current.width,
+          embeddingRef.current.height
+        );
+        maskUrl = await uploadMaskFile(problem.id, blob);
+      } catch (maskErr) {
+        console.error(maskErr);
+        // Moves anyway -- it just falls back to circle markers.
+      }
+    }
+    const updated = await moveProblem(problem.id, movedFields(problem, { photoUrl: fixing.photoUrl, holds: cleanHolds, maskUrl }, new Date().toISOString()));
+    const next = replaceProblem(updated);
+    const alignment = lineUpFor(moveFrom);
+    const list = checkList(next, alignment);
+    setMoveIndex(nextWaiting(list, alignment, list.findIndex((p) => p.id === problem.id) + 1));
   };
 
   const saveDetails = async () => {
@@ -886,17 +1048,18 @@ export default function App() {
   const currentInjury = tweaks.injuries.find((i) => i.id === injuryId) || null;
   const sheetInjury = checkinSheet ? tweaks.injuries.find((i) => i.id === checkinSheet.injuryId) || null : null;
   // The hub and the injury screens, none of which shows the board photo.
-  const isTweaksView = view === 'tweaks' || view.startsWith('injury');
+  const isTweaksView = view === 'tweaks' || view.startsWith('injury') || view.startsWith('move');
   // A session that runs out while Rob is in Tweaks brings the password sheet back.
   const sessionGone = isTweaksView && tweaks.status === 'signed-out';
   const [backTarget, backLabel] = view === 'tweaks' ? ['list', 'Board']
-    : view === 'volumes' || view === 'injury' || view === 'injury-new' ? ['tweaks', 'Tweaks']
+    : view === 'volumes' || view === 'injury' || view === 'injury-new' || view.startsWith('move') ? ['tweaks', 'Tweaks']
+    : view === 'new' && fixing ? ['move-check', 'Move problems']
     : view === 'injury-edit' && currentInjury ? ['injury', injuryTitle(currentInjury)]
     : view === 'detail' ? [backTo, backTo === 'logbook' ? 'Logbook' : backTo === 'stats' ? 'Stats' : 'Board']
     : ['list', 'Board'];
   // With nobody picked, Unsent falls back to unsent by anyone.
   const visibleProblems = sortAndFilterProblems(shownProblems, {
-    sort, unsentOnly, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
+    sort, unsentOnly, search, sentIds: currentClimber ? sentProblemIds(boardTicks, currentClimber.name) : null,
   });
   // Projects are the picked climber's own; with nobody picked there are none.
   // Dated by the same clock as sends, so sessions to send always line up.
@@ -978,7 +1141,7 @@ export default function App() {
           ) : view === 'warmup-run' ? (
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, letterSpacing: 1.5, margin: 0, color: '#EDEAE3' }}>WARM-UP</h1>
           ) : (
-            <button onClick={() => { setSelectedId(null); setEditingId(null); holdPageHeight(); setView(backTarget); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
+            <button onClick={() => { setSelectedId(null); setEditingId(null); setFixing(null); holdPageHeight(); setView(backTarget); }} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#C08552', fontFamily: "'Inter'", fontWeight: 600, fontSize: 15, cursor: 'pointer', padding: 0 }}>
               <ChevronLeft size={18} /> {backLabel}
             </button>
           )}
@@ -1047,6 +1210,9 @@ export default function App() {
           )}
           {displayHolds.map((h, i) => <PinnedFace key={`pin-${i}`} hold={h} color={HOLD_COLORS[h.type]} volumes={volumes} />)}
           {view === 'volumes' && <VolumeMarks volumes={volumes} photoUrl={board?.photo_url} marking={marking} />}
+          {view === 'new' && peekOld && fixProblem && moveH && (
+            <OldProblem photoUrl={fixProblem.photo_url} maskUrl={fixProblem.mask_url} holds={fixProblem.holds} H={moveH} size={peekSize} colors={HOLD_COLORS} />
+          )}
           {view === 'new' && !embeddingReady && !segmentUnavailable && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
@@ -1092,6 +1258,25 @@ export default function App() {
           <div style={{ marginTop: 16 }}>
             {view === 'new' && (
               <>
+                {fixProblem && moveH && (
+                  <button
+                    onPointerDown={() => {
+                      const wrap = imgWrapRef.current;
+                      setPeekSize({ width: wrap?.clientWidth ?? 0, height: wrap?.clientHeight ?? 0 });
+                      setPeekOld(true);
+                    }}
+                    onPointerUp={() => setPeekOld(false)}
+                    onPointerCancel={() => setPeekOld(false)}
+                    onPointerLeave={() => setPeekOld(false)}
+                    onContextMenu={(e) => e.preventDefault()}
+                    style={{
+                      width: '100%', marginTop: -6, marginBottom: 14, padding: '10px 0', borderRadius: 8,
+                      background: peekOld ? '#3a3b3e' : 'transparent', color: '#EDEAE3', border: '1px solid #3a3b3e',
+                      fontSize: 13.5, fontWeight: 700, cursor: 'pointer', touchAction: 'none',
+                      userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+                    }}
+                  >Hold to see the old problem</button>
+                )}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   {['start', 'hold', 'foot', 'finish'].map((t) => (
                     <button key={t} onClick={() => setPlaceType(t)} style={{
@@ -1199,6 +1384,42 @@ export default function App() {
               </button>
               </div>
             </div>
+            {/* Filters the list only, like sort and Unsent -- Your projects
+                below is a shortcut and stays whole. */}
+            {problems.length > 0 && (
+              <div style={{ position: 'relative', marginBottom: 12 }}>
+                <Search size={16} color="#8b8d91" aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <input
+                  type="search"
+                  className="problem-search"
+                  enterKeyHint="search"
+                  // Every word has to match, so one "corrected" slang name
+                  // would empty the list.
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label="Search problems"
+                  placeholder="Search problems"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  // Search on the phone keyboard just puts it away; the list
+                  // is already filtered.
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  // 16px: any smaller and iOS Safari zooms the page on focus.
+                  style={{ ...inputStyle, marginTop: 0, fontSize: 16, padding: '9px 38px 9px 36px', WebkitAppearance: 'none', appearance: 'none' }}
+                />
+                {search && (
+                  <button type="button" aria-label="Clear search" onClick={() => setSearch('')} style={{
+                    position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'none', border: 'none', color: '#8b8d91', cursor: 'pointer', padding: 0,
+                  }}>
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            )}
             {showClimberPanel && (
               <ClimberPanel
                 climbers={climbers}
@@ -1230,7 +1451,12 @@ export default function App() {
             )}
             {problems.length > 0 && visibleProblems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: '#6d6f73' }}>
-                <p style={{ fontSize: 14, margin: 0 }}>Nothing unsent — go set something new.</p>
+                <p style={{ fontSize: 14, margin: 0 }}>
+                  {!search.trim() ? 'Nothing unsent — go set something new.'
+                    // With Unsent on, a match may exist and just be sent.
+                    : unsentOnly ? `No unsent problems match ‘${search.trim()}’`
+                    : `No problems match ‘${search.trim()}’`}
+                </p>
               </div>
             )}
             {visibleProblems.map((p) => (
@@ -1571,6 +1797,9 @@ export default function App() {
               leaveHubForBoard();
             }}
             onVolumes={() => { setMarking(null); leaveFor('volumes'); }}
+            moveCount={moveCount}
+            hasMoved={hasMoved}
+            onMoveProblems={openMoveProblems}
             onSignOut={() => { tweaks.signOut(); setView('list'); }}
           />
         )}
@@ -1636,6 +1865,59 @@ export default function App() {
             onUndoPoint={() => setMarking((m) => ({ ...m, points: m.points.slice(0, -1) }))}
             onFinishOutline={() => finishMarking(marking.points)}
             onCancelMarking={() => setMarking(null)}
+          />
+        )}
+
+        {view === 'move-pick' && (
+          <div>
+            <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, letterSpacing: 1, margin: '0 0 4px' }}>MOVE PROBLEMS</h1>
+            <p style={{ fontSize: 13, color: '#8b8d91', margin: '0 0 12px' }}>Problems are on more than one older photo. Pick one to line up with the current photo.</p>
+            {older.map((o) => {
+              const shot = /\/(\d{13})-/.exec(o.photoUrl)?.[1];
+              return (
+                <button key={o.photoUrl} onClick={() => startMove(o.photoUrl)} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', background: '#232427',
+                  border: '1px solid #2A2B2E', borderRadius: 12, padding: 8, marginBottom: 8, color: '#EDEAE3', cursor: 'pointer',
+                }}>
+                  <img src={o.photoUrl} alt="" style={{ width: 96, borderRadius: 8, display: 'block' }} />
+                  <span style={{ fontSize: 14 }}>
+                    {shot && <span style={{ display: 'block', color: '#8b8d91', fontSize: 12.5 }}>{new Date(Number(shot)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                    {o.count} {o.count === 1 ? 'problem' : 'problems'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {view === 'move-lineup' && moveFrom && board?.photo_url && (
+          <LineUpScreen
+            key={moveFrom}
+            oldPhotoUrl={moveFrom}
+            newPhotoUrl={board.photo_url}
+            volumes={volumes}
+            initialPairs={moveAlignment?.pairs ?? null}
+            saving={savingLineUp}
+            error={moveError}
+            onSave={handleSaveLineUp}
+          />
+        )}
+
+        {view === 'move-check' && moveAlignment && moveH && (
+          <CheckScreen
+            list={moveList}
+            index={moveIndex}
+            onIndexChange={(i) => { if (i < 0) setView('tweaks'); else { setMoveError(''); setMoveIndex(i); } }}
+            alignment={moveAlignment}
+            H={moveH}
+            colors={HOLD_COLORS}
+            volumes={volumes}
+            busyId={moveBusyId}
+            error={moveError}
+            onAccept={handleAcceptMove}
+            onFix={handleFixMove}
+            onPutBack={handlePutBack}
+            onRedoLineUp={() => { setMoveError(''); setView('move-lineup'); }}
           />
         )}
       </div>

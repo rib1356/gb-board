@@ -10,6 +10,9 @@ import {
   listProblems,
   uploadBoardPhoto,
   uploadProblemMask,
+  uploadMaskFile,
+  moveProblem,
+  saveAlignments,
   createProblem,
   deleteProblem,
   updateProblem,
@@ -406,12 +409,10 @@ describe('uploadBoardPhoto', () => {
 });
 
 describe('uploadProblemMask', () => {
-  it('uploads the mask blob then stores the public url on the problem', async () => {
+  it('uploads the mask to its own new file, then stores that url on the problem', async () => {
     const storageBuilder = {
       upload: vi.fn(() => Promise.resolve({ error: null })),
-      getPublicUrl: vi.fn(() => ({
-        data: { publicUrl: 'https://cdn.example/board-photos/masks/p1.png' },
-      })),
+      getPublicUrl: vi.fn((path) => ({ data: { publicUrl: `https://cdn.example/board-photos/${path}` } })),
     };
     mocks.supabase.storage.from.mockReturnValue(storageBuilder);
     const updateChain = chain({ data: { id: 'p1', mask_url: 'stored-url' }, error: null });
@@ -421,16 +422,81 @@ describe('uploadProblemMask', () => {
     const result = await uploadProblemMask('p1', blob);
 
     expect(mocks.supabase.storage.from).toHaveBeenCalledWith('board-photos');
-    expect(storageBuilder.upload).toHaveBeenCalledWith('masks/p1.png', blob, {
-      upsert: true,
-      contentType: 'image/png',
-    });
-    expect(updateChain.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mask_url: expect.stringMatching(/^https:\/\/cdn\.example\/board-photos\/masks\/p1\.png\?t=\d+$/),
-      })
-    );
+    const [path, sent, options] = storageBuilder.upload.mock.calls[0];
+    expect(path).toMatch(/^masks\/p1\/\d+-[0-9a-z-]+\.png$/);
+    expect(sent).toBe(blob);
+    // Never upsert: an older url (kept in moved_from) must keep its bytes.
+    expect(options).toEqual({ contentType: 'image/png' });
+    expect(updateChain.update).toHaveBeenCalledWith({ mask_url: `https://cdn.example/board-photos/${path}` });
+    expect(updateChain.eq).toHaveBeenCalledWith('id', 'p1');
     expect(result).toEqual({ id: 'p1', mask_url: 'stored-url' });
+  });
+});
+
+describe('uploadMaskFile', () => {
+  it('gives every upload its own path and returns its url', async () => {
+    const paths = [];
+    const storageBuilder = {
+      upload: vi.fn((path) => { paths.push(path); return Promise.resolve({ error: null }); }),
+      getPublicUrl: vi.fn((path) => ({ data: { publicUrl: `https://cdn.example/${path}` } })),
+    };
+    mocks.supabase.storage.from.mockReturnValue(storageBuilder);
+
+    const first = await uploadMaskFile('p1', new Blob(['a'], { type: 'image/png' }));
+    await uploadMaskFile('p1', new Blob(['b'], { type: 'image/png' }));
+
+    expect(paths[0]).not.toEqual(paths[1]);
+    expect(first).toBe(`https://cdn.example/${paths[0]}`);
+  });
+
+  it('throws when the upload fails', async () => {
+    mocks.supabase.storage.from.mockReturnValue({
+      upload: vi.fn(() => Promise.resolve({ error: new Error('nope') })),
+      getPublicUrl: vi.fn(),
+    });
+    await expect(uploadMaskFile('p1', new Blob(['a']))).rejects.toThrow('nope');
+  });
+});
+
+describe('moveProblem', () => {
+  it('writes the photo, holds, highlight and history in one update', async () => {
+    const row = { id: 'p1', photo_url: 'new' };
+    const updateChain = chain({ data: row, error: null });
+    mocks.supabase.from.mockReturnValue(updateChain);
+    const fields = { photo_url: 'new', holds: [{ x: 0.1, y: 0.2, type: 'start' }], mask_url: 'm', moved_from: [{ photo_url: 'old' }] };
+
+    expect(await moveProblem('p1', fields)).toEqual(row);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('problems');
+    expect(updateChain.update).toHaveBeenCalledWith(fields);
+    expect(updateChain.eq).toHaveBeenCalledWith('id', 'p1');
+  });
+
+  it('throws on an error', async () => {
+    mocks.supabase.from.mockReturnValue(chain({ data: null, error: new Error('boom') }));
+    await expect(moveProblem('p1', { photo_url: 'x', holds: [], mask_url: null, moved_from: null })).rejects.toThrow('boom');
+  });
+});
+
+describe('saveAlignments', () => {
+  it("writes the board's line-ups and returns the board", async () => {
+    const board = { id: 'b1', alignments: [{ from: 'old', to: 'new' }] };
+    const updateChain = chain({ data: board, error: null });
+    mocks.supabase.from.mockReturnValue(updateChain);
+
+    expect(await saveAlignments('b1', board.alignments)).toEqual(board);
+    expect(mocks.supabase.from).toHaveBeenCalledWith('boards');
+    expect(updateChain.update).toHaveBeenCalledWith({ alignments: board.alignments });
+    expect(updateChain.eq).toHaveBeenCalledWith('id', 'b1');
+  });
+
+  it('saves moved volume sides in the same write, so the two never come apart', async () => {
+    const volumes = [{ id: 'v1', faces: [] }];
+    const updateChain = chain({ data: { id: 'b1' }, error: null });
+    mocks.supabase.from.mockReturnValue(updateChain);
+
+    await saveAlignments('b1', [{ from: 'old', to: 'new' }], volumes);
+    expect(updateChain.update).toHaveBeenCalledTimes(1);
+    expect(updateChain.update).toHaveBeenCalledWith({ alignments: [{ from: 'old', to: 'new' }], volumes });
   });
 });
 

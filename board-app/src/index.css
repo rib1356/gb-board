@@ -16,3 +16,10 @@ body {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* The board list's search box draws its own clear button. */
+.problem-search::-webkit-search-cancel-button,
+.problem-search::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}

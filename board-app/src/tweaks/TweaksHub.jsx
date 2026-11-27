@@ -1,4 +1,4 @@
-import { Camera, Loader2, Triangle } from 'lucide-react';
+import { ArrowLeftRight, Camera, Loader2, Triangle } from 'lucide-react';
 import { checkinsFor } from '../lib/checkins';
 import { hubLists, injuryStart, injuryTitle, lastCheckinLine, monthYear, shortDate } from '../lib/injuries';
 import { linkButton, primaryButton, sectionHeading } from '../ui';
@@ -25,6 +25,7 @@ const titleAndWhat = (injury) => [injuryTitle(injury), injury.what].filter(Boole
 export default function TweaksHub({
   injuries, checkins, today, loading, loadError, onOpenInjury, onCheckIn, onNewInjury,
   hasPhoto, uploading, onPhotoUpload, onVolumes, onSignOut,
+  moveCount = 0, hasMoved = false, onMoveProblems,
 }) {
   const { open, closed } = hubLists(injuries, checkins);
   // Not while the first load is still on its way, when there's nothing to go on yet.
@@ -74,6 +75,16 @@ export default function TweaksHub({
           </button>
         )}
       </div>
+      {/* Its own row: three buttons don't fit across a 360px phone. Stays once
+          everything's moved, so a move can still be put back. */}
+      {(moveCount > 0 || hasMoved) && (
+        <button onClick={onMoveProblems} style={{ ...setupButton, width: '100%', marginTop: 8 }}>
+          <ArrowLeftRight size={15} /> {moveCount > 0 ? `Move problems · ${moveCount}` : 'Moved problems'}
+        </button>
+      )}
+      <p style={{ fontSize: 12.5, color: '#8b8d91', margin: '8px 0 0' }}>
+        Same spot, same height, 1× lens — tape a mark on the floor.
+      </p>
 
       <button
         onClick={onSignOut}

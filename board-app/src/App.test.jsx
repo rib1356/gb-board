@@ -7,6 +7,9 @@ vi.mock('./lib/board', () => ({
   listProblems: vi.fn(),
   uploadBoardPhoto: vi.fn(),
   uploadProblemMask: vi.fn(),
+  uploadMaskFile: vi.fn(),
+  moveProblem: vi.fn(),
+  saveAlignments: vi.fn(),
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
   updateProblem: vi.fn(),
@@ -27,6 +30,9 @@ vi.mock('./lib/board', () => ({
   listWarmupSessions: vi.fn(),
   createWarmupSession: vi.fn(),
   deleteWarmupSession: vi.fn(),
+}));
+vi.mock('./lib/warpImage', () => ({
+  warpMaskBlob: vi.fn(),
 }));
 vi.mock('./lib/image', () => ({
   resizeFileToBlob: vi.fn(),
@@ -54,8 +60,9 @@ vi.mock('./lib/segment', () => ({
   compositeMaskBlob: vi.fn(),
 }));
 
-import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
+import { getOrCreateBoard, listProblems, uploadBoardPhoto, uploadProblemMask, uploadMaskFile, moveProblem, saveAlignments, createProblem, deleteProblem, updateProblem, restoreProblem, listTicks, listBoardTicks, listBoardVotes, listBoardProjectSessions, addProjectSession, removeProjectSession, saveVote, createTick, deleteTick, listClimbers, createClimber, saveWarmup, saveVolumes, listWarmupSessions, createWarmupSession, deleteWarmupSession } from './lib/board';
 import { resizeFileToBlob } from './lib/image';
+import { warpMaskBlob } from './lib/warpImage';
 import { loadSegmenter, computeEmbedding, maskAtPoint, maskToDataUrl, compositeMaskBlob } from './lib/segment';
 import { getTweaksSession, signInToTweaks, signOutOfTweaks, listInjuries, listCheckins, createInjury, updateInjury, createCheckin } from './lib/tweaks';
 import { LONG_PRESS_MS } from './tweaks/useLongPress';
@@ -3838,5 +3845,422 @@ describe('App (projects)', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     await waitFor(() => expect(listBoardProjectSessions).toHaveBeenCalledTimes(2));
     delete document.visibilityState;
+  });
+});
+
+describe('App (search)', () => {
+  const SEARCH_PROBLEMS = [
+    { id: 'p1', name: 'Crimpy Traverse', grade: 'V5', setter: 'Rob', notes: '', holds: [], send_count: 1 },
+    { id: 'p2', name: 'Jug Haul', grade: 'V2', setter: 'Sam', notes: '', holds: [], send_count: 0 },
+    { id: 'p3', name: 'Crimp Ladder', grade: 'V3', setter: 'Sam', notes: '', holds: [], send_count: 0 },
+  ];
+  const searchBox = () => screen.getByRole('searchbox', { name: 'Search problems' });
+
+  it('filters the list as you type and clears with the ✕', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'crimp');
+    expect(screen.getByText('Crimpy Traverse')).toBeInTheDocument();
+    expect(screen.getByText('Crimp Ladder')).toBeInTheDocument();
+    expect(screen.queryByText('Jug Haul')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(searchBox()).toHaveValue('');
+    expect(screen.getByText('Jug Haul')).toBeInTheDocument();
+    expect(screen.getByText('Crimpy Traverse')).toBeInTheDocument();
+    expect(screen.getByText('Crimp Ladder')).toBeInTheDocument();
+  });
+
+  it('says nothing matches the search, even with Unsent on', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.click(screen.getByRole('button', { name: 'Unsent' }));
+    await user.type(searchBox(), 'traverse');
+    // Crimpy Traverse exists -- it's only hidden because it's been sent.
+    expect(screen.getByText('No unsent problems match ‘traverse’')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing unsent/)).not.toBeInTheDocument();
+  });
+
+  it('says no problems match when the search alone empties the list', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'zzz');
+    expect(screen.getByText('No problems match ‘zzz’')).toBeInTheDocument();
+  });
+
+  it('clears the search after saving a new problem, so it shows in the list', async () => {
+    getOrCreateBoard.mockResolvedValue({ id: 'b1', name: 'Home Board', photo_url: 'https://cdn.example/b1.jpg' });
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    createProblem.mockResolvedValue({
+      id: 'p9', name: 'Pinch Party', grade: '', setter: '', notes: '', holds: [{ x: 0.5, y: 0.5, type: 'start' }],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'crimp');
+    await user.click(screen.getByText('New problem'));
+    const photo = await screen.findByAltText('Climbing board');
+    vi.spyOn(photo.parentElement, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100,
+    });
+    fireEvent.click(photo.parentElement, { clientX: 100, clientY: 50 });
+    await user.type(await screen.findByPlaceholderText('e.g. Gaston Traverse'), 'Pinch Party');
+    await user.click(screen.getByText('Save problem'));
+
+    expect(await screen.findByText('Pinch Party')).toBeInTheDocument();
+    expect(searchBox()).toHaveValue('');
+  });
+
+  it('turns off autocorrect, so slang names are searched as typed', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    await screen.findByText('Jug Haul');
+
+    expect(searchBox()).toHaveAttribute('autocorrect', 'off');
+    expect(searchBox()).toHaveAttribute('autocapitalize', 'none');
+    expect(searchBox()).toHaveAttribute('spellcheck', 'false');
+  });
+
+  it('keeps the search after opening a problem and coming back', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.type(searchBox(), 'jug');
+    await user.click(screen.getByText('Jug Haul'));
+    await user.click(await screen.findByRole('button', { name: 'Board' }));
+    expect(searchBox()).toHaveValue('jug');
+    expect(screen.getByText('Jug Haul')).toBeInTheDocument();
+    expect(screen.queryByText('Crimpy Traverse')).not.toBeInTheDocument();
+  });
+
+  it('closes the keyboard on Enter and keeps the filter', async () => {
+    listProblems.mockResolvedValue(SEARCH_PROBLEMS);
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByText('Jug Haul');
+
+    await user.click(searchBox());
+    await user.type(searchBox(), 'jug{Enter}');
+    expect(searchBox()).not.toBe(document.activeElement);
+    expect(searchBox()).toHaveValue('jug');
+    expect(screen.getByText('Jug Haul')).toBeInTheDocument();
+    expect(screen.queryByText('Crimp Ladder')).not.toBeInTheDocument();
+  });
+
+  it('has no search box when there are no problems', async () => {
+    render(<App />);
+    await screen.findByText('No problems set yet. Upload a photo and add your first one.');
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('App (move problems)', () => {
+  const OLD = 'https://cdn.example/old.jpg';
+  const NEW = 'https://cdn.example/new.jpg';
+  const OLD_MASK = 'https://cdn.example/masks/p1.png';
+  const CORNERS = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+  const LINED_UP = { from: OLD, to: NEW, pairs: CORNERS.map((p) => ({ from: p, to: p })), sidesBefore: [], saved_at: 't' };
+  const board = (alignments = []) => ({ id: 'b1', name: 'Home Board', photo_url: NEW, volumes: [], alignments });
+  const P1 = { id: 'p1', name: 'Big bump', grade: 'V5', setter: 'Rob', notes: '', photo_url: OLD, mask_url: OLD_MASK, holds: [{ x: 0.2, y: 0.3, type: 'start' }], moved_from: null };
+  const P2 = { id: 'p2', name: 'Pinchin', grade: 'V3', setter: 'Sam', notes: '', photo_url: OLD, mask_url: null, holds: [{ x: 0.6, y: 0.4, type: 'finish' }], moved_from: null };
+  const MOVE_ERROR = 'Could not move that problem — check your connection and try again.';
+
+  beforeEach(() => {
+    getTweaksSession.mockResolvedValue({ user: { id: 'u1' } });
+    moveProblem.mockImplementation(async (id, fields) => ({ ...[P1, P2].find((p) => p.id === id), ...fields }));
+  });
+
+  async function openMove(user) {
+    await holdTitle();
+    await user.click(await screen.findByRole('button', { name: /Move problems/ }));
+  }
+
+  it('offers the tool in Tweaks while problems are on an older photo', async () => {
+    getOrCreateBoard.mockResolvedValue(board());
+    listProblems.mockResolvedValue([P1, P2]);
+    render(<App />);
+    await holdTitle();
+    expect(await screen.findByRole('button', { name: 'Move problems · 2' })).toBeInTheDocument();
+    expect(screen.getByText('Same spot, same height, 1× lens — tape a mark on the floor.')).toBeInTheDocument();
+  });
+
+  it('has no move button when every problem is on the current photo', async () => {
+    getOrCreateBoard.mockResolvedValue(board());
+    listProblems.mockResolvedValue([{ ...P1, photo_url: NEW }]);
+    render(<App />);
+    await holdTitle();
+    await screen.findByText('TWEAKS');
+    expect(screen.queryByRole('button', { name: /Move problems|Moved problems/ })).not.toBeInTheDocument();
+  });
+
+  it('starts with the line-up when the photos have not been lined up yet', async () => {
+    getOrCreateBoard.mockResolvedValue(board());
+    listProblems.mockResolvedValue([P1, P2]);
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    expect(screen.getByText('LINE UP · OLD PHOTO')).toBeInTheDocument();
+    expect(screen.getByAltText('Old board photo')).toHaveAttribute('src', OLD);
+  });
+
+  it('saves the line-up and goes on to the check', async () => {
+    getOrCreateBoard.mockResolvedValue(board());
+    listProblems.mockResolvedValue([P1, P2]);
+    saveAlignments.mockImplementation(async (id, alignments) => board(alignments));
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+
+    const tapAll = (alt) => {
+      const wrap = screen.getByAltText(alt).parentElement;
+      vi.spyOn(wrap, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 });
+      [[20, 10], [180, 10], [180, 90], [20, 90]].forEach(([x, y]) => {
+        fireEvent.pointerDown(wrap, { clientX: x, clientY: y, pointerId: 1 });
+        fireEvent.pointerUp(wrap, { clientX: x, clientY: y, pointerId: 1 });
+      });
+    };
+    tapAll('Old board photo');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    tapAll('New board photo');
+    await user.click(screen.getByRole('button', { name: 'Check fit' }));
+    await user.click(screen.getByRole('button', { name: 'Looks right' }));
+
+    // No volume sides on the old photo, so nothing else to save with it.
+    await waitFor(() => expect(saveAlignments).toHaveBeenCalledWith('b1', [
+      expect.objectContaining({ from: OLD, to: NEW, pairs: expect.any(Array), sidesBefore: [] }),
+    ], null));
+    expect(await screen.findByText('1 of 2 · 0 moved')).toBeInTheDocument();
+  });
+
+  it('moves the volume sides in the same save as the line-up', async () => {
+    const side = { id: 'f1', name: 'Top', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.3 }], photoUrl: OLD };
+    const volumes = [{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [side] }];
+    getOrCreateBoard.mockResolvedValue({ ...board(), volumes });
+    listProblems.mockResolvedValue([P1]);
+    saveAlignments.mockImplementation(async (id, alignments, vols) => ({ ...board(alignments), volumes: vols }));
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+
+    const tapAll = (alt) => {
+      const wrap = screen.getByAltText(alt).parentElement;
+      vi.spyOn(wrap, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 });
+      [[20, 10], [180, 10], [180, 90], [20, 90]].forEach(([x, y]) => {
+        fireEvent.pointerDown(wrap, { clientX: x, clientY: y, pointerId: 1 });
+        fireEvent.pointerUp(wrap, { clientX: x, clientY: y, pointerId: 1 });
+      });
+    };
+    tapAll('Old board photo');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    tapAll('New board photo');
+    await user.click(screen.getByRole('button', { name: 'Check fit' }));
+    await user.click(screen.getByRole('button', { name: 'Looks right' }));
+
+    await waitFor(() => expect(saveAlignments).toHaveBeenCalledTimes(1));
+    const [, alignments, savedVolumes] = saveAlignments.mock.calls[0];
+    expect(alignments[0].sidesBefore).toEqual([{ volumeId: 'v1', faceId: 'f1', points: side.points }]);
+    expect(savedVolumes[0].faces[0].photoUrl).toBe(NEW);
+    expect(saveVolumes).not.toHaveBeenCalled();
+  });
+
+  it("doesn't move a problem when its highlight can't be redrawn or uploaded", async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    warpMaskBlob.mockRejectedValueOnce(new Error('cors'));
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+    expect(await screen.findByText(MOVE_ERROR)).toBeInTheDocument();
+
+    warpMaskBlob.mockResolvedValueOnce(new Blob(['w']));
+    uploadMaskFile.mockRejectedValueOnce(new Error('storage'));
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(uploadMaskFile).toHaveBeenCalled());
+    expect(await screen.findByText(MOVE_ERROR)).toBeInTheDocument();
+    expect(moveProblem).not.toHaveBeenCalled();
+    expect(screen.getByText('1 of 2 · 0 moved')).toBeInTheDocument();
+  });
+
+  it('accepts a problem: warps its highlight, uploads it and moves it', async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    const blob = new Blob(['warped'], { type: 'image/png' });
+    warpMaskBlob.mockResolvedValue(blob);
+    uploadMaskFile.mockResolvedValue('https://cdn.example/masks/p1/new.png');
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+
+    expect(screen.getByText('1 of 2 · 0 moved')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+
+    await waitFor(() => expect(moveProblem).toHaveBeenCalled());
+    expect(warpMaskBlob).toHaveBeenCalledWith(OLD_MASK, NEW, expect.any(Array));
+    expect(uploadMaskFile).toHaveBeenCalledWith('p1', blob);
+    const [id, fields] = moveProblem.mock.calls[0];
+    expect(id).toBe('p1');
+    expect(fields).toMatchObject({
+      photo_url: NEW, mask_url: 'https://cdn.example/masks/p1/new.png',
+      moved_from: [{ photo_url: OLD, holds: P1.holds, mask_url: OLD_MASK, moved_at: expect.any(String) }],
+    });
+    expect(fields.holds[0].x).toBeCloseTo(0.2, 6);
+    expect(fields.holds[0].y).toBeCloseTo(0.3, 6);
+    expect(await screen.findByText('2 of 2 · 1 moved')).toBeInTheDocument();
+    expect(screen.getByText('Pinchin')).toBeInTheDocument();
+  });
+
+  it('moves a problem with no highlight without warping anything', async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P2]);
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+
+    await waitFor(() => expect(moveProblem).toHaveBeenCalledWith('p2', expect.objectContaining({ photo_url: NEW, mask_url: null })));
+    expect(warpMaskBlob).not.toHaveBeenCalled();
+    expect(uploadMaskFile).not.toHaveBeenCalled();
+  });
+
+  it('leaves the problem where it was when the move fails', async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    warpMaskBlob.mockResolvedValue(new Blob(['w']));
+    uploadMaskFile.mockResolvedValue('u');
+    moveProblem.mockRejectedValue(new Error('offline'));
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+
+    expect(await screen.findByText(MOVE_ERROR)).toBeInTheDocument();
+    expect(screen.getByText('1 of 2 · 0 moved')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
+  });
+
+  it('puts a moved problem back', async () => {
+    const movedP1 = { ...P1, photo_url: NEW, mask_url: 'new-mask', moved_from: [{ photo_url: OLD, holds: P1.holds, mask_url: OLD_MASK, moved_at: 't' }] };
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([movedP1, P2]);
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+
+    // Opens on the first problem still waiting.
+    expect(screen.getByText('2 of 2 · 1 moved')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '‹ Back' }));
+    await user.click(screen.getByRole('button', { name: 'Put back' }));
+
+    await waitFor(() => expect(moveProblem).toHaveBeenCalledWith('p1', {
+      photo_url: OLD, holds: P1.holds, mask_url: OLD_MASK, moved_from: null,
+    }));
+    expect(await screen.findByText('1 of 2 · 0 moved')).toBeInTheDocument();
+  });
+
+  it('fixes holds on the new photo, and Back returns without saving', async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+
+    expect(await screen.findByAltText('Climbing board')).toHaveAttribute('src', NEW);
+    await user.click(screen.getByRole('button', { name: 'Move problems' }));
+    expect(await screen.findByText('1 of 2 · 0 moved')).toBeInTheDocument();
+    expect(screen.getByText('Big bump')).toBeInTheDocument();
+    expect(moveProblem).not.toHaveBeenCalled();
+  });
+
+  describe('volume holds', () => {
+    const OLD_SIDE = [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.1 }, { x: 0.2, y: 0.3 }];
+    const REMARKED = [{ x: 0.5, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.6, y: 0.8 }];
+    const volumes = [{ id: 'v1', name: 'Vol1', sidesListed: true, faces: [{ id: 'f1', name: 'Top', photoUrl: NEW, points: REMARKED }] }];
+    const onVolume = { ...P2, holds: [{ x: 0.2, y: 0.17, type: 'hold', face: { volumeId: 'v1', faceId: 'f1', label: 'Vol1 Top', points: OLD_SIDE } }] };
+
+    it('accepting puts them on the side as re-marked on the new photo', async () => {
+      getOrCreateBoard.mockResolvedValue({ ...board([LINED_UP]), volumes });
+      listProblems.mockResolvedValue([onVolume]);
+      moveProblem.mockImplementation(async (id, fields) => ({ ...onVolume, ...fields }));
+      render(<App />);
+      const user = userEvent.setup();
+      await openMove(user);
+      await user.click(screen.getByRole('button', { name: 'Accept' }));
+
+      await waitFor(() => expect(moveProblem).toHaveBeenCalled());
+      expect(moveProblem.mock.calls[0][1].holds[0].face.points).toEqual(REMARKED);
+    });
+
+    it('fixing starts them on the side as re-marked on the new photo', async () => {
+      getOrCreateBoard.mockResolvedValue({ ...board([LINED_UP]), volumes });
+      listProblems.mockResolvedValue([onVolume]);
+      render(<App />);
+      const user = userEvent.setup();
+      await openMove(user);
+      await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+
+      await screen.findByAltText('Climbing board');
+      expect(screen.getByTestId('face-shape').querySelector('polygon')).toHaveAttribute('points', '0.5,0.5 0.7,0.5 0.6,0.8');
+    });
+  });
+
+  it('while fixing, holding the button shows the problem as it was on the old photo', async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+
+    const peek = await screen.findByRole('button', { name: 'Hold to see the old problem' });
+    expect(screen.queryByAltText('Old photo')).not.toBeInTheDocument();
+    fireEvent.pointerDown(peek, { pointerId: 1 });
+    expect(screen.getByAltText('Old photo')).toHaveAttribute('src', OLD);
+    expect(document.querySelector(`img[src="${OLD_MASK}"]`)).toBeInTheDocument();
+    fireEvent.pointerUp(peek, { pointerId: 1 });
+    expect(screen.queryByAltText('Old photo')).not.toBeInTheDocument();
+  });
+
+  it("has no old-problem button when editing a problem normally", async () => {
+    getOrCreateBoard.mockResolvedValue(board());
+    listProblems.mockResolvedValue([{ ...P1, photo_url: NEW }]);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Big bump'));
+    await user.click(await screen.findByRole('button', { name: 'Edit holds' }));
+    await screen.findByAltText('Climbing board');
+    expect(screen.queryByRole('button', { name: 'Hold to see the old problem' })).not.toBeInTheDocument();
+  });
+
+  it('saving a fix moves the problem and goes on to the next one', async () => {
+    getOrCreateBoard.mockResolvedValue(board([LINED_UP]));
+    listProblems.mockResolvedValue([P1, P2]);
+    render(<App />);
+    const user = userEvent.setup();
+    await openMove(user);
+    await user.click(screen.getByRole('button', { name: 'Fix holds' }));
+    await user.click(await screen.findByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(moveProblem).toHaveBeenCalledWith('p1', expect.objectContaining({
+      photo_url: NEW,
+      // Highlight mode is unavailable in tests, so no new highlight.
+      mask_url: null,
+      moved_from: [expect.objectContaining({ photo_url: OLD, mask_url: OLD_MASK })],
+    })));
+    expect(updateProblem).not.toHaveBeenCalled();
+    expect(await screen.findByText('2 of 2 · 1 moved')).toBeInTheDocument();
   });
 });
