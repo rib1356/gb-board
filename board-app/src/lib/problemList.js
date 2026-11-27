@@ -25,13 +25,25 @@ export function gradeLabel(p) {
   return p.gradeProvisional ? `${grade}?` : grade;
 }
 
+// The board list's search. Every word in the query has to match: inside the
+// name or the setter, or the whole shown grade -- exact, so "v1" doesn't pull
+// in V10 to V17. Plain `includes`, so a typed bracket or dot is just text.
+export function matchesSearch(problem, query) {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const name = (problem.name || '').toLowerCase();
+  const setter = (problem.setter || '').toLowerCase();
+  const grade = (gradeOf(problem) || '').toLowerCase();
+  return words.every((w) => name.includes(w) || setter.includes(w) || w === grade);
+}
+
 // Input is expected newest-first (as listProblems returns it); Array.prototype.sort
 // is stable, so problems at the same grade stay newest-first.
 // sentIds, when given, is one climber's sent problems -- unsentOnly then means
 // unsent by them, not by anyone on the board.
-export function sortAndFilterProblems(problems, { sort = 'newest', unsentOnly = false, sentIds = null } = {}) {
+export function sortAndFilterProblems(problems, { sort = 'newest', unsentOnly = false, sentIds = null, search = '' } = {}) {
   const isSent = sentIds ? (p) => sentIds.has(p.id) : (p) => p.send_count > 0;
-  const list = unsentOnly ? problems.filter((p) => !isSent(p)) : [...problems];
+  const found = search.trim() ? problems.filter((p) => matchesSearch(p, search)) : problems;
+  const list = unsentOnly ? found.filter((p) => !isSent(p)) : [...found];
   if (sort === 'newest') return list;
   const direction = sort === 'grade-desc' ? -1 : 1;
   return list.sort((a, b) => {
